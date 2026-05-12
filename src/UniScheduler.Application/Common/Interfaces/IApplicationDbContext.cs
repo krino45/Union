@@ -19,6 +19,7 @@ public interface IApplicationDbContext
     DbSet<TeacherAvailability> TeacherAvailabilities { get; }
     DbSet<RescheduleRequest> RescheduleRequests { get; }
     DbSet<AppUser> AppUsers { get; }
+    DbSet<PairTimeSlot> PairTimeSlots { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

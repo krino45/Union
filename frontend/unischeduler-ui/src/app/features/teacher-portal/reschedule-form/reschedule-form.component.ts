@@ -75,7 +75,7 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
                 <mat-label>Пара</mat-label>
                 <mat-select formControlName="proposedPair">
                   <mat-option [value]="null">Любая</mat-option>
-                  <mat-option *ngFor="let p of [1,2,3,4,5,6]" [value]="p">{{ p }}</mat-option>
+                  <mat-option *ngFor="let p of [1,2,3,4,5,6,7]" [value]="p">{{ p }}</mat-option>
                 </mat-select>
               </mat-form-field>
               <mat-form-field appearance="outline" class="flex1">

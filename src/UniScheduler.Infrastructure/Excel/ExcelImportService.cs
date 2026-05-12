@@ -40,7 +40,7 @@ public class ExcelImportService : IExcelImportService
             for (int pairRow = 2; pairRow <= lastRow; pairRow++)
             {
                 var pairCell = ws.Cell(pairRow, 1).GetString().Trim();
-                if (!int.TryParse(pairCell.Split('/')[0].Trim(), out int pairNumber) || pairNumber < 1 || pairNumber > 6)
+                if (!int.TryParse(pairCell.Split('/')[0].Trim(), out int pairNumber) || pairNumber < 1 || pairNumber > 7)
                     continue;
 
                 for (int col = 2; col <= 7; col++)

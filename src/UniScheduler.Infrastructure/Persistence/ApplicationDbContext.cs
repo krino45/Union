@@ -22,6 +22,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<TeacherAvailability> TeacherAvailabilities => Set<TeacherAvailability>();
     public DbSet<RescheduleRequest> RescheduleRequests => Set<RescheduleRequest>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
+    public DbSet<PairTimeSlot> PairTimeSlots => Set<PairTimeSlot>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -140,6 +140,11 @@ export class ApiService {
     return this.http.delete<void>(`${this.base}/faculties/${id}`);
   }
 
+  // ── Pair Times ────────────────────────────────────────────────────────────
+  getPairTimes(): Observable<{ pairNumber: number; startTime: string; endTime: string }[]> {
+    return this.http.get<{ pairNumber: number; startTime: string; endTime: string }[]>(`${this.base}/pair-times`);
+  }
+
   // ── Schedules ─────────────────────────────────────────────────────────────
   getSchedules(): Observable<Schedule[]> {
     return this.http.get<Schedule[]>(`${this.base}/schedules`);

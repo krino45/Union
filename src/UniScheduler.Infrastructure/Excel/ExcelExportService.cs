@@ -10,7 +10,7 @@ public class ExcelExportService : IExcelExportService
     private readonly IApplicationDbContext _db;
 
     private static readonly string[] DayNames = { "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота" };
-    private static readonly string[] PairTimes = { "08:00-09:30", "09:40-11:10", "11:20-12:50", "13:00-14:30", "14:40-16:10", "16:20-17:50" };
+    private static readonly string[] PairTimes = { "08:00-09:35", "09:50-11:25", "11:40-13:15", "13:45-15:20", "15:35-17:10", "17:25-19:00", "19:15-20:50" };
     private static readonly string[] WeekTypeLabels = { "Числитель", "Знаменатель" };
 
     public ExcelExportService(IApplicationDbContext db) => _db = db;
@@ -81,7 +81,7 @@ public class ExcelExportService : IExcelExportService
         ws.Row(1).Style.Fill.BackgroundColor = XLColor.LightBlue;
 
         // Pair rows
-        for (int p = 0; p < 6; p++)
+        for (int p = 0; p < 7; p++)
         {
             int baseRow = 2 + p * 3; // 3 rows per pair (one per numerator, denominator, separator)
             ws.Cell(baseRow, 1).Value = $"{p + 1}\n{PairTimes[p]}";
@@ -115,7 +115,7 @@ public class ExcelExportService : IExcelExportService
         for (int d = 2; d <= 7; d++) ws.Column(d).Width = 22;
 
         // Borders
-        var range = ws.Range(1, 1, 2 + 6 * 3, 7);
+        var range = ws.Range(1, 1, 2 + 7 * 3, 7);
         range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
         range.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
     }

@@ -19,15 +19,16 @@ namespace UniScheduler.Infrastructure.Scheduler;
 public class OrToolsSchedulerService : ISchedulerService
 {
     private const int NumDays = 6;
-    private const int NumPairs = 6;
     private const double WalkSpeedMperMin = 80.0;
-    private const double BreakMinutes = 10.0;
 
     public Task<SchedulerOutput> SolveAsync(SchedulerInput input, CancellationToken cancellationToken = default)
         => Task.FromResult(Solve(input));
 
     private SchedulerOutput Solve(SchedulerInput input)
     {
+        int numPairs = input.PairsPerDay;
+        int[] breakMinutes = BuildBreakArray(input.BreakMinutesBetweenPairs, numPairs);
+
         var model = new CpModel();
         var reqs = input.Requirements.ToList();
         var rooms = input.Rooms.ToList();
@@ -37,7 +38,7 @@ public class OrToolsSchedulerService : ISchedulerService
         var distances = BuildDistanceMap(input.BuildingDistances);
         var blocked = BuildBlockedSet(input.TeacherBlocks);
 
-        //  Create decision variables 
+        //  Create decision variables
         // key: (reqIdx, day, pair, weekTypeIdx, roomIdx)  value: BoolVar
         var vars = new Dictionary<(int ri, int d, int p, int wi, int rmi), BoolVar>();
 
@@ -47,7 +48,7 @@ public class OrToolsSchedulerService : ISchedulerService
             foreach (int wi in WeekIndexes(req.WeekType))
             {
                 for (int d = 0; d < NumDays; d++)
-                for (int p = 0; p < NumPairs; p++)
+                for (int p = 0; p < numPairs; p++)
                 {
                     if (blocked.Contains((req.TeacherId, d, p, wi))) continue;
 
@@ -60,23 +61,23 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  H1: Each requirement scheduled exactly once per applicable week type 
+        //  H1: Each requirement scheduled exactly once per applicable week type
         for (int ri = 0; ri < reqs.Count; ri++)
         {
             foreach (int wi in WeekIndexes(reqs[ri].WeekType))
             {
-                var slotVars = CollectVars(vars, ri, wi, rooms.Count);
+                var slotVars = CollectVars(vars, ri, wi);
                 if (slotVars.Count == 0) { model.AddLinearConstraint(LinearExpr.Constant(1), 2, 3); continue; }
                 model.AddExactlyOne(slotVars);
             }
         }
 
-        //  H4: Non-lecture rooms — at most one per (room, day, pair, weekType) 
+        //  H4: Non-lecture rooms — at most one per (room, day, pair, weekType)
         for (int rmi = 0; rmi < rooms.Count; rmi++)
         {
             if (rooms[rmi].RoomType == RoomType.LectureHall) continue;
             for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < NumPairs; p++)
+            for (int p = 0; p < numPairs; p++)
             for (int wi = 0; wi < 2; wi++)
             {
                 var cell = vars.Where(kv => kv.Key.rmi == rmi && kv.Key.d == d && kv.Key.p == p && kv.Key.wi == wi)
@@ -85,12 +86,12 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  H4b: Lecture halls — different subjects cannot share a slot 
+        //  H4b: Lecture halls — different subjects cannot share a slot
         for (int rmi = 0; rmi < rooms.Count; rmi++)
         {
             if (rooms[rmi].RoomType != RoomType.LectureHall) continue;
             for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < NumPairs; p++)
+            for (int p = 0; p < numPairs; p++)
             for (int wi = 0; wi < 2; wi++)
             {
                 for (int ri1 = 0; ri1 < reqs.Count; ri1++)
@@ -104,7 +105,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  H5: Teacher — at most one per slot 
+        //  H5: Teacher — at most one per slot
         var teacherReqs = teachers.ToDictionary(t => t.Id, t =>
             reqs.Select((r, i) => (r, i)).Where(x => x.r.TeacherId == t.Id).Select(x => x.i).ToList());
 
@@ -112,7 +113,7 @@ public class OrToolsSchedulerService : ISchedulerService
         {
             if (trIdxs.Count <= 1) continue;
             for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < NumPairs; p++)
+            for (int p = 0; p < numPairs; p++)
             for (int wi = 0; wi < 2; wi++)
             {
                 var cell = new List<BoolVar>();
@@ -123,7 +124,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  H6: Group — at most one per slot 
+        //  H6: Group — at most one per slot
         var groupReqs = groups.ToDictionary(g => g.Id, g =>
             reqs.Select((r, i) => (r, i)).Where(x => x.r.GroupIds.Contains(g.Id)).Select(x => x.i).ToList());
 
@@ -131,7 +132,7 @@ public class OrToolsSchedulerService : ISchedulerService
         {
             if (grIdxs.Count <= 1) continue;
             for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < NumPairs; p++)
+            for (int p = 0; p < numPairs; p++)
             for (int wi = 0; wi < 2; wi++)
             {
                 var cell = new List<BoolVar>();
@@ -142,19 +143,21 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  H_travel: Consecutive pairs cannot require impossible building travel 
+        //  H_travel: Consecutive pairs cannot require impossible building travel
         foreach (var group in groups)
         {
             var grIdxs = groupReqs[group.Id];
             for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < NumPairs - 1; p++)
+            for (int p = 0; p < numPairs - 1; p++)
             for (int wi = 0; wi < 2; wi++)
             {
+                double allowedTravelMin = breakMinutes[p];
+
                 for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
                 for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
                 {
                     int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances);
-                    if (dist / WalkSpeedMperMin <= BreakMinutes) continue;
+                    if (dist / WalkSpeedMperMin <= allowedTravelMin) continue;
 
                     foreach (int ri1 in grIdxs)
                     foreach (int ri2 in grIdxs)
@@ -167,13 +170,13 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  Auxiliary "is_used" boolean variables 
-        var isGroupUsed = new BoolVar[groups.Count, NumDays, NumPairs, 2];
+        //  Auxiliary "is_used" boolean variables
+        var isGroupUsed = new BoolVar[groups.Count, NumDays, numPairs, 2];
         for (int gi = 0; gi < groups.Count; gi++)
         {
             var grIdxs = groupReqs[groups[gi].Id];
             for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < NumPairs; p++)
+            for (int p = 0; p < numPairs; p++)
             for (int wi = 0; wi < 2; wi++)
             {
                 var bv = model.NewBoolVar($"gu_{gi}_{d}_{p}_{wi}");
@@ -191,12 +194,12 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        var isTeacherUsed = new BoolVar[teachers.Count, NumDays, NumPairs, 2];
+        var isTeacherUsed = new BoolVar[teachers.Count, NumDays, numPairs, 2];
         for (int ti = 0; ti < teachers.Count; ti++)
         {
             var trIdxs = teacherReqs[teachers[ti].Id];
             for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < NumPairs; p++)
+            for (int p = 0; p < numPairs; p++)
             for (int wi = 0; wi < 2; wi++)
             {
                 var bv = model.NewBoolVar($"tu_{ti}_{d}_{p}_{wi}");
@@ -214,7 +217,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  Build objective 
+        //  Build objective
         var objVars = new List<IntVar>();
         var objCoeffs = new List<long>();
 
@@ -223,18 +226,17 @@ public class OrToolsSchedulerService : ISchedulerService
         for (int d = 0; d < NumDays; d++)
         for (int wi = 0; wi < 2; wi++)
         {
-            for (int pm = 1; pm < NumPairs - 1; pm++) // inner pairs only can be windows
+            for (int pm = 1; pm < numPairs - 1; pm++)
             {
                 var before = model.NewBoolVar($"bef_{gi}_{d}_{wi}_{pm}");
                 var after = model.NewBoolVar($"aft_{gi}_{d}_{wi}_{pm}");
                 var beforeVars = Enumerable.Range(0, pm).Select(pp => (IntVar)isGroupUsed[gi, d, pp, wi]).ToArray();
-                var afterVars = Enumerable.Range(pm + 1, NumPairs - pm - 1).Select(pp => (IntVar)isGroupUsed[gi, d, pp, wi]).ToArray();
+                var afterVars = Enumerable.Range(pm + 1, numPairs - pm - 1).Select(pp => (IntVar)isGroupUsed[gi, d, pp, wi]).ToArray();
 
                 model.AddMaxEquality(before, beforeVars);
                 model.AddMaxEquality(after, afterVars);
 
                 var windowVar = model.NewBoolVar($"win_{gi}_{d}_{wi}_{pm}");
-                // windowVar >= before + after - isGroupUsed[pm] - 1
                 model.Add(
                     (LinearExpr)windowVar >=
                     LinearExpr.Sum(new LinearExpr[] { before, after }) - (LinearExpr)isGroupUsed[gi, d, pm, wi] - 1);
@@ -249,12 +251,12 @@ public class OrToolsSchedulerService : ISchedulerService
         for (int d = 0; d < NumDays; d++)
         for (int wi = 0; wi < 2; wi++)
         {
-            for (int pm = 1; pm < NumPairs - 1; pm++)
+            for (int pm = 1; pm < numPairs - 1; pm++)
             {
                 var before = model.NewBoolVar($"tbef_{ti}_{d}_{wi}_{pm}");
                 var after = model.NewBoolVar($"taft_{ti}_{d}_{wi}_{pm}");
                 var beforeVars = Enumerable.Range(0, pm).Select(pp => (IntVar)isTeacherUsed[ti, d, pp, wi]).ToArray();
-                var afterVars = Enumerable.Range(pm + 1, NumPairs - pm - 1).Select(pp => (IntVar)isTeacherUsed[ti, d, pp, wi]).ToArray();
+                var afterVars = Enumerable.Range(pm + 1, numPairs - pm - 1).Select(pp => (IntVar)isTeacherUsed[ti, d, pp, wi]).ToArray();
 
                 model.AddMaxEquality(before, beforeVars);
                 model.AddMaxEquality(after, afterVars);
@@ -275,7 +277,7 @@ public class OrToolsSchedulerService : ISchedulerService
         for (int wi = 0; wi < 2; wi++)
         {
             var dayHasClass = model.NewBoolVar($"gd_{gi}_{d}_{wi}");
-            var daySlotVars = Enumerable.Range(0, NumPairs).Select(p => (IntVar)isGroupUsed[gi, d, p, wi]).ToArray();
+            var daySlotVars = Enumerable.Range(0, numPairs).Select(p => (IntVar)isGroupUsed[gi, d, p, wi]).ToArray();
             model.AddMaxEquality(dayHasClass, daySlotVars);
             objVars.Add(dayHasClass);
             objCoeffs.Add(60L);
@@ -286,18 +288,20 @@ public class OrToolsSchedulerService : ISchedulerService
         {
             var grIdxs = groupReqs[groups[gi].Id];
             for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < NumPairs - 1; p++)
+            for (int p = 0; p < numPairs - 1; p++)
             for (int wi = 0; wi < 2; wi++)
             {
+                double allowedTravelMin = breakMinutes[p];
+
                 for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
                 for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
                 {
                     int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances);
                     if (dist == 0) continue;
                     double walkMins = dist / WalkSpeedMperMin;
-                    if (walkMins > BreakMinutes) continue; // already hard constraint
+                    if (walkMins > allowedTravelMin) continue; // already hard constraint
 
-                    long penalty = Math.Max(1L, (long)(walkMins / BreakMinutes * 120));
+                    long penalty = Math.Max(1L, (long)(walkMins / allowedTravelMin * 120));
 
                     foreach (int ri1 in grIdxs)
                     foreach (int ri2 in grIdxs)
@@ -317,7 +321,7 @@ public class OrToolsSchedulerService : ISchedulerService
         if (objVars.Count > 0)
             model.Minimize(LinearExpr.WeightedSum(objVars.ToArray(), objCoeffs.ToArray()));
 
-        //  Solve 
+        //  Solve
         var solver = new CpSolver();
         solver.StringParameters =
             $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
@@ -336,7 +340,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 "Solver reached time limit without finding a feasible schedule.",
                 Array.Empty<SchedulerAssignment>());
 
-        //  Extract assignments 
+        //  Extract assignments
         var assignments = new List<SchedulerAssignment>();
         foreach (var ((ri, d, p, wi, rmi), v) in vars)
         {
@@ -356,7 +360,20 @@ public class OrToolsSchedulerService : ISchedulerService
             assignments);
     }
 
-    //  Helpers 
+    //  Helpers
+
+    /// <summary>
+    /// Returns break durations for each pair gap (index p = gap between pair p+1 and p+2).
+    /// Falls back to 15 minutes if not provided.
+    /// </summary>
+    private static int[] BuildBreakArray(IReadOnlyList<int>? breaks, int numPairs)
+    {
+        int gaps = numPairs - 1;
+        if (breaks != null && breaks.Count >= gaps)
+            return breaks.Take(gaps).ToArray();
+        // default 15 min breaks
+        return Enumerable.Repeat(15, gaps).ToArray();
+    }
 
     private static Dictionary<(Guid, Guid), int> BuildDistanceMap(IEnumerable<SchedulerBuildingDistance> distances)
     {
@@ -403,7 +420,7 @@ public class OrToolsSchedulerService : ISchedulerService
         _ => new[] { 0, 1 }
     };
 
-    private static List<BoolVar> CollectVars(Dictionary<(int ri, int d, int p, int wi, int rmi), BoolVar> vars, int ri, int wi, int roomCount)
+    private static List<BoolVar> CollectVars(Dictionary<(int ri, int d, int p, int wi, int rmi), BoolVar> vars, int ri, int wi)
         => vars.Where(kv => kv.Key.ri == ri && kv.Key.wi == wi).Select(kv => kv.Value).ToList();
 
     private static bool IsCompatible(SchedulerRequirement req, SchedulerRoom room, List<SchedulerGroup> groups)

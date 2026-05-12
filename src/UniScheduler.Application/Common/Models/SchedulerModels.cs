@@ -13,7 +13,8 @@ public record SchedulerInput(
     IReadOnlyList<SchedulerBuildingDistance> BuildingDistances,
     IReadOnlyList<SchedulerBlock> TeacherBlocks,
     int DaysPerWeek = 6,
-    int PairsPerDay = 6,
+    int PairsPerDay = 7,
+    IReadOnlyList<int>? BreakMinutesBetweenPairs = null,
     int SolverTimeoutSeconds = 60
 );
 

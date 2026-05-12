@@ -15,12 +15,6 @@ import { WeekTypePipe } from '../../../../shared/pipes/week-type.pipe';
 import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
 import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
 
-interface GridCell {
-  day: RussianDayOfWeek;
-  pair: number;
-  entries: ScheduleEntry[];
-}
-
 @Component({
   selector: 'app-schedule-grid',
   standalone: true,
@@ -47,39 +41,78 @@ interface GridCell {
                 <div class="pair-time">{{ getPairTime(p) }}</div>
               </td>
               <td *ngFor="let d of days" class="drop-cell">
-                <div
-                  cdkDropList
-                  [id]="cellId(d, p)"
-                  [cdkDropListData]="getCellEntries(d, p)"
-                  [cdkDropListConnectedTo]="allCellIds"
-                  (cdkDropListDropped)="onDrop($event, d, p)"
-                  class="drop-zone">
-                  <div
-                    *ngFor="let entry of getCellEntries(d, p)"
-                    cdkDrag
-                    [cdkDragData]="entry"
-                    class="entry-card"
-                    [class.online]="entry.isOnline"
-                    [class.week-num]="entry.weekType === 'Numerator'"
-                    [class.week-den]="entry.weekType === 'Denominator'">
-                    <div class="entry-header">
-                      <span class="week-badge" *ngIf="entry.weekType !== 'Both'">
-                        {{ entry.weekType === 'Numerator' ? 'Н' : 'Ч' }}
-                      </span>
-                      <span class="lesson-type-badge">{{ entry.lessonType | lessonType }}</span>
-                      <button mat-icon-button class="delete-btn" (click)="deleteEntry(entry)" [matTooltip]="'Удалить'">
-                        <mat-icon>close</mat-icon>
-                      </button>
+                <div class="split-weeks">
+                  <!-- Нечётная (Numerator) -->
+                  <div class="week-half">
+                    <div class="week-label num-label">Неч.</div>
+                    <div
+                      cdkDropList
+                      [id]="cellIdNum(d, p)"
+                      [cdkDropListData]="getCellNum(d, p)"
+                      [cdkDropListConnectedTo]="allCellIds"
+                      (cdkDropListDropped)="onDrop($event, d, p, 'Numerator')"
+                      class="drop-zone">
+                      <div
+                        *ngFor="let entry of getCellNum(d, p)"
+                        cdkDrag
+                        [cdkDragData]="entry"
+                        class="entry-card"
+                        [class.online]="entry.isOnline"
+                        [class.both-weeks]="entry.weekType === 'Both'">
+                        <div class="entry-header">
+                          <span class="lesson-type-badge">{{ entry.lessonType | lessonType }}</span>
+                          <button mat-icon-button class="delete-btn" (click)="deleteEntry(entry)" [matTooltip]="'Удалить'">
+                            <mat-icon>close</mat-icon>
+                          </button>
+                        </div>
+                        <div class="subject">{{ entry.subjectShortName || entry.subjectName }}</div>
+                        <div class="teacher">{{ entry.teacherDisplayName }}</div>
+                        <div class="room">
+                          {{ entry.isOnline ? 'Онлайн' : (entry.buildingShortCode ? entry.buildingShortCode + '-' : '') + (entry.roomNumber || '—') }}
+                        </div>
+                        <div class="groups" *ngIf="entry.studentGroups?.length">{{ groupNames(entry) }}</div>
+                        <div *cdkDragPlaceholder class="drag-placeholder"></div>
+                      </div>
+                      <div class="empty-slot" *ngIf="getCellNum(d, p).length === 0"></div>
                     </div>
-                    <div class="subject">{{ entry.subjectShortName || entry.subjectName }}</div>
-                    <div class="teacher">{{ entry.teacherDisplayName }}</div>
-                    <div class="room">
-                      {{ entry.isOnline ? 'Онлайн' : (entry.buildingShortCode ? entry.buildingShortCode + '-' : '') + (entry.roomNumber || '—') }}
-                    </div>
-                    <div class="groups" *ngIf="entry.studentGroups?.length">{{ groupNames(entry) }}</div>
-                    <div *cdkDragPlaceholder class="drag-placeholder"></div>
                   </div>
-                  <div class="empty-slot" *ngIf="getCellEntries(d, p).length === 0"></div>
+
+                  <div class="week-divider"></div>
+
+                  <!-- Чётная (Denominator) -->
+                  <div class="week-half">
+                    <div class="week-label den-label">Чёт.</div>
+                    <div
+                      cdkDropList
+                      [id]="cellIdDen(d, p)"
+                      [cdkDropListData]="getCellDen(d, p)"
+                      [cdkDropListConnectedTo]="allCellIds"
+                      (cdkDropListDropped)="onDrop($event, d, p, 'Denominator')"
+                      class="drop-zone">
+                      <div
+                        *ngFor="let entry of getCellDen(d, p)"
+                        cdkDrag
+                        [cdkDragData]="entry"
+                        class="entry-card den"
+                        [class.online]="entry.isOnline"
+                        [class.both-weeks]="entry.weekType === 'Both'">
+                        <div class="entry-header">
+                          <span class="lesson-type-badge">{{ entry.lessonType | lessonType }}</span>
+                          <button mat-icon-button class="delete-btn" (click)="deleteEntry(entry)" [matTooltip]="'Удалить'">
+                            <mat-icon>close</mat-icon>
+                          </button>
+                        </div>
+                        <div class="subject">{{ entry.subjectShortName || entry.subjectName }}</div>
+                        <div class="teacher">{{ entry.teacherDisplayName }}</div>
+                        <div class="room">
+                          {{ entry.isOnline ? 'Онлайн' : (entry.buildingShortCode ? entry.buildingShortCode + '-' : '') + (entry.roomNumber || '—') }}
+                        </div>
+                        <div class="groups" *ngIf="entry.studentGroups?.length">{{ groupNames(entry) }}</div>
+                        <div *cdkDragPlaceholder class="drag-placeholder"></div>
+                      </div>
+                      <div class="empty-slot" *ngIf="getCellDen(d, p).length === 0"></div>
+                    </div>
+                  </div>
                 </div>
               </td>
             </tr>
@@ -113,14 +146,23 @@ interface GridCell {
     }
     .pair-number { font-weight: 700; font-size: 18px; }
     .pair-time { font-size: 10px; color: #666; }
-    .drop-cell { padding: 2px; min-width: 130px; }
+    .drop-cell { padding: 0; min-width: 150px; }
+    .split-weeks { display: flex; flex-direction: column; }
+    .week-half { flex: 1; min-width: 0; }
+    .week-label {
+      font-size: 9px; font-weight: 700; text-align: center;
+      padding: 1px 2px;
+    }
+    .num-label { background: rgba(25,118,210,0.1); color: #1565c0; }
+    .den-label { background: rgba(46,125,50,0.1); color: #2e7d32; }
+    .week-divider { height: 1px; background: #e0e0e0; }
     .drop-zone {
-      min-height: 60px;
+      min-height: 40px;
       display: flex;
       flex-direction: column;
       gap: 2px;
       padding: 2px;
-      border-radius: 4px;
+      border-radius: 0;
       transition: background 0.2s;
     }
     .drop-zone.cdk-drop-list-dragging { background: #e3f2fd; }
@@ -134,20 +176,14 @@ interface GridCell {
       position: relative;
       font-size: 12px;
     }
-    .entry-card:active { cursor: grabbing; }
+    .entry-card.den { background: #e8f5e9; border-left-color: #2e7d32; }
     .entry-card.online { background: #e8f5e9; border-left-color: #388e3c; }
-    .entry-card.week-num { border-left-color: #1565c0; background: #e3f2fd; }
-    .entry-card.week-den { border-left-color: #2e7d32; background: #e8f5e9; }
+    .entry-card.both-weeks { border-left-style: dashed; }
+    .entry-card:active { cursor: grabbing; }
     .entry-card.cdk-drag-dragging { opacity: 0.85; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
     .entry-header {
       display: flex; align-items: center; gap: 2px; margin-bottom: 2px;
     }
-    .week-badge {
-      font-size: 10px; font-weight: 700;
-      background: #1976d2; color: white;
-      border-radius: 2px; padding: 0 3px;
-    }
-    .week-den .week-badge { background: #388e3c; }
     .lesson-type-badge { font-size: 9px; color: #666; flex: 1; }
     .delete-btn {
       width: 18px; height: 18px; line-height: 18px; font-size: 12px;
@@ -161,9 +197,9 @@ interface GridCell {
     .groups { font-size: 10px; color: #888; font-style: italic; }
     .drag-placeholder {
       background: #bbdefb; border: 2px dashed #1976d2;
-      border-radius: 3px; min-height: 50px;
+      border-radius: 3px; min-height: 30px;
     }
-    .empty-slot { min-height: 40px; }
+    .empty-slot { min-height: 20px; }
   `]
 })
 export class ScheduleGridComponent implements OnChanges {
@@ -179,30 +215,48 @@ export class ScheduleGridComponent implements OnChanges {
   pairTimes = PAIR_TIMES;
 
   allCellIds: string[] = [];
-  private cellMap = new Map<string, ScheduleEntry[]>();
+  private cellMapNum = new Map<string, ScheduleEntry[]>();
+  private cellMapDen = new Map<string, ScheduleEntry[]>();
 
   constructor(private dialog: MatDialog) {}
 
   ngOnChanges(): void {
-    this.buildCellMap();
-    this.allCellIds = this.days.flatMap(d => this.pairs.map(p => this.cellId(d, p)));
+    this.buildCellMaps();
+    this.allCellIds = this.days.flatMap(d =>
+      this.pairs.flatMap(p => [this.cellIdNum(d, p), this.cellIdDen(d, p)])
+    );
   }
 
-  private buildCellMap(): void {
-    this.cellMap.clear();
+  private buildCellMaps(): void {
+    this.cellMapNum.clear();
+    this.cellMapDen.clear();
     for (const entry of this.entries) {
-      const key = this.cellId(entry.dayOfWeek, entry.pairNumber);
-      if (!this.cellMap.has(key)) this.cellMap.set(key, []);
-      this.cellMap.get(key)!.push(entry);
+      const key = `${entry.dayOfWeek}-${entry.pairNumber}`;
+      if (entry.weekType === 'Numerator' || entry.weekType === 'Both') {
+        if (!this.cellMapNum.has(key)) this.cellMapNum.set(key, []);
+        this.cellMapNum.get(key)!.push(entry);
+      }
+      if (entry.weekType === 'Denominator' || entry.weekType === 'Both') {
+        if (!this.cellMapDen.has(key)) this.cellMapDen.set(key, []);
+        this.cellMapDen.get(key)!.push(entry);
+      }
     }
   }
 
-  cellId(day: RussianDayOfWeek, pair: number): string {
-    return `cell-${day}-${pair}`;
+  cellIdNum(day: RussianDayOfWeek, pair: number): string {
+    return `cell-${day}-${pair}-num`;
   }
 
-  getCellEntries(day: RussianDayOfWeek, pair: number): ScheduleEntry[] {
-    return this.cellMap.get(this.cellId(day, pair)) ?? [];
+  cellIdDen(day: RussianDayOfWeek, pair: number): string {
+    return `cell-${day}-${pair}-den`;
+  }
+
+  getCellNum(day: RussianDayOfWeek, pair: number): ScheduleEntry[] {
+    return this.cellMapNum.get(`${day}-${pair}`) ?? [];
+  }
+
+  getCellDen(day: RussianDayOfWeek, pair: number): ScheduleEntry[] {
+    return this.cellMapDen.get(`${day}-${pair}`) ?? [];
   }
 
   getPairTime(pair: number): string {
@@ -210,15 +264,14 @@ export class ScheduleGridComponent implements OnChanges {
     return pt ? `${pt.start}–${pt.end}` : '';
   }
 
-  onDrop(event: CdkDragDrop<ScheduleEntry[]>, targetDay: RussianDayOfWeek, targetPair: number): void {
+  onDrop(event: CdkDragDrop<ScheduleEntry[]>, targetDay: RussianDayOfWeek, targetPair: number, targetWeekType: string): void {
     const entry: ScheduleEntry = event.item.data;
-
     if (event.previousContainer === event.container) return;
 
     const dto: MoveEntryDto = {
       dayOfWeek: targetDay,
       pairNumber: targetPair,
-      weekType: entry.weekType,
+      weekType: targetWeekType as WeekType,
       roomId: entry.roomId
     };
 
