@@ -1,0 +1,6 @@
+@UniScheduler.Api_HostAddress = http://localhost:5007
+
+GET {{UniScheduler.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

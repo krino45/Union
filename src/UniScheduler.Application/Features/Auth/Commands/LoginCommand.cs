@@ -1,0 +1,32 @@
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+using UniScheduler.Application.Common.Interfaces;
+
+namespace UniScheduler.Application.Features.Auth.Commands;
+
+public record LoginCommand(string Username, string Password) : IRequest<LoginResult>;
+public record LoginResult(string Token, string Role, Guid UserId, Guid? TeacherId);
+
+public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
+{
+    private readonly IApplicationDbContext _db;
+    private readonly IJwtService _jwt;
+
+    public LoginCommandHandler(IApplicationDbContext db, IJwtService jwt)
+    {
+        _db = db;
+        _jwt = jwt;
+    }
+
+    public async Task<LoginResult> Handle(LoginCommand request, CancellationToken cancellationToken)
+    {
+        var user = await _db.AppUsers.FirstOrDefaultAsync(u => u.Username == request.Username, cancellationToken)
+            ?? throw new UnauthorizedAccessException("Invalid credentials.");
+
+        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            throw new UnauthorizedAccessException("Invalid credentials.");
+
+        var token = _jwt.GenerateToken(user);
+        return new LoginResult(token, user.Role, user.Id, user.TeacherId);
+    }
+}

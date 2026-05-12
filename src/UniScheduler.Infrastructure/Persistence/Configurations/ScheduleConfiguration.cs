@@ -1,0 +1,82 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using UniScheduler.Domain.Entities;
+
+namespace UniScheduler.Infrastructure.Persistence.Configurations;
+
+public class ScheduleConfiguration : IEntityTypeConfiguration<Schedule>
+{
+    public void Configure(EntityTypeBuilder<Schedule> builder)
+    {
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.AcademicYear).IsRequired();
+        builder.Property(s => s.Term).IsRequired();
+        builder.Property(s => s.StartDate).IsRequired();
+        builder.Property(s => s.EndDate).IsRequired();
+        builder.Property(s => s.Status).IsRequired();
+
+        builder.HasOne(s => s.Faculty)
+            .WithMany()
+            .HasForeignKey(s => s.FacultyId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class ScheduleEntryConfiguration : IEntityTypeConfiguration<ScheduleEntry>
+{
+    public void Configure(EntityTypeBuilder<ScheduleEntry> builder)
+    {
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.DayOfWeek).IsRequired();
+        builder.Property(e => e.PairNumber).IsRequired();
+        builder.Property(e => e.WeekType).IsRequired();
+        builder.Property(e => e.LessonType).IsRequired();
+
+        builder.HasIndex(e => new { e.ScheduleId, e.RoomId, e.DayOfWeek, e.PairNumber, e.WeekType })
+            .HasFilter("\"RoomId\" IS NOT NULL")
+            .IsUnique();
+
+        builder.HasIndex(e => new { e.ScheduleId, e.TeacherId, e.DayOfWeek, e.PairNumber, e.WeekType })
+            .IsUnique();
+
+        builder.HasOne(e => e.Schedule)
+            .WithMany(s => s.Entries)
+            .HasForeignKey(e => e.ScheduleId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(e => e.Teacher)
+            .WithMany(t => t.ScheduleEntries)
+            .HasForeignKey(e => e.TeacherId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(e => e.Subject)
+            .WithMany(s => s.ScheduleEntries)
+            .HasForeignKey(e => e.SubjectId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(e => e.Room)
+            .WithMany(r => r.ScheduleEntries)
+            .HasForeignKey(e => e.RoomId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
+    }
+}
+
+public class ScheduleEntryStudentGroupConfiguration : IEntityTypeConfiguration<ScheduleEntryStudentGroup>
+{
+    public void Configure(EntityTypeBuilder<ScheduleEntryStudentGroup> builder)
+    {
+        builder.HasKey(sg => new { sg.ScheduleEntryId, sg.StudentGroupId });
+
+        builder.HasOne(sg => sg.ScheduleEntry)
+            .WithMany(e => e.StudentGroups)
+            .HasForeignKey(sg => sg.ScheduleEntryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(sg => sg.StudentGroup)
+            .WithMany(g => g.ScheduleEntryGroups)
+            .HasForeignKey(sg => sg.StudentGroupId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}

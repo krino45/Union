@@ -1,0 +1,77 @@
+import { Routes } from '@angular/router';
+import { authGuard, adminGuard } from './core/guards/auth.guard';
+
+export const routes: Routes = [
+  { path: '', redirectTo: 'admin/schedules', pathMatch: 'full' },
+  {
+    path: 'login',
+    loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent)
+  },
+  {
+    path: 'admin',
+    canActivate: [authGuard, adminGuard],
+    children: [
+      { path: '', redirectTo: 'schedules', pathMatch: 'full' },
+      {
+        path: 'schedules',
+        loadComponent: () => import('./features/admin/schedule-generator/schedule-generator.component').then(m => m.ScheduleGeneratorComponent)
+      },
+      {
+        path: 'schedules/:id/editor',
+        loadComponent: () => import('./features/admin/schedule-editor/schedule-editor.component').then(m => m.ScheduleEditorComponent)
+      },
+      {
+        path: 'buildings',
+        loadComponent: () => import('./features/admin/data-management/buildings/buildings.component').then(m => m.BuildingsComponent)
+      },
+      {
+        path: 'rooms',
+        loadComponent: () => import('./features/admin/data-management/rooms/rooms.component').then(m => m.RoomsComponent)
+      },
+      {
+        path: 'teachers',
+        loadComponent: () => import('./features/admin/data-management/teachers/teachers.component').then(m => m.TeachersComponent)
+      },
+      {
+        path: 'subjects',
+        loadComponent: () => import('./features/admin/data-management/subjects/subjects.component').then(m => m.SubjectsComponent)
+      },
+      {
+        path: 'groups',
+        loadComponent: () => import('./features/admin/data-management/groups/groups.component').then(m => m.GroupsComponent)
+      },
+      {
+        path: 'faculties',
+        loadComponent: () => import('./features/admin/data-management/faculties/faculties.component').then(m => m.FacultiesComponent)
+      },
+      {
+        path: 'reschedule-requests',
+        loadComponent: () => import('./features/admin/reschedule-requests/reschedule-requests.component').then(m => m.RescheduleRequestsComponent)
+      },
+      {
+        path: 'excel',
+        loadComponent: () => import('./features/admin/excel/excel.component').then(m => m.ExcelComponent)
+      }
+    ]
+  },
+  {
+    path: 'teacher',
+    canActivate: [authGuard],
+    children: [
+      { path: '', redirectTo: 'my-schedule', pathMatch: 'full' },
+      {
+        path: 'my-schedule',
+        loadComponent: () => import('./features/teacher-portal/my-schedule/my-schedule.component').then(m => m.MyScheduleComponent)
+      },
+      {
+        path: 'availability',
+        loadComponent: () => import('./features/teacher-portal/availability-editor/availability-editor.component').then(m => m.AvailabilityEditorComponent)
+      },
+      {
+        path: 'reschedule',
+        loadComponent: () => import('./features/teacher-portal/reschedule-form/reschedule-form.component').then(m => m.RescheduleFormComponent)
+      }
+    ]
+  },
+  { path: '**', redirectTo: '' }
+];

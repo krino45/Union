@@ -1,0 +1,24 @@
+using Microsoft.EntityFrameworkCore;
+using UniScheduler.Domain.Entities;
+
+namespace UniScheduler.Application.Common.Interfaces;
+
+public interface IApplicationDbContext
+{
+    DbSet<Building> Buildings { get; }
+    DbSet<BuildingDistance> BuildingDistances { get; }
+    DbSet<Room> Rooms { get; }
+    DbSet<Faculty> Faculties { get; }
+    DbSet<Teacher> Teachers { get; }
+    DbSet<TeacherSubject> TeacherSubjects { get; }
+    DbSet<Subject> Subjects { get; }
+    DbSet<StudentGroup> StudentGroups { get; }
+    DbSet<Schedule> Schedules { get; }
+    DbSet<ScheduleEntry> ScheduleEntries { get; }
+    DbSet<ScheduleEntryStudentGroup> ScheduleEntryStudentGroups { get; }
+    DbSet<TeacherAvailability> TeacherAvailabilities { get; }
+    DbSet<RescheduleRequest> RescheduleRequests { get; }
+    DbSet<AppUser> AppUsers { get; }
+
+    Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+}

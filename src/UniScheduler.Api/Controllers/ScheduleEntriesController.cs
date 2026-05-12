@@ -1,0 +1,73 @@
+using MediatR;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using UniScheduler.Application.Common.Interfaces;
+using UniScheduler.Application.DTOs;
+using UniScheduler.Application.Features.Schedules.Commands;
+using UniScheduler.Domain.Enums;
+using Microsoft.EntityFrameworkCore;
+
+namespace UniScheduler.Api.Controllers;
+
+[ApiController]
+[Route("api/schedule-entries")]
+[Authorize(Roles = "Admin")]
+public class ScheduleEntriesController : ControllerBase
+{
+    private readonly IMediator _mediator;
+    private readonly IApplicationDbContext _db;
+    private readonly IConflictDetector _conflictDetector;
+
+    public ScheduleEntriesController(IMediator mediator, IApplicationDbContext db, IConflictDetector conflictDetector)
+    {
+        _mediator = mediator;
+        _db = db;
+        _conflictDetector = conflictDetector;
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<ScheduleEntryDto>> Create([FromBody] CreateEntryCommand cmd, CancellationToken ct)
+    {
+        var result = await _mediator.Send(cmd, ct);
+        return CreatedAtAction(nameof(CheckConflicts), result);
+    }
+
+    [HttpPost("{id:guid}/move")]
+    public async Task<ActionResult<ScheduleEntryDto>> Move(Guid id, [FromBody] MoveRequest req, CancellationToken ct)
+        => Ok(await _mediator.Send(new MoveEntryCommand(id, req.DayOfWeek, req.PairNumber, req.WeekType, req.RoomId), ct));
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        await _mediator.Send(new DeleteEntryCommand(id), ct);
+        return NoContent();
+    }
+
+    /// <summary>Check conflicts for a proposed assignment without persisting it.</summary>
+    [HttpGet("conflicts")]
+    public async Task<IActionResult> CheckConflicts(
+        [FromQuery] Guid scheduleId,
+        [FromQuery] Guid? roomId,
+        [FromQuery] Guid teacherId,
+        [FromQuery] List<Guid> groupIds,
+        [FromQuery] RussianDayOfWeek dayOfWeek,
+        [FromQuery] int pairNumber,
+        [FromQuery] WeekType weekType,
+        [FromQuery] bool isOnline,
+        [FromQuery] Guid? excludeEntryId,
+        CancellationToken ct)
+    {
+        var existing = await _db.ScheduleEntries
+            .Include(e => e.StudentGroups)
+            .Where(e => e.ScheduleId == scheduleId)
+            .ToListAsync(ct);
+
+        var conflicts = _conflictDetector.DetectConflicts(
+            excludeEntryId ?? Guid.Empty, scheduleId, roomId, teacherId, groupIds,
+            dayOfWeek, pairNumber, weekType, isOnline, existing);
+
+        return Ok(conflicts);
+    }
+}
+
+public record MoveRequest(RussianDayOfWeek DayOfWeek, int PairNumber, WeekType WeekType, Guid? RoomId);
