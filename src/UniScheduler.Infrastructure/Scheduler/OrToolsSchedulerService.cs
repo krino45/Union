@@ -54,12 +54,37 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
+        //  Pre-solve diagnostic: detect requirements that provably cannot be placed
+        var noRoomLines = new List<string>();
+        var noSlotLines = new List<string>();
+        for (int ri = 0; ri < reqs.Count; ri++)
+        {
+            var req = reqs[ri];
+            bool anyRoom = rooms.Any(r => IsCompatible(req, r, groups));
+            if (!anyRoom)
+            {
+                noRoomLines.Add($"{req.LessonType} (subj {req.SubjectId:N8})");
+                continue;
+            }
+            int varWi = VarWeekIndex(req.WeekType);
+            if (!vars.Any(kv => kv.Key.ri == ri && kv.Key.wi == varWi))
+                noSlotLines.Add($"{req.LessonType} (subj {req.SubjectId:N8})");
+        }
+        if (noRoomLines.Count > 0 || noSlotLines.Count > 0)
+        {
+            var parts = new List<string>();
+            if (noRoomLines.Count > 0)
+                parts.Add($"{noRoomLines.Count} requirement(s) have no compatible rooms — check AllowedLessonTypes, room type, and capacity: {string.Join("; ", noRoomLines.Take(5))}");
+            if (noSlotLines.Count > 0)
+                parts.Add($"{noSlotLines.Count} requirement(s) have all time slots blocked by teacher availability: {string.Join("; ", noSlotLines.Take(5))}");
+            return new SchedulerOutput(SolverStatus.Infeasible, string.Join(" | ", parts), Array.Empty<SchedulerAssignment>());
+        }
+
         //  H1: Each requirement scheduled exactly once
         for (int ri = 0; ri < reqs.Count; ri++)
         {
             int varWi = VarWeekIndex(reqs[ri].WeekType);
             var slotVars = CollectVars(vars, ri, varWi);
-            if (slotVars.Count == 0) { model.AddLinearConstraint(LinearExpr.Constant(1), 2, 3); continue; }
             model.AddExactlyOne(slotVars);
         }
 

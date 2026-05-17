@@ -9,6 +9,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatCardModule } from '@angular/material/card';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { ApiService } from '../../../../core/services/api.service';
 import { CalendarPlan, CalendarWeek, UpsertCalendarPlanDto, WeekKind } from '../../../../core/models';
@@ -29,7 +30,8 @@ const WEEK_KINDS: { value: WeekKind; label: string; color: string }[] = [
   imports: [
     CommonModule, FormsModule, ReactiveFormsModule,
     MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatExpansionModule, MatSnackBarModule, MatCardModule, MatDialogModule
+    MatSelectModule, MatExpansionModule, MatSnackBarModule, MatCardModule, MatDialogModule,
+    MatProgressSpinnerModule
   ],
   template: `
     <div class="page-header">
@@ -100,37 +102,41 @@ const WEEK_KINDS: { value: WeekKind; label: string; color: string }[] = [
       </mat-card-actions>
     </mat-card>
 
-    <!-- Plans list -->
-    <mat-expansion-panel *ngFor="let cp of plans" class="plan-panel">
-      <mat-expansion-panel-header>
-        <mat-panel-title>{{ cp.name }}</mat-panel-title>
-        <mat-panel-description>
-          {{ cp.academicYear }}/{{ cp.academicYear + 1 }} · {{ cp.term === 'First' ? '1-й' : '2-й' }} сем.
-          · {{ studyWeeksFor(cp) }} учебных нед. / {{ cp.weeks.length }} всего
-        </mat-panel-description>
-      </mat-expansion-panel-header>
-      <div class="cp-detail">
-        <div class="weeks-row">
-          <div *ngFor="let w of cp.weeks; let i = index" class="wk-chip"
-               [style.background]="getBg(w.kind)" [title]="kindLabel(w.kind) + (w.note ? ': ' + w.note : '')">
-            {{ i + 1 }}
+    <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
+
+    <ng-container *ngIf="!loading">
+      <!-- Plans list -->
+      <mat-expansion-panel *ngFor="let cp of plans" class="plan-panel">
+        <mat-expansion-panel-header>
+          <mat-panel-title>{{ cp.name }}</mat-panel-title>
+          <mat-panel-description>
+            {{ cp.academicYear }}/{{ cp.academicYear + 1 }} · {{ cp.term === 'First' ? '1-й' : '2-й' }} сем.
+            · {{ studyWeeksFor(cp) }} учебных нед. / {{ cp.weeks.length }} всего
+          </mat-panel-description>
+        </mat-expansion-panel-header>
+        <div class="cp-detail">
+          <div class="weeks-row">
+            <div *ngFor="let w of cp.weeks; let i = index" class="wk-chip"
+                 [style.background]="getBg(w.kind)" [title]="kindLabel(w.kind) + (w.note ? ': ' + w.note : '')">
+              {{ i + 1 }}
+            </div>
+          </div>
+          <div class="cp-legend">
+            <span *ngFor="let k of weekKinds" class="legend-item" [style.background]="k.color">
+              {{ k.label }}: {{ countKind(cp.weeks, k.value) }}
+            </span>
+          </div>
+          <div class="plan-actions">
+            <button mat-stroked-button (click)="startEdit(cp)"><mat-icon>edit</mat-icon> Редактировать</button>
+            <button mat-stroked-button color="warn" (click)="deletePlan(cp)"><mat-icon>delete</mat-icon> Удалить</button>
           </div>
         </div>
-        <div class="cp-legend">
-          <span *ngFor="let k of weekKinds" class="legend-item" [style.background]="k.color">
-            {{ k.label }}: {{ countKind(cp.weeks, k.value) }}
-          </span>
-        </div>
-        <div class="plan-actions">
-          <button mat-stroked-button (click)="startEdit(cp)"><mat-icon>edit</mat-icon> Редактировать</button>
-          <button mat-stroked-button color="warn" (click)="deletePlan(cp)"><mat-icon>delete</mat-icon> Удалить</button>
-        </div>
-      </div>
-    </mat-expansion-panel>
+      </mat-expansion-panel>
 
-    <div *ngIf="plans.length === 0 && !editing" class="empty-state">
-      Нет календарных графиков. Создайте первый.
-    </div>
+      <div *ngIf="plans.length === 0 && !editing" class="empty-state">
+        Нет календарных графиков. Создайте первый.
+      </div>
+    </ng-container>
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
@@ -158,10 +164,12 @@ const WEEK_KINDS: { value: WeekKind; label: string; color: string }[] = [
     .cp-legend { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
     .plan-actions { display: flex; gap: 8px; }
     .empty-state { text-align: center; padding: 48px; color: #999; }
+    .loading-wrap { display: flex; justify-content: center; padding: 32px; }
   `]
 })
 export class CalendarPlansComponent implements OnInit {
   plans: CalendarPlan[] = [];
+  loading = true;
   editing = false;
   saving = false;
   form!: FormGroup;
@@ -172,7 +180,10 @@ export class CalendarPlansComponent implements OnInit {
   constructor(private api: ApiService, private fb: FormBuilder, private snackBar: MatSnackBar) {}
 
   ngOnInit(): void {
-    this.api.getCalendarPlans().subscribe(p => this.plans = p);
+    this.api.getCalendarPlans().subscribe({
+      next: p => { this.plans = p; this.loading = false; },
+      error: () => { this.loading = false; }
+    });
   }
 
   get weeksArray(): FormArray { return this.form.get('weeks') as FormArray; }

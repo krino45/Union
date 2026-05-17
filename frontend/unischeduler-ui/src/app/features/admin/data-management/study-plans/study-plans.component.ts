@@ -12,6 +12,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatCardModule } from '@angular/material/card';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { forkJoin } from 'rxjs';
 import { ApiService } from '../../../../core/services/api.service';
 import {
@@ -26,7 +27,7 @@ import {
     CommonModule, FormsModule, ReactiveFormsModule,
     MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatTableModule, MatExpansionModule, MatSnackBarModule,
-    MatDialogModule, MatChipsModule, MatCardModule
+    MatDialogModule, MatChipsModule, MatCardModule, MatProgressSpinnerModule
   ],
   template: `
     <div class="page-header">
@@ -127,52 +128,55 @@ import {
       </mat-card-actions>
     </mat-card>
 
-    <!-- Plans list -->
-    <mat-expansion-panel *ngFor="let plan of plans" class="plan-panel">
-      <mat-expansion-panel-header>
-        <mat-panel-title>{{ plan.name }}</mat-panel-title>
-        <mat-panel-description>
-          {{ plan.academicYear }}/{{ plan.academicYear + 1 }} · {{ plan.term === 'First' ? '1-й' : '2-й' }} сем.
-          · {{ plan.groups.length }} групп
-          · {{ plan.entries.length }} дисциплин
-          <span *ngIf="plan.calendarPlanName" class="cal-badge">📅 {{ plan.calendarPlanName }}</span>
-        </mat-panel-description>
-      </mat-expansion-panel-header>
+    <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
 
-      <div class="plan-detail">
-        <div class="plan-groups">
-          <strong>Группы:</strong>
-          <span *ngFor="let g of plan.groups" class="group-chip">{{ g.groupName }}</span>
-          <span *ngIf="plan.groups.length === 0" class="muted">Не назначены</span>
+    <ng-container *ngIf="!loading">
+      <mat-expansion-panel *ngFor="let plan of plans" class="plan-panel">
+        <mat-expansion-panel-header>
+          <mat-panel-title>{{ plan.name }}</mat-panel-title>
+          <mat-panel-description>
+            {{ plan.academicYear }}/{{ plan.academicYear + 1 }} · {{ plan.term === 'First' ? '1-й' : '2-й' }} сем.
+            · {{ plan.groups.length }} групп
+            · {{ plan.entries.length }} дисциплин
+            <span *ngIf="plan.calendarPlanName" class="cal-badge">📅 {{ plan.calendarPlanName }}</span>
+          </mat-panel-description>
+        </mat-expansion-panel-header>
+
+        <div class="plan-detail">
+          <div class="plan-groups">
+            <strong>Группы:</strong>
+            <span *ngFor="let g of plan.groups" class="group-chip">{{ g.groupName }}</span>
+            <span *ngIf="plan.groups.length === 0" class="muted">Не назначены</span>
+          </div>
+
+          <table class="entries-view-table" *ngIf="plan.entries.length > 0">
+            <thead><tr>
+              <th>Дисциплина</th><th>Лек.</th><th>Пр.</th><th>Лаб.</th><th>Сем.</th><th>ВКР</th><th>Всего</th>
+            </tr></thead>
+            <tbody>
+              <tr *ngFor="let e of plan.entries">
+                <td>{{ e.subjectShortName }} <span class="subj-full">({{ e.subjectName }})</span></td>
+                <td>{{ e.lectureHours || '—' }}</td>
+                <td>{{ e.practicalHours || '—' }}</td>
+                <td>{{ e.labHours || '—' }}</td>
+                <td>{{ e.seminarHours || '—' }}</td>
+                <td>{{ e.thesisHours || '—' }}</td>
+                <td class="total">{{ e.lectureHours + e.practicalHours + e.labHours + e.seminarHours + e.thesisHours }}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="plan-actions">
+            <button mat-stroked-button (click)="startEdit(plan)"><mat-icon>edit</mat-icon> Редактировать</button>
+            <button mat-stroked-button color="warn" (click)="deletePlan(plan)"><mat-icon>delete</mat-icon> Удалить</button>
+          </div>
         </div>
+      </mat-expansion-panel>
 
-        <table class="entries-view-table" *ngIf="plan.entries.length > 0">
-          <thead><tr>
-            <th>Дисциплина</th><th>Лек.</th><th>Пр.</th><th>Лаб.</th><th>Сем.</th><th>ВКР</th><th>Всего</th>
-          </tr></thead>
-          <tbody>
-            <tr *ngFor="let e of plan.entries">
-              <td>{{ e.subjectShortName }} <span class="subj-full">({{ e.subjectName }})</span></td>
-              <td>{{ e.lectureHours || '—' }}</td>
-              <td>{{ e.practicalHours || '—' }}</td>
-              <td>{{ e.labHours || '—' }}</td>
-              <td>{{ e.seminarHours || '—' }}</td>
-              <td>{{ e.thesisHours || '—' }}</td>
-              <td class="total">{{ e.lectureHours + e.practicalHours + e.labHours + e.seminarHours + e.thesisHours }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="plan-actions">
-          <button mat-stroked-button (click)="startEdit(plan)"><mat-icon>edit</mat-icon> Редактировать</button>
-          <button mat-stroked-button color="warn" (click)="deletePlan(plan)"><mat-icon>delete</mat-icon> Удалить</button>
-        </div>
+      <div *ngIf="plans.length === 0 && !editing" class="empty-state">
+        Нет учебных планов. Создайте первый план.
       </div>
-    </mat-expansion-panel>
-
-    <div *ngIf="plans.length === 0 && !editing" class="empty-state">
-      Нет учебных планов. Создайте первый план.
-    </div>
+    </ng-container>
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
@@ -201,6 +205,7 @@ import {
     .plan-actions { display: flex; gap: 8px; }
     .muted { color: #999; font-size: 13px; }
     .empty-state { text-align: center; padding: 48px; color: #999; }
+    .loading-wrap { display: flex; justify-content: center; padding: 32px; }
   `]
 })
 export class StudyPlansComponent implements OnInit {
@@ -209,6 +214,7 @@ export class StudyPlansComponent implements OnInit {
   calendarPlans: CalendarPlan[] = [];
   subjects: Subject[] = [];
   groups: any[] = [];
+  loading = true;
   editing = false;
   saving = false;
   form!: FormGroup;
@@ -222,12 +228,16 @@ export class StudyPlansComponent implements OnInit {
       calendarPlans: this.api.getCalendarPlans(),
       subjects: this.api.getSubjects(),
       groups: this.api.getGroups()
-    }).subscribe(({ plans, faculties, calendarPlans, subjects, groups }) => {
-      this.plans = plans;
-      this.faculties = faculties;
-      this.calendarPlans = calendarPlans;
-      this.subjects = subjects;
-      this.groups = groups;
+    }).subscribe({
+      next: ({ plans, faculties, calendarPlans, subjects, groups }) => {
+        this.plans = plans;
+        this.faculties = faculties;
+        this.calendarPlans = calendarPlans;
+        this.subjects = subjects;
+        this.groups = groups;
+        this.loading = false;
+      },
+      error: () => { this.loading = false; }
     });
   }
 

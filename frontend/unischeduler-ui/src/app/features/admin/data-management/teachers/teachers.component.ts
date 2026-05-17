@@ -11,6 +11,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
 import { Teacher, Subject } from '../../../../core/models';
 import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
@@ -22,7 +23,7 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     CommonModule, ReactiveFormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
-    MatSnackBarModule, MatTooltipModule, LessonTypePipe
+    MatSnackBarModule, MatTooltipModule, LessonTypePipe, MatProgressSpinnerModule
   ],
   template: `
     <div class="page-header">
@@ -33,7 +34,8 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     </div>
 
     <mat-card>
-      <table mat-table [dataSource]="teachers" class="full-width">
+      <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
+      <table mat-table [dataSource]="teachers" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>ФИО</th>
           <td mat-cell *matCellDef="let t">{{ t.displayName }}</td>
@@ -69,11 +71,13 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     h1 { margin: 0; }
     .full-width { width: 100%; }
+    .loading-wrap { display: flex; justify-content: center; padding: 32px; }
   `]
 })
 export class TeachersComponent implements OnInit {
   teachers: Teacher[] = [];
   subjects: Subject[] = [];
+  loading = true;
   columns = ['name', 'email', 'subjects', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
@@ -83,7 +87,11 @@ export class TeachersComponent implements OnInit {
   }
 
   load(): void {
-    this.api.getTeachers().subscribe(data => this.teachers = data);
+    this.loading = true;
+    this.api.getTeachers().subscribe({
+      next: data => { this.teachers = data; this.loading = false; },
+      error: () => { this.loading = false; }
+    });
   }
 
   openDialog(teacher: Teacher | null): void {

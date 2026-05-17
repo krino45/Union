@@ -10,6 +10,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
 import { Faculty } from '../../../../core/models';
 
@@ -20,7 +21,7 @@ import { Faculty } from '../../../../core/models';
     CommonModule, ReactiveFormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSnackBarModule, MatTooltipModule
+    MatSnackBarModule, MatTooltipModule, MatProgressSpinnerModule
   ],
   template: `
     <div class="page-header">
@@ -31,7 +32,8 @@ import { Faculty } from '../../../../core/models';
     </div>
 
     <mat-card>
-      <table mat-table [dataSource]="faculties" class="full-width">
+      <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
+      <table mat-table [dataSource]="faculties" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="shortCode">
           <th mat-header-cell *matHeaderCellDef>Код</th>
           <td mat-cell *matCellDef="let f"><strong>{{ f.shortCode }}</strong></td>
@@ -60,10 +62,12 @@ import { Faculty } from '../../../../core/models';
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     h1 { margin: 0; }
     .full-width { width: 100%; }
+    .loading-wrap { display: flex; justify-content: center; padding: 32px; }
   `]
 })
 export class FacultiesComponent implements OnInit {
   faculties: Faculty[] = [];
+  loading = true;
   columns = ['shortCode', 'name', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
@@ -71,7 +75,11 @@ export class FacultiesComponent implements OnInit {
   ngOnInit(): void { this.load(); }
 
   load(): void {
-    this.api.getFaculties().subscribe(data => this.faculties = data);
+    this.loading = true;
+    this.api.getFaculties().subscribe({
+      next: data => { this.faculties = data; this.loading = false; },
+      error: () => { this.loading = false; }
+    });
   }
 
   openDialog(faculty: Faculty | null): void {

@@ -11,6 +11,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
 import { StudentGroup, Faculty } from '../../../../core/models';
 import { DegreeType } from '../../../../core/models/enums';
@@ -22,7 +23,7 @@ import { DegreeType } from '../../../../core/models/enums';
     CommonModule, ReactiveFormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
-    MatSnackBarModule, MatTooltipModule
+    MatSnackBarModule, MatTooltipModule, MatProgressSpinnerModule
   ],
   template: `
     <div class="page-header">
@@ -38,7 +39,8 @@ import { DegreeType } from '../../../../core/models/enums';
     </div>
 
     <mat-card>
-      <table mat-table [dataSource]="groups" class="full-width">
+      <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
+      <table mat-table [dataSource]="groups" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Группа</th>
           <td mat-cell *matCellDef="let g">{{ g.name }}</td>
@@ -80,11 +82,13 @@ import { DegreeType } from '../../../../core/models/enums';
     .header-actions { display: flex; gap: 8px; }
     h1 { margin: 0; }
     .full-width { width: 100%; }
+    .loading-wrap { display: flex; justify-content: center; padding: 32px; }
   `]
 })
 export class GroupsComponent implements OnInit {
   groups: StudentGroup[] = [];
   faculties: Faculty[] = [];
+  loading = true;
   columns = ['name', 'faculty', 'year', 'degree', 'specialty', 'count', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
@@ -94,7 +98,11 @@ export class GroupsComponent implements OnInit {
   }
 
   load(): void {
-    this.api.getGroups().subscribe(data => this.groups = data);
+    this.loading = true;
+    this.api.getGroups().subscribe({
+      next: data => { this.groups = data; this.loading = false; },
+      error: () => { this.loading = false; }
+    });
   }
 
   openDialog(group: StudentGroup | null): void {

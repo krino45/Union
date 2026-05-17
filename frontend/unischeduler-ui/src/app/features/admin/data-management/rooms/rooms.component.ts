@@ -1,6 +1,7 @@
-import { Component, OnInit, Inject } from '@angular/core';
+import { Component, OnInit, Inject, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -13,6 +14,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
 import { Room, Building } from '../../../../core/models';
 import { LessonType, RoomType } from '../../../../core/models/enums';
@@ -27,7 +29,7 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatCheckboxModule, MatSnackBarModule, MatTooltipModule, MatChipsModule,
-    RoomTypePipe, LessonTypePipe
+    MatProgressSpinnerModule, RoomTypePipe, LessonTypePipe
   ],
   template: `
     <div class="page-header">
@@ -38,7 +40,8 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     </div>
 
     <mat-card>
-      <table mat-table [dataSource]="rooms" class="full-width">
+      <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
+      <table mat-table [dataSource]="rooms" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="number">
           <th mat-header-cell *matHeaderCellDef>Аудитория</th>
           <td mat-cell *matCellDef="let r">
@@ -103,11 +106,13 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     mat-chip { font-size: 11px; margin: 1px; }
     .type-chip { background: #e3f2fd; color: #1565c0; font-size: 11px; margin: 1px; }
     .all-types { color: #9e9e9e; font-size: 12px; }
+    .loading-wrap { display: flex; justify-content: center; padding: 32px; }
   `]
 })
 export class RoomsComponent implements OnInit {
   rooms: Room[] = [];
   buildings: Building[] = [];
+  loading = true;
   columns = ['number', 'building', 'location', 'type', 'capacity', 'features', 'allowedTypes', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
@@ -117,7 +122,11 @@ export class RoomsComponent implements OnInit {
   }
 
   load(): void {
-    this.api.getRooms().subscribe(data => this.rooms = data);
+    this.loading = true;
+    this.api.getRooms().subscribe({
+      next: data => { this.rooms = data; this.loading = false; },
+      error: () => { this.loading = false; }
+    });
   }
 
   openDialog(room: Room | null): void {
@@ -233,8 +242,19 @@ export class RoomsComponent implements OnInit {
     .warn-icon { font-size: 16px; height: 16px; width: 16px; flex-shrink: 0; margin-top: 1px; }
   `]
 })
-export class RoomDialogComponent {
+export class RoomDialogComponent implements OnDestroy {
   form: FormGroup;
+  private sub: Subscription;
+
+  private static suggestForType(rt: RoomType): LessonType[] {
+    switch (rt) {
+      case RoomType.LectureHall:   return [LessonType.Lecture];
+      case RoomType.Lab:           return [LessonType.Lab];
+      case RoomType.ComputerLab:   return [LessonType.Lab, LessonType.Practical];
+      case RoomType.RegularCabinet: return [LessonType.Lecture, LessonType.Practical, LessonType.Seminar];
+      default:                     return [];
+    }
+  }
 
   constructor(
     private dialogRef: MatDialogRef<RoomDialogComponent>,
@@ -255,7 +275,23 @@ export class RoomDialogComponent {
       isOnline: [r?.isOnline ?? false],
       allowedLessonTypes: [r?.allowedLessonTypes ?? []]
     });
+
+    // Auto-suggest AllowedLessonTypes when room type changes (new rooms only)
+    this.sub = this.form.get('roomType')!.valueChanges.subscribe((rt: RoomType) => {
+      const current: LessonType[] = this.form.get('allowedLessonTypes')!.value ?? [];
+      if (!r || current.length === 0) {
+        this.form.get('allowedLessonTypes')!.setValue(RoomDialogComponent.suggestForType(rt), { emitEvent: false });
+      }
+    });
+
+    // Populate suggestion on first open for new rooms
+    if (!r) {
+      this.form.get('allowedLessonTypes')!.setValue(
+        RoomDialogComponent.suggestForType(RoomType.RegularCabinet), { emitEvent: false });
+    }
   }
+
+  ngOnDestroy(): void { this.sub.unsubscribe(); }
 
   submit(): void {
     if (this.form.valid) this.dialogRef.close(this.form.value);

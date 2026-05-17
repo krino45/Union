@@ -15,6 +15,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { interval, Subscription } from 'rxjs';
 import { switchMap, takeWhile } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
@@ -30,7 +31,8 @@ const CURRENT_YEAR = new Date().getFullYear();
     CommonModule, FormsModule, ReactiveFormsModule, RouterLink,
     MatButtonModule, MatIconModule, MatCardModule, MatSlideToggleModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
-    MatProgressBarModule, MatChipsModule, MatTooltipModule, MatSnackBarModule
+    MatProgressBarModule, MatChipsModule, MatTooltipModule, MatSnackBarModule,
+    MatProgressSpinnerModule
   ],
   template: `
     <div class="page-header">
@@ -45,6 +47,9 @@ const CURRENT_YEAR = new Date().getFullYear();
       </div>
     </div>
 
+    <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
+
+    <ng-container *ngIf="!loading">
     <mat-card *ngFor="let s of visibleSchedules" class="schedule-card">
       <mat-card-header>
         <mat-card-title>
@@ -95,6 +100,7 @@ const CURRENT_YEAR = new Date().getFullYear();
     <div *ngIf="schedules.length === 0" class="empty-state">
       Расписаний нет. Создайте первое.
     </div>
+    </ng-container>
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
@@ -115,12 +121,14 @@ const CURRENT_YEAR = new Date().getFullYear();
     .status-archived { background: #f3e5f5; color: #4a148c; }
     .empty-state { text-align: center; padding: 48px; color: #888; }
     mat-card-actions button { margin-right: 4px; }
+    .loading-wrap { display: flex; justify-content: center; padding: 48px; }
   `]
 })
 export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   schedules: Schedule[] = [];
   faculties: Faculty[] = [];
   generationStatus: Record<string, GenerationJobStatus> = {};
+  loading = true;
   showArchived = false;
   private pollingSubscriptions: Record<string, Subscription> = {};
 
@@ -143,7 +151,11 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   }
 
   loadSchedules(): void {
-    this.api.getSchedules().subscribe(data => this.schedules = data);
+    this.loading = true;
+    this.api.getSchedules().subscribe({
+      next: data => { this.schedules = data; this.loading = false; },
+      error: () => { this.loading = false; }
+    });
   }
 
   openCreateDialog(): void {

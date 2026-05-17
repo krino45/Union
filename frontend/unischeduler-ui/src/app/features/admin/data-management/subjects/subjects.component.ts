@@ -11,6 +11,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
 import { Subject } from '../../../../core/models';
 import { Term } from '../../../../core/models/enums';
@@ -24,7 +25,7 @@ const CURRENT_YEAR = new Date().getFullYear();
     CommonModule, ReactiveFormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
-    MatSnackBarModule, MatTooltipModule
+    MatSnackBarModule, MatTooltipModule, MatProgressSpinnerModule
   ],
   template: `
     <div class="page-header">
@@ -35,7 +36,8 @@ const CURRENT_YEAR = new Date().getFullYear();
     </div>
 
     <mat-card>
-      <table mat-table [dataSource]="subjects" class="full-width">
+      <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
+      <table mat-table [dataSource]="subjects" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Название</th>
           <td mat-cell *matCellDef="let s">{{ s.name }} <span class="short">({{ s.shortName }})</span></td>
@@ -63,10 +65,12 @@ const CURRENT_YEAR = new Date().getFullYear();
     .full-width { width: 100%; }
     .short { color: #888; font-size: 12px; }
     .hint { color: #888; font-size: 12px; margin-top: 8px; }
+    .loading-wrap { display: flex; justify-content: center; padding: 32px; }
   `]
 })
 export class SubjectsComponent implements OnInit {
   subjects: Subject[] = [];
+  loading = true;
   columns = ['name', 'period', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
@@ -74,7 +78,11 @@ export class SubjectsComponent implements OnInit {
   ngOnInit(): void { this.load(); }
 
   load(): void {
-    this.api.getSubjects().subscribe(data => this.subjects = data);
+    this.loading = true;
+    this.api.getSubjects().subscribe({
+      next: data => { this.subjects = data; this.loading = false; },
+      error: () => { this.loading = false; }
+    });
   }
 
   openDialog(subject: Subject | null): void {

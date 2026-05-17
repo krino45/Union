@@ -11,6 +11,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
@@ -27,7 +28,7 @@ const CITY_STORAGE_KEY = 'unischeduler_city';
     CommonModule, ReactiveFormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSnackBarModule, MatTooltipModule
+    MatSnackBarModule, MatTooltipModule, MatProgressSpinnerModule
   ],
   template: `
     <div class="city-bar">
@@ -60,7 +61,8 @@ const CITY_STORAGE_KEY = 'unischeduler_city';
     </div>
 
     <mat-card>
-      <table mat-table [dataSource]="buildings" class="full-width">
+      <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
+      <table mat-table [dataSource]="buildings" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="shortCode">
           <th mat-header-cell *matHeaderCellDef>Код</th>
           <td mat-cell *matCellDef="let b"><strong>{{ b.shortCode }}</strong></td>
@@ -159,11 +161,13 @@ const CITY_STORAGE_KEY = 'unischeduler_city';
     .dist-legend { margin-top: 8px; font-size: 12px; color: #555; }
     .legend-red { color: #c62828; }
     .empty-msg { color: #888; text-align: center; padding: 16px; }
+    .loading-wrap { display: flex; justify-content: center; padding: 32px; }
   `]
 })
 export class BuildingsComponent implements OnInit {
   buildings: Building[] = [];
   distances: BuildingDistance[] = [];
+  loading = true;
   columns = ['shortCode', 'address', 'stairs', 'actions'];
   city: string = '';
   editingCity = false;
@@ -187,7 +191,11 @@ export class BuildingsComponent implements OnInit {
   }
 
   load(): void {
-    this.api.getBuildings().subscribe(data => { this.buildings = data; this.refreshDistances(); });
+    this.loading = true;
+    this.api.getBuildings().subscribe({
+      next: data => { this.buildings = data; this.loading = false; this.refreshDistances(); },
+      error: () => { this.loading = false; }
+    });
   }
 
   refreshDistances(): void {
