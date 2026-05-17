@@ -167,6 +167,14 @@ export class ApiService {
   publishSchedule(id: string): Observable<void> {
     return this.http.post<void>(`${this.base}/schedules/${id}/publish`, {});
   }
+  getScheduleAudit(scheduleId: string): Observable<{
+    conflicts: { type: string; description: string }[];
+    warnings: { type: string; description: string }[];
+    generationNotes: string | null;
+    totalEntries: number;
+  }> {
+    return this.http.get<any>(`${this.base}/schedules/${scheduleId}/audit`);
+  }
   getScheduleEntries(scheduleId: string, filters?: { groupId?: string; teacherId?: string }): Observable<ScheduleEntry[]> {
     let params = new HttpParams();
     if (filters?.groupId) params = params.set('groupId', filters.groupId);

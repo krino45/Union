@@ -55,6 +55,11 @@ public class MoveEntryCommandHandler : IRequestHandler<MoveEntryCommand, Schedul
         entry.PairNumber = request.NewPairNumber;
         entry.WeekType = request.NewWeekType;
         entry.RoomId = request.NewRoomId;
+
+        var schedule = await _db.Schedules.FindAsync(new object[] { entry.ScheduleId }, cancellationToken);
+        if (schedule?.Status == ScheduleStatus.Published)
+            schedule.Status = ScheduleStatus.Draft;
+
         await _db.SaveChangesAsync(cancellationToken);
 
         return new ScheduleEntryDto(

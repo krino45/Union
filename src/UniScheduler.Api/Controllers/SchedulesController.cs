@@ -66,6 +66,10 @@ public class SchedulesController : ControllerBase
         return Ok(status);
     }
 
+    [HttpGet("{id:guid}/audit")]
+    public async Task<ActionResult<ScheduleAuditDto>> Audit(Guid id, CancellationToken ct)
+        => Ok(await mediator.Send(new GetScheduleAuditQuery(id), ct));
+
     [HttpGet("{id:guid}/entries")]
     public async Task<ActionResult<List<ScheduleEntryDto>>> GetEntries(
         Guid id, [FromQuery] Guid? groupId, [FromQuery] Guid? teacherId, [FromQuery] RussianDayOfWeek? dayOfWeek,

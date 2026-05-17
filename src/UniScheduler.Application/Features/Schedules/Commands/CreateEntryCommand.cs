@@ -47,6 +47,10 @@ public class CreateEntryCommandHandler : IRequestHandler<CreateEntryCommand, Sch
         foreach (var gid in r.GroupIds)
             _db.ScheduleEntryStudentGroups.Add(new ScheduleEntryStudentGroup { ScheduleEntry = entry, StudentGroupId = gid });
 
+        var schedule = await _db.Schedules.FindAsync(new object[] { r.ScheduleId }, cancellationToken);
+        if (schedule?.Status == ScheduleStatus.Published)
+            schedule.Status = ScheduleStatus.Draft;
+
         await _db.SaveChangesAsync(cancellationToken);
 
         var subject = await _db.Subjects.FindAsync(new object[] { r.SubjectId }, cancellationToken);
