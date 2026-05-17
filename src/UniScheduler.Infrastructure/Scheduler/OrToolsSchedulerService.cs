@@ -80,6 +80,27 @@ public class OrToolsSchedulerService : ISchedulerService
             return new SchedulerOutput(SolverStatus.Infeasible, string.Join(" | ", parts), Array.Empty<SchedulerAssignment>());
         }
 
+        // Hard: each (group, subject, lessonType) must have exactly one teacher
+        {
+            var gstTeachers = new Dictionary<(Guid grp, Guid subj, LessonType lt), HashSet<Guid>>();
+            foreach (var req in reqs)
+                foreach (var gId in req.GroupIds)
+                {
+                    var key = (gId, req.SubjectId, req.LessonType);
+                    if (!gstTeachers.TryGetValue(key, out var ts)) gstTeachers[key] = ts = new HashSet<Guid>();
+                    ts.Add(req.TeacherId);
+                }
+            var teacherConflicts = gstTeachers
+                .Where(kv => kv.Value.Count > 1)
+                .Select(kv => $"group …{kv.Key.grp.ToString()[..8]}: {kv.Key.lt} of subj …{kv.Key.subj.ToString()[..8]}")
+                .ToList();
+            if (teacherConflicts.Count > 0)
+                return new SchedulerOutput(SolverStatus.Infeasible,
+                    $"Multiple teachers assigned to the same (group, subject, lesson type) — only one teacher per combination is allowed. " +
+                    $"{teacherConflicts.Count} conflict(s): {string.Join("; ", teacherConflicts.Take(5))}",
+                    Array.Empty<SchedulerAssignment>());
+        }
+
         //  H1: Each requirement scheduled exactly once
         for (int ri = 0; ri < reqs.Count; ri++)
         {
@@ -351,6 +372,57 @@ public class OrToolsSchedulerService : ISchedulerService
             model.Add(overload >= LinearExpr.Sum(dayUsed) - sanPinMax);
             objVars.Add(overload);
             objCoeffs.Add(300L);
+        }
+
+        // S6: Penalize consecutive pairs of the same (subject, lessonType) for a group — weight 70
+        {
+            var stGroups = reqs
+                .Select((r, i) => (r, i))
+                .GroupBy(x => (x.r.SubjectId, x.r.LessonType))
+                .ToList();
+
+            for (int sti = 0; sti < stGroups.Count; sti++)
+            {
+                var stg = stGroups[sti];
+                for (int gi = 0; gi < groups.Count; gi++)
+                {
+                    var gId = groups[gi].Id;
+                    var riSet = stg.Where(x => x.r.GroupIds.Contains(gId)).Select(x => x.i).ToList();
+                    if (riSet.Count < 2) continue;
+
+                    for (int d = 0; d < NumDays; d++)
+                    for (int p = 0; p < numPairs - 1; p++)
+                    for (int wi = 0; wi < 2; wi++)
+                    {
+                        var atP  = new List<BoolVar>();
+                        var atP1 = new List<BoolVar>();
+                        foreach (int ri in riSet)
+                        {
+                            if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
+                            int varWi = VarWeekIndex(reqs[ri].WeekType);
+                            for (int rmi = 0; rmi < rooms.Count; rmi++)
+                            {
+                                if (vars.TryGetValue((ri, d, p,     varWi, rmi), out var vp))  atP.Add(vp);
+                                if (vars.TryGetValue((ri, d, p + 1, varWi, rmi), out var vp1)) atP1.Add(vp1);
+                            }
+                        }
+                        if (atP.Count == 0 || atP1.Count == 0) continue;
+
+                        var usedP  = model.NewBoolVar($"rep_p_{sti}_{gi}_{d}_{p}_{wi}");
+                        var usedP1 = model.NewBoolVar($"rep_p1_{sti}_{gi}_{d}_{p}_{wi}");
+                        model.AddMaxEquality(usedP,  atP.Select(v  => (IntVar)v).ToArray());
+                        model.AddMaxEquality(usedP1, atP1.Select(v => (IntVar)v).ToArray());
+
+                        var repPen = model.NewBoolVar($"rep_{sti}_{gi}_{d}_{p}_{wi}");
+                        model.Add(repPen <= usedP);
+                        model.Add(repPen <= usedP1);
+                        model.Add(LinearExpr.Sum(new BoolVar[] { usedP, usedP1 }) <= 1 + repPen);
+
+                        objVars.Add(repPen);
+                        objCoeffs.Add(70L);
+                    }
+                }
+            }
         }
 
         if (objVars.Count > 0)
