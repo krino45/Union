@@ -348,7 +348,7 @@ public class OrToolsSchedulerService : ISchedulerService
             {
                 var weekType = reqs[ri].WeekType == WeekType.Both
                     ? WeekType.Both
-                    : (wi == 0 ? WeekType.Numerator : WeekType.Denominator);
+                    : (wi == 0 ? WeekType.Odd : WeekType.Even);
 
                 assignments.Add(new SchedulerAssignment(ri, (RussianDayOfWeek)(d + 1), p + 1, weekType, rooms[rmi].Id));
             }
@@ -415,8 +415,8 @@ public class OrToolsSchedulerService : ISchedulerService
     private static int[] WeekIndexes(WeekType wt) => wt switch
     {
         WeekType.Both => new[] { 0, 1 },
-        WeekType.Numerator => new[] { 0 },
-        WeekType.Denominator => new[] { 1 },
+        WeekType.Odd => new[] { 0 },
+        WeekType.Even => new[] { 1 },
         _ => new[] { 0, 1 }
     };
 

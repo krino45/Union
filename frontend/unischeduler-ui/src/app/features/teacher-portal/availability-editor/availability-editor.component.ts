@@ -40,8 +40,8 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../shared/constants/pairs';
           <mat-label>Тип недели</mat-label>
           <mat-select [(ngModel)]="selectedWeekType" (ngModelChange)="updateView()">
             <mat-option value="Both">Каждую неделю</mat-option>
-            <mat-option value="Numerator">Нечётная</mat-option>
-            <mat-option value="Denominator">Чётная</mat-option>
+            <mat-option value="Odd">Нечётная</mat-option>
+            <mat-option value="Even">Чётная</mat-option>
           </mat-select>
         </mat-form-field>
         <span class="hint">Нажмите на ячейку, чтобы заблокировать/разблокировать слот</span>

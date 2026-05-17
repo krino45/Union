@@ -15,8 +15,8 @@ export enum LessonType {
 
 export enum WeekType {
   Both = 'Both',
-  Numerator = 'Numerator',
-  Denominator = 'Denominator'
+  Odd = 'Odd',
+  Even = 'Even'
 }
 
 export enum RussianDayOfWeek {

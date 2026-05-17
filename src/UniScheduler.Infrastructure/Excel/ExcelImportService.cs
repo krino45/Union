@@ -57,8 +57,8 @@ public class ExcelImportService : IExcelImportService
                         // Alternating weeks
                         var numText = string.Join(" ", lines.TakeWhile(l => !l.StartsWith("З:"))).Replace("Ч:", "").Trim();
                         var denText = string.Join(" ", lines.SkipWhile(l => !l.StartsWith("З:"))).Replace("З:", "").Trim();
-                        TryParseEntry(numText, groupName, dayOfWeek, pairNumber, WeekType.Numerator, teachers, rooms, subjects, preview, pairRow, col);
-                        TryParseEntry(denText, groupName, dayOfWeek, pairNumber, WeekType.Denominator, teachers, rooms, subjects, preview, pairRow, col);
+                        TryParseEntry(numText, groupName, dayOfWeek, pairNumber, WeekType.Odd, teachers, rooms, subjects, preview, pairRow, col);
+                        TryParseEntry(denText, groupName, dayOfWeek, pairNumber, WeekType.Even, teachers, rooms, subjects, preview, pairRow, col);
                     }
                     else
                     {

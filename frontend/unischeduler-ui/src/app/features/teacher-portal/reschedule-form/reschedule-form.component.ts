@@ -83,8 +83,8 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
                 <mat-select formControlName="proposedWeekType">
                   <mat-option [value]="null">Любой</mat-option>
                   <mat-option value="Both">Обе</mat-option>
-                  <mat-option value="Numerator">Числитель</mat-option>
-                  <mat-option value="Denominator">Знаменатель</mat-option>
+                  <mat-option value="Odd">Нечётная</mat-option>
+                  <mat-option value="Even">Чётная</mat-option>
                 </mat-select>
               </mat-form-field>
             </div>

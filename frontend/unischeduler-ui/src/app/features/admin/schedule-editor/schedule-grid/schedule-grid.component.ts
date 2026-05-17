@@ -42,7 +42,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
               </td>
               <td *ngFor="let d of days" class="drop-cell">
                 <div class="split-weeks">
-                  <!-- Нечётная (Numerator) -->
+                  <!-- Нечётная (Odd) -->
                   <div class="week-half">
                     <div class="week-label num-label">Неч.</div>
                     <div
@@ -50,7 +50,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                       [id]="cellIdNum(d, p)"
                       [cdkDropListData]="getCellNum(d, p)"
                       [cdkDropListConnectedTo]="allCellIds"
-                      (cdkDropListDropped)="onDrop($event, d, p, 'Numerator')"
+                      (cdkDropListDropped)="onDrop($event, d, p, 'Odd')"
                       class="drop-zone">
                       <div
                         *ngFor="let entry of getCellNum(d, p)"
@@ -79,7 +79,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
 
                   <div class="week-divider"></div>
 
-                  <!-- Чётная (Denominator) -->
+                  <!-- Чётная (Even) -->
                   <div class="week-half">
                     <div class="week-label den-label">Чёт.</div>
                     <div
@@ -87,7 +87,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                       [id]="cellIdDen(d, p)"
                       [cdkDropListData]="getCellDen(d, p)"
                       [cdkDropListConnectedTo]="allCellIds"
-                      (cdkDropListDropped)="onDrop($event, d, p, 'Denominator')"
+                      (cdkDropListDropped)="onDrop($event, d, p, 'Even')"
                       class="drop-zone">
                       <div
                         *ngFor="let entry of getCellDen(d, p)"
@@ -232,11 +232,11 @@ export class ScheduleGridComponent implements OnChanges {
     this.cellMapDen.clear();
     for (const entry of this.entries) {
       const key = `${entry.dayOfWeek}-${entry.pairNumber}`;
-      if (entry.weekType === 'Numerator' || entry.weekType === 'Both') {
+      if (entry.weekType === 'Odd' || entry.weekType === 'Both') {
         if (!this.cellMapNum.has(key)) this.cellMapNum.set(key, []);
         this.cellMapNum.get(key)!.push(entry);
       }
-      if (entry.weekType === 'Denominator' || entry.weekType === 'Both') {
+      if (entry.weekType === 'Even' || entry.weekType === 'Both') {
         if (!this.cellMapDen.has(key)) this.cellMapDen.set(key, []);
         this.cellMapDen.get(key)!.push(entry);
       }

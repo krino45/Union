@@ -92,11 +92,11 @@ public class ExcelExportService : IExcelExportService
                 var day = (RussianDayOfWeek)(d + 1);
                 var dayEntries = entries.Where(e => e.DayOfWeek == day && e.PairNumber == p + 1).ToList();
 
-                var numerator = dayEntries.Where(e => e.WeekType == WeekType.Numerator || e.WeekType == WeekType.Both).FirstOrDefault();
-                var denominator = dayEntries.Where(e => e.WeekType == WeekType.Denominator || e.WeekType == WeekType.Both).FirstOrDefault();
+                var numerator = dayEntries.FirstOrDefault(e => e.WeekType is WeekType.Odd or WeekType.Both);
+                var denominator = dayEntries.FirstOrDefault(e => e.WeekType is WeekType.Even or WeekType.Both);
 
-                string numText = FormatEntry(numerator, isGroupView);
-                string denText = denominator != numerator ? FormatEntry(denominator, isGroupView) : "";
+                var numText = FormatEntry(numerator, isGroupView);
+                var denText = denominator != numerator ? FormatEntry(denominator, isGroupView) : "";
 
                 var cell = ws.Cell(baseRow, d + 2);
                 if (!string.IsNullOrEmpty(denText) && numText != denText)
@@ -124,9 +124,8 @@ public class ExcelExportService : IExcelExportService
     {
         if (e == null) return "";
         var room = e.IsOnline ? "Дист." : (e.Room != null ? $"{e.Room.Building?.ShortCode ?? ""}-{e.Room.Number}" : "");
-        if (isGroupView)
-            return $"{e.Subject.ShortName}\n{e.Teacher.LastName} {e.Teacher.FirstName[0]}.{e.Teacher.MiddleName[0]}.\n{room}";
-        else
-            return $"{e.Subject.ShortName}\n{string.Join(", ", e.StudentGroups.Select(sg => sg.StudentGroup.Name))}\n{room}";
+        return isGroupView
+            ? $"{e.Subject.ShortName}\n{e.Teacher.LastName} {e.Teacher.FirstName[0]}.{e.Teacher.MiddleName[0]}.\n{room}"
+            : $"{e.Subject.ShortName}\n{string.Join(", ", e.StudentGroups.Select(sg => sg.StudentGroup.Name))}\n{room}";
     }
 }

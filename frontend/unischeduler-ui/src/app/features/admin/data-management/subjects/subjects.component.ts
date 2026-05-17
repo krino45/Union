@@ -165,24 +165,24 @@ export class SubjectsComponent implements OnInit {
             <mat-label>Нед. (Лекции)</mat-label>
             <mat-select formControlName="lectureWeekType">
               <mat-option value="Both">Каждую</mat-option>
-              <mat-option value="Numerator">Нечётная</mat-option>
-              <mat-option value="Denominator">Чётная</mat-option>
+              <mat-option value="Odd">Нечётная</mat-option>
+              <mat-option value="Even">Чётная</mat-option>
             </mat-select>
           </mat-form-field>
           <mat-form-field appearance="outline" class="flex1">
             <mat-label>Нед. (Практики)</mat-label>
             <mat-select formControlName="practicalWeekType">
               <mat-option value="Both">Каждую</mat-option>
-              <mat-option value="Numerator">Нечётная</mat-option>
-              <mat-option value="Denominator">Чётная</mat-option>
+              <mat-option value="Odd">Нечётная</mat-option>
+              <mat-option value="Even">Чётная</mat-option>
             </mat-select>
           </mat-form-field>
           <mat-form-field appearance="outline" class="flex1">
             <mat-label>Нед. (Лаборат.)</mat-label>
             <mat-select formControlName="labWeekType">
               <mat-option value="Both">Каждую</mat-option>
-              <mat-option value="Numerator">Нечётная</mat-option>
-              <mat-option value="Denominator">Чётная</mat-option>
+              <mat-option value="Odd">Нечётная</mat-option>
+              <mat-option value="Even">Чётная</mat-option>
             </mat-select>
           </mat-form-field>
         </div>

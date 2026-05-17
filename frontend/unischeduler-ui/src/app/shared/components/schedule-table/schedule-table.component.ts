@@ -158,7 +158,7 @@ export class ScheduleTableComponent implements OnChanges {
       }
       const cell = this.cellMap.get(key)!;
       if (entry.weekType === 'Both') cell.both.push(entry);
-      else if (entry.weekType === 'Numerator') cell.numerator.push(entry);
+      else if (entry.weekType === 'Odd') cell.numerator.push(entry);
       else cell.denominator.push(entry);
     }
   }

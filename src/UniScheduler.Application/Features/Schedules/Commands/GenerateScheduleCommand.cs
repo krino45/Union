@@ -198,8 +198,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
     private static IEnumerable<WeekType> GetWeekTypeOccurrences(WeekType weekType) => weekType switch
     {
-        WeekType.Numerator => new[] { WeekType.Numerator },
-        WeekType.Denominator => new[] { WeekType.Denominator },
+        WeekType.Odd => new[] { WeekType.Odd },
+        WeekType.Even => new[] { WeekType.Even },
         _ => new[] { WeekType.Both }
     };
 }
