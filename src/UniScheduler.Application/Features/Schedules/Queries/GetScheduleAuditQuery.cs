@@ -161,7 +161,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
 
         // 1 pair = 2 ак.ч.  ×  studyWeeks = total semester hours
         double actualTotal = actualPairsPerWeek * 2.0 * studyWeeks;
-        const double tolerance = 2.0;
+        const double tolerance = 9.0; // biweekly model rounds to nearest 9h (half odd/even cycle)
 
         if (actualTotal < expectedTotalHours - tolerance)
             AddUnique(warnings, seen, "HoursUnderScheduled",

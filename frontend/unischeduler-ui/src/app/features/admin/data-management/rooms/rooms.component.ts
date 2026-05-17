@@ -15,8 +15,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatChipsModule } from '@angular/material/chips';
 import { ApiService } from '../../../../core/services/api.service';
 import { Room, Building } from '../../../../core/models';
-import { RoomType } from '../../../../core/models/enums';
+import { LessonType, RoomType } from '../../../../core/models/enums';
 import { RoomTypePipe } from '../../../../shared/pipes/room-type.pipe';
+import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
 
 @Component({
   selector: 'app-rooms',
@@ -26,7 +27,7 @@ import { RoomTypePipe } from '../../../../shared/pipes/room-type.pipe';
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatCheckboxModule, MatSnackBarModule, MatTooltipModule, MatChipsModule,
-    RoomTypePipe
+    RoomTypePipe, LessonTypePipe
   ],
   template: `
     <div class="page-header">
@@ -72,6 +73,13 @@ import { RoomTypePipe } from '../../../../shared/pipes/room-type.pipe';
             <mat-chip *ngIf="r.isOnline">Онлайн</mat-chip>
           </td>
         </ng-container>
+        <ng-container matColumnDef="allowedTypes">
+          <th mat-header-cell *matHeaderCellDef>Разрешённые занятия</th>
+          <td mat-cell *matCellDef="let r">
+            <span *ngIf="!r.allowedLessonTypes?.length" class="all-types">Любые</span>
+            <mat-chip *ngFor="let lt of r.allowedLessonTypes" class="type-chip">{{ lt | lessonType }}</mat-chip>
+          </td>
+        </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let r">
@@ -93,12 +101,14 @@ import { RoomTypePipe } from '../../../../shared/pipes/room-type.pipe';
     h1 { margin: 0; }
     .full-width { width: 100%; }
     mat-chip { font-size: 11px; margin: 1px; }
+    .type-chip { background: #e3f2fd; color: #1565c0; font-size: 11px; margin: 1px; }
+    .all-types { color: #9e9e9e; font-size: 12px; }
   `]
 })
 export class RoomsComponent implements OnInit {
   rooms: Room[] = [];
   buildings: Building[] = [];
-  columns = ['number', 'building', 'location', 'type', 'capacity', 'features', 'actions'];
+  columns = ['number', 'building', 'location', 'type', 'capacity', 'features', 'allowedTypes', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
 
@@ -112,7 +122,7 @@ export class RoomsComponent implements OnInit {
 
   openDialog(room: Room | null): void {
     const ref = this.dialog.open(RoomDialogComponent, {
-      data: { room, buildings: this.buildings }, width: '520px'
+      data: { room, buildings: this.buildings }, width: '560px'
     });
     ref.afterClosed().subscribe(result => {
       if (!result) return;
@@ -145,7 +155,7 @@ export class RoomsComponent implements OnInit {
   imports: [
     CommonModule, ReactiveFormsModule,
     MatButtonModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatCheckboxModule, MatDialogModule
+    MatSelectModule, MatCheckboxModule, MatDialogModule, MatIconModule
   ],
   template: `
     <h2 mat-dialog-title>{{ data.room ? 'Редактировать' : 'Добавить' }} аудиторию</h2>
@@ -191,6 +201,20 @@ export class RoomsComponent implements OnInit {
           <mat-checkbox formControlName="hasLab">Лабораторное оборудование</mat-checkbox>
           <mat-checkbox formControlName="isOnline">Онлайн</mat-checkbox>
         </div>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Разрешённые типы занятий</mat-label>
+          <mat-select formControlName="allowedLessonTypes" multiple>
+            <mat-option value="Lecture">Лекция</mat-option>
+            <mat-option value="Practical">Практика</mat-option>
+            <mat-option value="Lab">Лабораторная</mat-option>
+            <mat-option value="Seminar">Семинар</mat-option>
+          </mat-select>
+          <mat-hint>Оставьте пустым — допускаются все типы</mat-hint>
+        </mat-form-field>
+        <div class="warn-note" *ngIf="data.room">
+          <mat-icon class="warn-icon">warning</mat-icon>
+          Изменение допустимых типов занятий не затрагивает уже размещённые занятия.
+        </div>
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -200,10 +224,13 @@ export class RoomsComponent implements OnInit {
   `,
   styles: [`
     .full-width { width: 100%; margin-bottom: 8px; }
-    .dialog-form { display: flex; flex-direction: column; padding-top: 8px; min-width: 400px; }
+    .dialog-form { display: flex; flex-direction: column; padding-top: 8px; min-width: 440px; }
     .checkboxes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
     .row-fields { display: flex; gap: 12px; margin-bottom: 8px; }
     .half-width { flex: 1; }
+    .warn-note { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: #e65100;
+      background: #fff3e0; border-radius: 4px; padding: 6px 8px; margin-top: 4px; }
+    .warn-icon { font-size: 16px; height: 16px; width: 16px; flex-shrink: 0; margin-top: 1px; }
   `]
 })
 export class RoomDialogComponent {
@@ -225,7 +252,8 @@ export class RoomDialogComponent {
       hasProjector: [r?.hasProjector ?? false],
       hasComputers: [r?.hasComputers ?? false],
       hasLab: [r?.hasLab ?? false],
-      isOnline: [r?.isOnline ?? false]
+      isOnline: [r?.isOnline ?? false],
+      allowedLessonTypes: [r?.allowedLessonTypes ?? []]
     });
   }
 

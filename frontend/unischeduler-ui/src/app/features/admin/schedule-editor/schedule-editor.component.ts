@@ -40,8 +40,8 @@ interface AuditResult {
       <div>
         <h1 class="title-row">
           {{ schedule ? (schedule.academicYear + '/' + (schedule.academicYear + 1) + ' — ' + (schedule.term === 'First' ? '1-й' : '2-й') + ' сем.') : 'Редактор расписания' }}
-          <span class="status-chip" [class.draft]="schedule?.status === 'Draft'" [class.published]="schedule?.status === 'Published'">
-            {{ schedule?.status === 'Draft' ? 'Черновик' : schedule?.status === 'Published' ? 'Опубликовано' : schedule?.status }}
+          <span class="status-chip" [class.draft]="schedule?.status === 'Draft'" [class.published]="schedule?.status === 'Published'" [class.archived]="schedule?.status === 'Archived'">
+            {{ schedule?.status === 'Draft' ? 'Черновик' : schedule?.status === 'Published' ? 'Опубликовано' : schedule?.status === 'Archived' ? 'Архив' : schedule?.status }}
           </span>
         </h1>
         <p class="subtitle" *ngIf="schedule">
@@ -78,20 +78,26 @@ interface AuditResult {
           <button mat-stroked-button (click)="exportJson()" [disabled]="!schedule" title="Скачать расписание как JSON">
             <mat-icon>download</mat-icon> JSON
           </button>
-          <button mat-stroked-button (click)="jsonFileInput.click()" [disabled]="!schedule" title="Загрузить расписание из JSON">
+          <button mat-stroked-button (click)="jsonFileInput.click()" [disabled]="!schedule || isArchived" title="Загрузить расписание из JSON">
             <mat-icon>upload</mat-icon> JSON
           </button>
           <input #jsonFileInput type="file" accept=".json" style="display:none" (change)="importJson($event)">
           <button mat-stroked-button color="primary" (click)="publishSchedule()" *ngIf="schedule?.status === 'Draft'">
             <mat-icon>publish</mat-icon> Опубликовать
           </button>
+          <button mat-stroked-button color="warn" (click)="archiveSchedule()" *ngIf="schedule?.status === 'Published'">
+            <mat-icon>archive</mat-icon> Архивировать
+          </button>
+          <button mat-stroked-button (click)="unarchiveSchedule()" *ngIf="isArchived">
+            <mat-icon>unarchive</mat-icon> Разархивировать
+          </button>
         </div>
       </div>
     </div>
 
     <!-- Audit panel -->
-    <mat-expansion-panel class="audit-panel" *ngIf="audit" hideToggle>
-      <mat-expansion-panel-header (click)="conflictsExpanded = !conflictsExpanded">
+    <mat-expansion-panel class="audit-panel" *ngIf="audit" [expanded]="conflictsExpanded">
+      <mat-expansion-panel-header>
         <mat-panel-title class="conflict-title">
           <mat-icon [class.icon-ok]="audit.conflicts.length === 0" [class.icon-err]="audit.conflicts.length > 0">
             {{ audit.conflicts.length === 0 ? 'check_circle' : 'error' }}
@@ -103,33 +109,30 @@ interface AuditResult {
             <mat-icon class="icon-warn">warning</mat-icon>
             <span class="warn-text">{{ audit.warnings.length }} предупреждений</span>
           </ng-container>
-          <mat-icon class="expand-icon">{{ conflictsExpanded ? 'expand_less' : 'expand_more' }}</mat-icon>
         </mat-panel-title>
       </mat-expansion-panel-header>
-      <div *ngIf="conflictsExpanded">
-        <div class="issue-section" *ngIf="audit.conflicts.length > 0">
-          <div class="issue-section-label err-label">Конфликты (жёсткие)</div>
-          <div *ngFor="let c of audit.conflicts" class="issue-item err-item">
-            <mat-icon class="ii">{{ conflictIcon(c.type) }}</mat-icon>
-            {{ c.description }}
-          </div>
+      <div class="issue-section" *ngIf="audit.conflicts.length > 0">
+        <div class="issue-section-label err-label">Конфликты (жёсткие)</div>
+        <div *ngFor="let c of audit.conflicts" class="issue-item err-item">
+          <mat-icon class="ii">{{ conflictIcon(c.type) }}</mat-icon>
+          {{ c.description }}
         </div>
-        <div class="issue-section" *ngIf="audit.warnings.length > 0">
-          <div class="issue-section-label warn-label">Предупреждения (СанПиН / нагрузка)</div>
-          <div *ngFor="let w of audit.warnings" class="issue-item warn-item">
-            <mat-icon class="ii warn-ii">{{ warningIcon(w.type) }}</mat-icon>
-            {{ w.description }}
-          </div>
+      </div>
+      <div class="issue-section" *ngIf="audit.warnings.length > 0">
+        <div class="issue-section-label warn-label">Предупреждения (СанПиН / нагрузка)</div>
+        <div *ngFor="let w of audit.warnings" class="issue-item warn-item">
+          <mat-icon class="ii warn-ii">{{ warningIcon(w.type) }}</mat-icon>
+          {{ w.description }}
         </div>
-        <div *ngIf="audit.conflicts.length === 0 && audit.warnings.length === 0" class="no-issues">
-          Расписание не содержит конфликтов и предупреждений.
-        </div>
+      </div>
+      <div *ngIf="audit.conflicts.length === 0 && audit.warnings.length === 0" class="no-issues">
+        Расписание не содержит конфликтов и предупреждений.
       </div>
     </mat-expansion-panel>
 
     <!-- Plan progress panel -->
-    <mat-expansion-panel class="progress-panel" *ngIf="studyPlans.length > 0" hideToggle>
-      <mat-expansion-panel-header (click)="progressExpanded = !progressExpanded">
+    <mat-expansion-panel class="progress-panel" *ngIf="planProgress.length > 0" [expanded]="progressExpanded">
+      <mat-expansion-panel-header>
         <mat-panel-title class="conflict-title">
           <mat-icon [class.icon-ok]="unplacedCount === 0 && partialCount === 0" [class.icon-warn]="unplacedCount > 0 || partialCount > 0">
             {{ unplacedCount === 0 && partialCount === 0 ? 'assignment_turned_in' : 'assignment_late' }}
@@ -139,13 +142,11 @@ interface AuditResult {
             <span class="warn-text" *ngIf="partialCount > 0"> · {{ partialCount }} частично</span>
           </ng-container>
           <span class="ok-text" *ngIf="unplacedCount === 0 && partialCount === 0">Все дисциплины размещены</span>
-          <span class="plan-names">{{ studyPlans.length }} уч. план(а/ов): {{ planNames }}</span>
-          <mat-icon class="expand-icon">{{ progressExpanded ? 'expand_less' : 'expand_more' }}</mat-icon>
+          <span class="plan-names" *ngIf="studyPlans.length > 0">{{ studyPlans.length }} уч. план(а/ов): {{ planNames }}</span>
         </mat-panel-title>
       </mat-expansion-panel-header>
-      <div *ngIf="progressExpanded" class="progress-table-wrap">
-        <div *ngIf="planProgress.length === 0" class="no-issues">Нет дисциплин в учебных планах для этого семестра.</div>
-        <table class="progress-table" *ngIf="planProgress.length > 0">
+      <div class="progress-table-wrap">
+        <table class="progress-table">
           <thead><tr>
             <th>Группа</th><th>Дисциплина</th><th>Тип</th>
             <th>Ожид. (ак.ч.)</th><th>Пар/нед. факт/план</th><th>Статус</th>
@@ -168,6 +169,11 @@ interface AuditResult {
       </div>
     </mat-expansion-panel>
 
+    <div class="archive-banner" *ngIf="isArchived">
+      <mat-icon>lock</mat-icon>
+      Архивное расписание — просмотр только для чтения. Нажмите «Разархивировать» для редактирования.
+    </div>
+
     <div *ngIf="loading" class="loading-state">
       <mat-spinner diameter="48"></mat-spinner>
     </div>
@@ -179,6 +185,7 @@ interface AuditResult {
       [groups]="groups"
       [teachers]="teachers"
       [weekFilter]="weekFilter"
+      [readonly]="isArchived"
       (entryMoved)="onEntryMoved($event)"
       (entryDeleted)="onEntryDeleted($event)"
       (addRequested)="onAddRequested($event)">
@@ -195,6 +202,13 @@ interface AuditResult {
     }
     .status-chip.draft { background: #fff3e0; color: #e65100; }
     .status-chip.published { background: #e8f5e9; color: #2e7d32; }
+    .status-chip.archived { background: #f5f5f5; color: #757575; }
+    .archive-banner {
+      display: flex; align-items: center; gap: 8px;
+      background: #f5f5f5; border: 1px solid #e0e0e0; border-radius: 6px;
+      padding: 8px 14px; margin-bottom: 12px; font-size: 13px; color: #616161;
+    }
+    .archive-banner mat-icon { font-size: 18px; color: #9e9e9e; }
     .subtitle { margin: 4px 0 0; color: #666; font-size: 13px; }
     .score-note { color: #1976d2; cursor: help; }
     .header-right { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
@@ -211,7 +225,7 @@ interface AuditResult {
     .ok-text { color: #2e7d32; font-weight: 500; }
     .err-text { color: #c62828; font-weight: 500; }
     .warn-text { color: #e65100; font-weight: 500; }
-    .expand-icon { margin-left: auto; color: #888; font-size: 18px; }
+    .mat-expansion-panel-header { padding: 0 16px; }
     .issue-section { padding: 4px 0 6px 8px; }
     .issue-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
     .err-label { color: #c62828; }
@@ -371,6 +385,31 @@ export class ScheduleEditorComponent implements OnInit {
       error: (e) => this.snackBar.open(e.error?.title || 'Ошибка публикации', 'OK', { duration: 4000 })
     });
   }
+
+  archiveSchedule(): void {
+    if (!this.schedule) return;
+    if (!confirm('Архивировать это расписание?')) return;
+    this.api.archiveSchedule(this.schedule.id).subscribe({
+      next: () => {
+        this.snackBar.open('Расписание архивировано', 'OK', { duration: 2000 });
+        this.api.getSchedule(this.schedule!.id).subscribe(s => this.schedule = s);
+      },
+      error: (e) => this.snackBar.open(e.error?.title || 'Ошибка архивации', 'OK', { duration: 4000 })
+    });
+  }
+
+  unarchiveSchedule(): void {
+    if (!this.schedule) return;
+    this.api.unarchiveSchedule(this.schedule.id).subscribe({
+      next: () => {
+        this.snackBar.open('Расписание возвращено в черновики', 'OK', { duration: 2000 });
+        this.api.getSchedule(this.schedule!.id).subscribe(s => this.schedule = s);
+      },
+      error: (e) => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
+    });
+  }
+
+  get isArchived(): boolean { return this.schedule?.status === 'Archived'; }
 
   exportJson(): void {
     if (!this.schedule) return;

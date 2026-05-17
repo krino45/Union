@@ -27,6 +27,10 @@ public class CreateEntryCommandHandler : IRequestHandler<CreateEntryCommand, Sch
 
     public async Task<ScheduleEntryDto> Handle(CreateEntryCommand r, CancellationToken cancellationToken)
     {
+        var schedule = await _db.Schedules.FindAsync(new object[] { r.ScheduleId }, cancellationToken);
+        if (schedule?.Status == ScheduleStatus.Archived)
+            throw new InvalidOperationException("Cannot modify an archived schedule.");
+
         var allEntries = await _db.ScheduleEntries
             .Include(e => e.StudentGroups)
             .Where(e => e.ScheduleId == r.ScheduleId)
@@ -47,7 +51,6 @@ public class CreateEntryCommandHandler : IRequestHandler<CreateEntryCommand, Sch
         foreach (var gid in r.GroupIds)
             _db.ScheduleEntryStudentGroups.Add(new ScheduleEntryStudentGroup { ScheduleEntry = entry, StudentGroupId = gid });
 
-        var schedule = await _db.Schedules.FindAsync(new object[] { r.ScheduleId }, cancellationToken);
         if (schedule?.Status == ScheduleStatus.Published)
             schedule.Status = ScheduleStatus.Draft;
 

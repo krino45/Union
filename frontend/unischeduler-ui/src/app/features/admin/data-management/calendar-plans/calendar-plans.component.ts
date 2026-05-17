@@ -67,57 +67,10 @@ const WEEK_KINDS: { value: WeekKind; label: string; color: string }[] = [
             <div class="weeks-header">
               <strong>Недели <span class="study-count">(учебных: {{ studyWeeksCount }})</span></strong>
               <button mat-stroked-button type="button" (click)="addWeek()"><mat-icon>add</mat-icon> Добавить</button>
-              <button mat-stroked-button type="button" (click)="showGenerate = !showGenerate">
+              <input type="date" [(ngModel)]="genStartDate" [ngModelOptions]="{standalone: true}" class="date-input" title="Дата начала первой недели">
+              <button mat-stroked-button type="button" (click)="generateWeeks()">
                 <mat-icon>auto_fix_high</mat-icon> Сгенерировать
               </button>
-            </div>
-
-            <!-- Generate options panel -->
-            <div class="generate-panel" *ngIf="showGenerate">
-              <div class="gen-row">
-                <mat-form-field appearance="outline" class="gen-field">
-                  <mat-label>Дата начала</mat-label>
-                  <input matInput type="date" [(ngModel)]="genStartDate" [ngModelOptions]="{standalone: true}">
-                </mat-form-field>
-                <mat-form-field appearance="outline" class="gen-field-sm">
-                  <mat-label>Уч. до каникул</mat-label>
-                  <input matInput type="number" [(ngModel)]="genStudyBefore" [ngModelOptions]="{standalone: true}" min="1" max="20">
-                </mat-form-field>
-                <mat-form-field appearance="outline" class="gen-field-sm">
-                  <mat-label>Уч. после каникул</mat-label>
-                  <input matInput type="number" [(ngModel)]="genStudyAfter" [ngModelOptions]="{standalone: true}" min="0" max="20">
-                </mat-form-field>
-                <mat-form-field appearance="outline" class="gen-field-sm">
-                  <mat-label>Нед. каникул</mat-label>
-                  <input matInput type="number" [(ngModel)]="genHolidayWeeks" [ngModelOptions]="{standalone: true}" min="0" max="4">
-                </mat-form-field>
-              </div>
-              <div class="gen-row">
-                <mat-form-field appearance="outline" class="gen-field-sm">
-                  <mat-label>Нед. подготовки</mat-label>
-                  <input matInput type="number" [(ngModel)]="genPrepWeeks" [ngModelOptions]="{standalone: true}" min="0" max="4">
-                </mat-form-field>
-                <mat-form-field appearance="outline" class="gen-field-sm">
-                  <mat-label>Нед. экзаменов</mat-label>
-                  <input matInput type="number" [(ngModel)]="genExamWeeks" [ngModelOptions]="{standalone: true}" min="0" max="6">
-                </mat-form-field>
-                <mat-form-field appearance="outline" class="gen-field-sm">
-                  <mat-label>Нед. ВКР</mat-label>
-                  <input matInput type="number" [(ngModel)]="genThesisWeeks" [ngModelOptions]="{standalone: true}" min="0" max="10">
-                </mat-form-field>
-                <mat-form-field appearance="outline" class="gen-field-sm">
-                  <mat-label>Нед. практики</mat-label>
-                  <input matInput type="number" [(ngModel)]="genPracticeWeeks" [ngModelOptions]="{standalone: true}" min="0" max="8">
-                </mat-form-field>
-              </div>
-              <div class="gen-row gen-row-actions">
-                <mat-form-field appearance="outline" class="gen-field-sm">
-                  <mat-label>Каникулы после</mat-label>
-                  <input matInput type="number" [(ngModel)]="genEndHolidayWeeks" [ngModelOptions]="{standalone: true}" min="0" max="6">
-                </mat-form-field>
-                <button mat-raised-button color="primary" type="button" (click)="generateWeeks()">Сгенерировать</button>
-                <button mat-button type="button" (click)="showGenerate = false">Отмена</button>
-              </div>
             </div>
 
             <div class="weeks-legend">
@@ -187,11 +140,6 @@ const WEEK_KINDS: { value: WeekKind; label: string; color: string }[] = [
     .weeks-section { border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px; }
     .weeks-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
     .study-count { color: #1976d2; font-weight: normal; font-size: 13px; }
-    .generate-panel { background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; }
-    .gen-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 4px; }
-    .gen-row-actions { margin-top: 4px; }
-    .gen-field { flex: 1; min-width: 160px; }
-    .gen-field-sm { flex: 1; min-width: 110px; }
     .weeks-legend { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
     .legend-item { padding: 2px 8px; border-radius: 10px; font-size: 11px; border: 1px solid #ddd; }
     .weeks-grid { max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
@@ -219,17 +167,7 @@ export class CalendarPlansComponent implements OnInit {
   form!: FormGroup;
   readonly weekKinds = WEEK_KINDS;
 
-  // generate panel state
-  showGenerate = false;
   genStartDate = '';
-  genStudyBefore = 8;
-  genStudyAfter = 10;
-  genHolidayWeeks = 1;
-  genPrepWeeks = 1;
-  genExamWeeks = 3;
-  genThesisWeeks = 0;
-  genPracticeWeeks = 0;
-  genEndHolidayWeeks = 2;
 
   constructor(private api: ApiService, private fb: FormBuilder, private snackBar: MatSnackBar) {}
 
@@ -260,18 +198,16 @@ export class CalendarPlansComponent implements OnInit {
   }
 
   startCreate(): void {
-    this.showGenerate = false;
     this.form = this.buildForm();
     this.editing = true;
   }
 
   startEdit(cp: CalendarPlan): void {
-    this.showGenerate = false;
     this.form = this.buildForm(cp);
     this.editing = true;
   }
 
-  cancelEdit(): void { this.editing = false; this.showGenerate = false; }
+  cancelEdit(): void { this.editing = false; }
 
   addWeek(): void {
     const arr = this.weeksArray;
@@ -306,43 +242,33 @@ export class CalendarPlansComponent implements OnInit {
   }
 
   generateWeeks(): void {
-    // Determine start date
     let start: Date;
     if (this.genStartDate) {
       start = new Date(this.genStartDate);
     } else {
       const year: number = this.form.get('academicYear')?.value ?? new Date().getFullYear();
       const term: string = this.form.get('term')?.value ?? 'First';
-      const startMonth = term === 'First' ? 8 : 1;
-      start = new Date(term === 'First' ? year : year + 1, startMonth, term === 'First' ? 1 : 10);
+      start = new Date(term === 'First' ? year : year + 1, term === 'First' ? 8 : 1, term === 'First' ? 1 : 10);
     }
-    // Move to Monday
+    // Snap to Monday
     const dow = start.getDay();
     start.setDate(start.getDate() + (dow === 0 ? 1 : dow === 1 ? 0 : 8 - dow));
 
-    // Build pattern from configurable params
     const pattern: WeekKind[] = [
-      ...Array(this.genStudyBefore).fill('Study' as WeekKind),
-      ...Array(this.genHolidayWeeks).fill('Holiday' as WeekKind),
-      ...Array(this.genStudyAfter).fill('Study' as WeekKind),
-      ...Array(this.genPrepWeeks).fill('ExamPreparation' as WeekKind),
-      ...Array(this.genExamWeeks).fill('Exams' as WeekKind),
-      ...Array(this.genPracticeWeeks).fill('Practice' as WeekKind),
-      ...Array(this.genThesisWeeks).fill('Thesis' as WeekKind),
-      ...Array(this.genEndHolidayWeeks).fill('Holiday' as WeekKind),
+      ...Array(8).fill('Study' as WeekKind),
+      ...Array(1).fill('Holiday' as WeekKind),
+      ...Array(10).fill('Study' as WeekKind),
+      ...Array(1).fill('ExamPreparation' as WeekKind),
+      ...Array(3).fill('Exams' as WeekKind),
+      ...Array(2).fill('Holiday' as WeekKind),
     ];
 
     this.weeksArray.clear();
     let cur = new Date(start);
     for (const kind of pattern) {
-      this.weeksArray.push(this.fb.group({
-        startDate: [cur.toISOString().slice(0, 10)],
-        kind: [kind],
-        note: ['']
-      }));
+      this.weeksArray.push(this.fb.group({ startDate: [cur.toISOString().slice(0, 10)], kind: [kind], note: [''] }));
       cur.setDate(cur.getDate() + 7);
     }
-    this.showGenerate = false;
   }
 
   save(): void {

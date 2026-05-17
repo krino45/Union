@@ -1,4 +1,4 @@
-import { RoomType } from './enums';
+import { LessonType, RoomType } from './enums';
 
 export interface Room {
   id: string;
@@ -13,6 +13,7 @@ export interface Room {
   isOnline: boolean;
   floor: number;
   distanceFromStairsMeters: number;
+  allowedLessonTypes: LessonType[];
 }
 
 export interface CreateRoomDto {
@@ -26,6 +27,7 @@ export interface CreateRoomDto {
   isOnline: boolean;
   floor: number;
   distanceFromStairsMeters: number;
+  allowedLessonTypes: LessonType[];
 }
 
 export interface UpdateRoomDto extends CreateRoomDto {}

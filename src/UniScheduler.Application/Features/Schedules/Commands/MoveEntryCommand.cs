@@ -57,6 +57,8 @@ public class MoveEntryCommandHandler : IRequestHandler<MoveEntryCommand, Schedul
         entry.RoomId = request.NewRoomId;
 
         var schedule = await _db.Schedules.FindAsync(new object[] { entry.ScheduleId }, cancellationToken);
+        if (schedule?.Status == ScheduleStatus.Archived)
+            throw new InvalidOperationException("Cannot modify an archived schedule.");
         if (schedule?.Status == ScheduleStatus.Published)
             schedule.Status = ScheduleStatus.Draft;
 

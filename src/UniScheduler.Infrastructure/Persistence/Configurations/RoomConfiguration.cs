@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using UniScheduler.Domain.Entities;
+using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Infrastructure.Persistence.Configurations;
 
@@ -14,6 +15,15 @@ public class RoomConfiguration : IEntityTypeConfiguration<Room>
         builder.Property(r => r.Capacity).IsRequired();
         builder.Property(r => r.Floor).IsRequired().HasDefaultValue(1);
         builder.Property(r => r.DistanceFromStairsMeters).IsRequired().HasDefaultValue(0);
+        builder.Property(r => r.AllowedLessonTypes)
+            .HasConversion(
+                v => string.Join(',', v.Select(lt => lt.ToString())),
+                v => string.IsNullOrEmpty(v)
+                    ? new List<LessonType>()
+                    : v.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                       .Select(s => Enum.Parse<LessonType>(s)).ToList())
+            .HasColumnType("text")
+            .HasDefaultValueSql("''");
 
         builder.HasOne(r => r.Building)
             .WithMany(b => b.Rooms)

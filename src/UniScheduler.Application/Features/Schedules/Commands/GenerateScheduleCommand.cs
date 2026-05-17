@@ -123,10 +123,41 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             }
         }
 
+        // Fallback: no study plans configured — create one Both-week requirement per teacher-subject-group
+        if (requirements.Count == 0 && groups.Count > 0)
+        {
+            var fallbackSubjectIds = await db.Subjects
+                .Where(s => s.AcademicYear == schedule.AcademicYear && s.Term == schedule.Term)
+                .Select(s => s.Id)
+                .ToListAsync(ct);
+            var fallbackTs = await db.TeacherSubjects
+                .Where(ts => fallbackSubjectIds.Contains(ts.SubjectId))
+                .ToListAsync(ct);
+            foreach (var ts in fallbackTs)
+            {
+                bool isLab = ts.LessonType == LessonType.Lab;
+                bool isLecture = ts.LessonType == LessonType.Lecture;
+                var reqGroupIds = groups.Select(g => g.Id).ToList();
+                if (isLecture)
+                {
+                    requirements.Add(new SchedulerRequirement(idx++, reqGroupIds, ts.SubjectId, ts.LessonType,
+                        ts.TeacherId, WeekType.Both, false, true, false, false));
+                }
+                else
+                {
+                    foreach (var group in groups)
+                    {
+                        requirements.Add(new SchedulerRequirement(idx++, [group.Id], ts.SubjectId, ts.LessonType,
+                            ts.TeacherId, WeekType.Both, false, false, false, isLab));
+                    }
+                }
+            }
+        }
+
         return new SchedulerInput(
             schedule.Id,
             rooms.Select(r => new SchedulerRoom(r.Id, r.BuildingId, r.RoomType, r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
-                r.Floor, r.DistanceFromStairsMeters, r.Building.StairsDistancePerFloor)).ToList(),
+                r.Floor, r.DistanceFromStairsMeters, r.Building.StairsDistancePerFloor, r.AllowedLessonTypes)).ToList(),
             teachers.Select(t => new SchedulerTeacher(t.Id)).ToList(),
             groups.Select(g => new SchedulerGroup(g.Id, g.StudentCount)).ToList(),
             requirements,

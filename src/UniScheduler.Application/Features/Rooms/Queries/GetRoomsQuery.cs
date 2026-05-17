@@ -25,7 +25,7 @@ public class GetRoomsQueryHandler : IRequestHandler<GetRoomsQuery, List<RoomDto>
             .OrderBy(r => r.Building.ShortCode).ThenBy(r => r.Floor).ThenBy(r => r.Number)
             .Select(r => new RoomDto(r.Id, r.BuildingId, r.Building.ShortCode, r.Number, r.RoomType,
                 r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
-                r.Floor, r.DistanceFromStairsMeters))
+                r.Floor, r.DistanceFromStairsMeters, r.AllowedLessonTypes))
             .ToListAsync(cancellationToken);
     }
 }

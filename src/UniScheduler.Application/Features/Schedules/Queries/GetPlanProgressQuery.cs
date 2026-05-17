@@ -43,10 +43,11 @@ public class GetPlanProgressQueryHandler : IRequestHandler<GetPlanProgressQuery,
             .Where(sp => sp.AcademicYear == schedule.AcademicYear && sp.Term == schedule.Term)
             .ToListAsync(ct);
 
-        // group → its plan
+        // group → its plan (take first if a group appears in multiple plans for the same semester)
         var planByGroup = studyPlans
             .SelectMany(sp => sp.Groups.Select(g => (g.StudentGroupId, sp)))
-            .ToDictionary(x => x.StudentGroupId, x => x.sp);
+            .GroupBy(x => x.StudentGroupId)
+            .ToDictionary(g => g.Key, g => g.First().sp);
 
         // entries per group
         var entriesByGroup = new Dictionary<Guid, List<ScheduleEntry>>();

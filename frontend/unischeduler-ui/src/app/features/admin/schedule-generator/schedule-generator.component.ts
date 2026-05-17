@@ -1,10 +1,11 @@
 import { Component, OnInit, OnDestroy, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatDialogModule, MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -26,20 +27,25 @@ const CURRENT_YEAR = new Date().getFullYear();
   selector: 'app-schedule-generator',
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule, RouterLink,
-    MatButtonModule, MatIconModule, MatCardModule,
+    CommonModule, FormsModule, ReactiveFormsModule, RouterLink,
+    MatButtonModule, MatIconModule, MatCardModule, MatSlideToggleModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatProgressBarModule, MatChipsModule, MatTooltipModule, MatSnackBarModule
   ],
   template: `
     <div class="page-header">
       <h1>Расписания</h1>
-      <button mat-raised-button color="primary" (click)="openCreateDialog()">
-        <mat-icon>add</mat-icon> Создать расписание
-      </button>
+      <div class="header-right">
+        <mat-slide-toggle [(ngModel)]="showArchived" class="archive-toggle">
+          Архивные
+        </mat-slide-toggle>
+        <button mat-raised-button color="primary" (click)="openCreateDialog()">
+          <mat-icon>add</mat-icon> Создать расписание
+        </button>
+      </div>
     </div>
 
-    <mat-card *ngFor="let s of schedules" class="schedule-card">
+    <mat-card *ngFor="let s of visibleSchedules" class="schedule-card">
       <mat-card-header>
         <mat-card-title>
           {{ s.academicYear }}/{{ s.academicYear + 1 }} — {{ termLabel(s.term) }} семестр
@@ -68,13 +74,19 @@ const CURRENT_YEAR = new Date().getFullYear();
         <button mat-button color="primary" [routerLink]="['/admin/schedules', s.id, 'editor']">
           <mat-icon>edit_calendar</mat-icon> Редактор
         </button>
-        <button mat-button (click)="triggerGeneration(s)" [disabled]="isGenerating(s.id)">
+        <button mat-button (click)="triggerGeneration(s)" [disabled]="isGenerating(s.id) || s.status === 'Archived'">
           <mat-icon>auto_fix_high</mat-icon> Генерировать
         </button>
         <button mat-button *ngIf="s.status === 'Draft'" (click)="publishSchedule(s)" [disabled]="isGenerating(s.id)">
           <mat-icon>publish</mat-icon> Опубликовать
         </button>
-        <button mat-button color="warn" (click)="deleteSchedule(s)">
+        <button mat-button *ngIf="s.status === 'Published'" (click)="archiveSchedule(s)">
+          <mat-icon>archive</mat-icon> Архивировать
+        </button>
+        <button mat-button *ngIf="s.status === 'Archived'" (click)="unarchiveSchedule(s)">
+          <mat-icon>unarchive</mat-icon> Разархивировать
+        </button>
+        <button mat-button color="warn" (click)="deleteSchedule(s)" [disabled]="s.status === 'Published'">
           <mat-icon>delete</mat-icon>
         </button>
       </mat-card-actions>
@@ -86,6 +98,8 @@ const CURRENT_YEAR = new Date().getFullYear();
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .archive-toggle { font-size: 14px; }
     h1 { margin: 0; }
     .schedule-card { margin-bottom: 16px; }
     mat-card-header { display: flex; align-items: center; }
@@ -107,7 +121,12 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   schedules: Schedule[] = [];
   faculties: Faculty[] = [];
   generationStatus: Record<string, GenerationJobStatus> = {};
+  showArchived = false;
   private pollingSubscriptions: Record<string, Subscription> = {};
+
+  get visibleSchedules(): Schedule[] {
+    return this.showArchived ? this.schedules : this.schedules.filter(s => s.status !== ScheduleStatus.Archived);
+  }
 
   constructor(
     private api: ApiService,
@@ -174,6 +193,22 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   publishSchedule(schedule: Schedule): void {
     this.api.publishSchedule(schedule.id).subscribe({
       next: () => { this.snackBar.open('Расписание опубликовано', 'OK', { duration: 3000 }); this.loadSchedules(); },
+      error: (e) => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
+    });
+  }
+
+  archiveSchedule(schedule: Schedule): void {
+    const label = `${schedule.academicYear}/${schedule.academicYear + 1} ${this.termLabel(schedule.term)}`;
+    if (!confirm(`Архивировать расписание "${label}"?`)) return;
+    this.api.archiveSchedule(schedule.id).subscribe({
+      next: () => { this.snackBar.open('Расписание архивировано', 'OK', { duration: 3000 }); this.loadSchedules(); },
+      error: (e) => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
+    });
+  }
+
+  unarchiveSchedule(schedule: Schedule): void {
+    this.api.unarchiveSchedule(schedule.id).subscribe({
+      next: () => { this.snackBar.open('Расписание возвращено в черновики', 'OK', { duration: 3000 }); this.loadSchedules(); },
       error: (e) => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
     });
   }

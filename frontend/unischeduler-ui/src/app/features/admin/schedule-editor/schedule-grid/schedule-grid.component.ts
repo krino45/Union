@@ -46,7 +46,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                   <div class="week-half" *ngIf="weekFilter === 'Both' || weekFilter === 'Odd'">
                     <div class="half-header">
                       <span class="week-label num-label" *ngIf="weekFilter === 'Both'">Неч.</span>
-                      <button class="add-btn num-add" (click)="requestAdd(d, p, 'Odd')" title="Добавить занятие">+</button>
+                      <button class="add-btn num-add" *ngIf="!readonly" (click)="requestAdd(d, p, 'Odd')" title="Добавить занятие">+</button>
                     </div>
                     <div
                       cdkDropList
@@ -59,12 +59,14 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                         *ngFor="let entry of getCellNum(d, p)"
                         cdkDrag
                         [cdkDragData]="entry"
+                        [cdkDragDisabled]="readonly"
                         class="entry-card"
                         [class.online]="entry.isOnline"
-                        [class.both-weeks]="entry.weekType === 'Both'">
+                        [class.both-weeks]="entry.weekType === 'Both'"
+                        [class.readonly]="readonly">
                         <div class="entry-header">
                           <span class="lt-badge">{{ entry.lessonType | lessonType }}</span>
-                          <button class="delete-btn" (click)="$event.stopPropagation(); deleteEntry(entry)" title="Удалить">×</button>
+                          <button class="delete-btn" *ngIf="!readonly" (click)="$event.stopPropagation(); deleteEntry(entry)" title="Удалить">×</button>
                         </div>
                         <div class="subject">{{ entry.subjectShortName || entry.subjectName }}</div>
                         <div class="teacher">{{ entry.teacherDisplayName }}</div>
@@ -82,7 +84,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                   <div class="week-half" *ngIf="weekFilter === 'Both' || weekFilter === 'Even'">
                     <div class="half-header">
                       <span class="week-label den-label" *ngIf="weekFilter === 'Both'">Чёт.</span>
-                      <button class="add-btn den-add" (click)="requestAdd(d, p, 'Even')" title="Добавить занятие">+</button>
+                      <button class="add-btn den-add" *ngIf="!readonly" (click)="requestAdd(d, p, 'Even')" title="Добавить занятие">+</button>
                     </div>
                     <div
                       cdkDropList
@@ -95,12 +97,14 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                         *ngFor="let entry of getCellDen(d, p)"
                         cdkDrag
                         [cdkDragData]="entry"
+                        [cdkDragDisabled]="readonly"
                         class="entry-card den"
                         [class.online]="entry.isOnline"
-                        [class.both-weeks]="entry.weekType === 'Both'">
+                        [class.both-weeks]="entry.weekType === 'Both'"
+                        [class.readonly]="readonly">
                         <div class="entry-header">
                           <span class="lt-badge">{{ entry.lessonType | lessonType }}</span>
-                          <button class="delete-btn" (click)="$event.stopPropagation(); deleteEntry(entry)" title="Удалить">×</button>
+                          <button class="delete-btn" *ngIf="!readonly" (click)="$event.stopPropagation(); deleteEntry(entry)" title="Удалить">×</button>
                         </div>
                         <div class="subject">{{ entry.subjectShortName || entry.subjectName }}</div>
                         <div class="teacher">{{ entry.teacherDisplayName }}</div>
@@ -167,6 +171,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
     .entry-card.online { background: #e8f5e9; border-left-color: #388e3c; }
     .entry-card.both-weeks { border-left-style: dashed; }
     .entry-card:active { cursor: grabbing; }
+    .entry-card.readonly { cursor: default; }
     .entry-card.cdk-drag-dragging { opacity: 0.85; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
     .entry-header { display: flex; align-items: center; margin-bottom: 2px; }
     .lt-badge { font-size: 9px; color: #666; flex: 1; }
@@ -190,6 +195,7 @@ export class ScheduleGridComponent implements OnChanges {
   @Input() groups: StudentGroup[] = [];
   @Input() teachers: Teacher[] = [];
   @Input() weekFilter: string = 'Both';
+  @Input() readonly = false;
   @Output() entryMoved = new EventEmitter<{ entryId: string; dto: MoveEntryDto }>();
   @Output() entryDeleted = new EventEmitter<string>();
   @Output() addRequested = new EventEmitter<{ day: RussianDayOfWeek; pair: number; weekType: string }>();

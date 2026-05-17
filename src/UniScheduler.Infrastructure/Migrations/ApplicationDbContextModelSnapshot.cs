@@ -285,6 +285,12 @@ namespace UniScheduler.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AllowedLessonTypes")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValueSql("''");
+
                     b.Property<Guid>("BuildingId")
                         .HasColumnType("uuid");
 
@@ -522,6 +528,11 @@ namespace UniScheduler.Infrastructure.Migrations
                         .HasDefaultValue(0.0);
 
                     b.Property<double>("SeminarHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0);
+
+                    b.Property<double>("ThesisHours")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("double precision")
                         .HasDefaultValue(0.0);

@@ -168,6 +168,12 @@ export class ApiService {
   publishSchedule(id: string): Observable<void> {
     return this.http.post<void>(`${this.base}/schedules/${id}/publish`, {});
   }
+  archiveSchedule(id: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/schedules/${id}/archive`, {});
+  }
+  unarchiveSchedule(id: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/schedules/${id}/unarchive`, {});
+  }
   getScheduleAudit(scheduleId: string): Observable<{
     conflicts: { type: string; description: string }[];
     warnings: { type: string; description: string }[];

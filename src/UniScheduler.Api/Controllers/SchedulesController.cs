@@ -55,6 +55,20 @@ public class SchedulesController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{id:guid}/archive")]
+    public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
+    {
+        await mediator.Send(new ArchiveScheduleCommand(id), ct);
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/unarchive")]
+    public async Task<IActionResult> Unarchive(Guid id, CancellationToken ct)
+    {
+        await mediator.Send(new UnarchiveScheduleCommand(id), ct);
+        return NoContent();
+    }
+
     [HttpPost("{id:guid}/generate")]
     public IActionResult Generate(Guid id, [FromQuery] int timeoutSeconds = 60)
     {

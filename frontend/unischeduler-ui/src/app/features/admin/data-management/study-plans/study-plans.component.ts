@@ -95,6 +95,7 @@ import {
                   <th>Пр. (ак.ч.)</th>
                   <th>Лаб. (ак.ч.)</th>
                   <th>Сем. (ак.ч.)</th>
+                  <th>ВКР (ак.ч.)</th>
                   <th></th>
                 </tr>
               </thead>
@@ -109,6 +110,7 @@ import {
                   <td><input type="number" min="0" formControlName="practicalHours" class="hrs-input"></td>
                   <td><input type="number" min="0" formControlName="labHours" class="hrs-input"></td>
                   <td><input type="number" min="0" formControlName="seminarHours" class="hrs-input"></td>
+                  <td><input type="number" min="0" formControlName="thesisHours" class="hrs-input"></td>
                   <td><button mat-icon-button type="button" (click)="removeEntry(i)" color="warn"><mat-icon>delete</mat-icon></button></td>
                 </tr>
               </tbody>
@@ -146,7 +148,7 @@ import {
 
         <table class="entries-view-table" *ngIf="plan.entries.length > 0">
           <thead><tr>
-            <th>Дисциплина</th><th>Лек.</th><th>Пр.</th><th>Лаб.</th><th>Сем.</th><th>Всего</th>
+            <th>Дисциплина</th><th>Лек.</th><th>Пр.</th><th>Лаб.</th><th>Сем.</th><th>ВКР</th><th>Всего</th>
           </tr></thead>
           <tbody>
             <tr *ngFor="let e of plan.entries">
@@ -155,7 +157,8 @@ import {
               <td>{{ e.practicalHours || '—' }}</td>
               <td>{{ e.labHours || '—' }}</td>
               <td>{{ e.seminarHours || '—' }}</td>
-              <td class="total">{{ e.lectureHours + e.practicalHours + e.labHours + e.seminarHours }}</td>
+              <td>{{ e.thesisHours || '—' }}</td>
+              <td class="total">{{ e.lectureHours + e.practicalHours + e.labHours + e.seminarHours + e.thesisHours }}</td>
             </tr>
           </tbody>
         </table>
@@ -245,7 +248,7 @@ export class StudyPlansComponent implements OnInit {
   addEntry(): void {
     this.entriesArray.push(this.fb.group({
       subjectId: ['', Validators.required],
-      lectureHours: [0], practicalHours: [0], labHours: [0], seminarHours: [0]
+      lectureHours: [0], practicalHours: [0], labHours: [0], seminarHours: [0], thesisHours: [0]
     }));
   }
 
@@ -295,7 +298,7 @@ export class StudyPlansComponent implements OnInit {
       entries: this.fb.array((plan?.entries ?? []).map(e => this.fb.group({
         subjectId: [e.subjectId, Validators.required],
         lectureHours: [e.lectureHours], practicalHours: [e.practicalHours],
-        labHours: [e.labHours], seminarHours: [e.seminarHours]
+        labHours: [e.labHours], seminarHours: [e.seminarHours], thesisHours: [e.thesisHours]
       })))
     });
     return fg;

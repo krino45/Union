@@ -29,7 +29,8 @@ public record SchedulerRoom(
     bool IsOnline,
     int Floor = 1,
     int DistanceFromStairsMeters = 0,
-    int StairsDistancePerFloor = 20
+    int StairsDistancePerFloor = 20,
+    IReadOnlyList<LessonType>? AllowedLessonTypes = null
 );
 
 public record SchedulerTeacher(Guid Id);
