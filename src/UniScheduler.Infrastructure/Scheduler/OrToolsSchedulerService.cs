@@ -63,12 +63,12 @@ public class OrToolsSchedulerService : ISchedulerService
             bool anyRoom = rooms.Any(r => IsCompatible(req, r, groups));
             if (!anyRoom)
             {
-                noRoomLines.Add($"{req.LessonType} (subj {req.SubjectId:N8})");
+                noRoomLines.Add($"{req.LessonType} (subj {req.SubjectId:D})");
                 continue;
             }
             int varWi = VarWeekIndex(req.WeekType);
             if (!vars.Any(kv => kv.Key.ri == ri && kv.Key.wi == varWi))
-                noSlotLines.Add($"{req.LessonType} (subj {req.SubjectId:N8})");
+                noSlotLines.Add($"{req.LessonType} (subj {req.SubjectId:D})");
         }
         if (noRoomLines.Count > 0 || noSlotLines.Count > 0)
         {
@@ -478,6 +478,7 @@ public class OrToolsSchedulerService : ISchedulerService
             (LessonType.Lecture, RoomType.RegularCabinet) => true,
             (LessonType.Practical, RoomType.RegularCabinet) => true,
             (LessonType.Practical, RoomType.LectureHall) => true,
+            (LessonType.Practical, RoomType.ComputerLab) => true,
             (LessonType.Seminar, RoomType.RegularCabinet) => true,
             (LessonType.Lab, RoomType.Lab) => true,
             (LessonType.Lab, RoomType.ComputerLab) => req.NeedsComputers,
