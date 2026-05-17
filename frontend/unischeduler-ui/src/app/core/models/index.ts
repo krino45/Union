@@ -10,3 +10,4 @@ export * from './teacher-availability.model';
 export * from './reschedule-request.model';
 export * from './auth.model';
 export * from './enums';
+export * from './study-plan.model';

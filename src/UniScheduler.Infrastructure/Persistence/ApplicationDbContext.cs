@@ -23,6 +23,11 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<RescheduleRequest> RescheduleRequests => Set<RescheduleRequest>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<PairTimeSlot> PairTimeSlots => Set<PairTimeSlot>();
+    public DbSet<StudyPlan> StudyPlans => Set<StudyPlan>();
+    public DbSet<StudyPlanGroup> StudyPlanGroups => Set<StudyPlanGroup>();
+    public DbSet<StudyPlanEntry> StudyPlanEntries => Set<StudyPlanEntry>();
+    public DbSet<CalendarPlan> CalendarPlans => Set<CalendarPlan>();
+    public DbSet<CalendarWeek> CalendarWeeks => Set<CalendarWeek>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

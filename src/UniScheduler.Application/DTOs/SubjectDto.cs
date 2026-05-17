@@ -7,11 +7,5 @@ public record SubjectDto(
     string Name,
     string ShortName,
     int AcademicYear,
-    Term Term,
-    double LectureHoursPerWeek,
-    double PracticalHoursPerWeek,
-    double LabHoursPerWeek,
-    WeekType LectureWeekType,
-    WeekType PracticalWeekType,
-    WeekType LabWeekType
+    Term Term
 );

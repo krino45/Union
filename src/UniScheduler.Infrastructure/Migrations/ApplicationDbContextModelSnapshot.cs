@@ -97,6 +97,55 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.ToTable("BuildingDistances");
                 });
 
+            modelBuilder.Entity("UniScheduler.Domain.Entities.CalendarPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AcademicYear")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Term")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CalendarPlans");
+                });
+
+            modelBuilder.Entity("UniScheduler.Domain.Entities.CalendarWeek", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CalendarPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CalendarPlanId", "StartDate")
+                        .IsUnique();
+
+                    b.ToTable("CalendarWeeks");
+                });
+
             modelBuilder.Entity("UniScheduler.Domain.Entities.Faculty", b =>
                 {
                     b.Property<Guid>("Id")
@@ -419,6 +468,95 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.ToTable("StudentGroups");
                 });
 
+            modelBuilder.Entity("UniScheduler.Domain.Entities.StudyPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AcademicYear")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("CalendarPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("FacultyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Term")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CalendarPlanId");
+
+                    b.HasIndex("FacultyId");
+
+                    b.ToTable("StudyPlans");
+                });
+
+            modelBuilder.Entity("UniScheduler.Domain.Entities.StudyPlanEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("LabHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0);
+
+                    b.Property<double>("LectureHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0);
+
+                    b.Property<double>("PracticalHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0);
+
+                    b.Property<double>("SeminarHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0);
+
+                    b.Property<Guid>("StudyPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubjectId");
+
+                    b.HasIndex("StudyPlanId", "SubjectId")
+                        .IsUnique();
+
+                    b.ToTable("StudyPlanEntries");
+                });
+
+            modelBuilder.Entity("UniScheduler.Domain.Entities.StudyPlanGroup", b =>
+                {
+                    b.Property<Guid>("StudyPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StudentGroupId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("StudyPlanId", "StudentGroupId");
+
+                    b.HasIndex("StudentGroupId");
+
+                    b.ToTable("StudyPlanGroups");
+                });
+
             modelBuilder.Entity("UniScheduler.Domain.Entities.Subject", b =>
                 {
                     b.Property<Guid>("Id")
@@ -428,27 +566,9 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Property<int>("AcademicYear")
                         .HasColumnType("integer");
 
-                    b.Property<double>("LabHoursPerWeek")
-                        .HasColumnType("double precision");
-
-                    b.Property<int>("LabWeekType")
-                        .HasColumnType("integer");
-
-                    b.Property<double>("LectureHoursPerWeek")
-                        .HasColumnType("double precision");
-
-                    b.Property<int>("LectureWeekType")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<double>("PracticalHoursPerWeek")
-                        .HasColumnType("double precision");
-
-                    b.Property<int>("PracticalWeekType")
-                        .HasColumnType("integer");
 
                     b.Property<string>("ShortName")
                         .IsRequired()
@@ -582,6 +702,17 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Navigation("ToBuilding");
                 });
 
+            modelBuilder.Entity("UniScheduler.Domain.Entities.CalendarWeek", b =>
+                {
+                    b.HasOne("UniScheduler.Domain.Entities.CalendarPlan", "CalendarPlan")
+                        .WithMany("Weeks")
+                        .HasForeignKey("CalendarPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CalendarPlan");
+                });
+
             modelBuilder.Entity("UniScheduler.Domain.Entities.RescheduleRequest", b =>
                 {
                     b.HasOne("UniScheduler.Domain.Entities.ScheduleEntry", "OriginalEntry")
@@ -686,6 +817,60 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Navigation("Faculty");
                 });
 
+            modelBuilder.Entity("UniScheduler.Domain.Entities.StudyPlan", b =>
+                {
+                    b.HasOne("UniScheduler.Domain.Entities.CalendarPlan", "CalendarPlan")
+                        .WithMany("StudyPlans")
+                        .HasForeignKey("CalendarPlanId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("UniScheduler.Domain.Entities.Faculty", "Faculty")
+                        .WithMany()
+                        .HasForeignKey("FacultyId");
+
+                    b.Navigation("CalendarPlan");
+
+                    b.Navigation("Faculty");
+                });
+
+            modelBuilder.Entity("UniScheduler.Domain.Entities.StudyPlanEntry", b =>
+                {
+                    b.HasOne("UniScheduler.Domain.Entities.StudyPlan", "StudyPlan")
+                        .WithMany("Entries")
+                        .HasForeignKey("StudyPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UniScheduler.Domain.Entities.Subject", "Subject")
+                        .WithMany()
+                        .HasForeignKey("SubjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StudyPlan");
+
+                    b.Navigation("Subject");
+                });
+
+            modelBuilder.Entity("UniScheduler.Domain.Entities.StudyPlanGroup", b =>
+                {
+                    b.HasOne("UniScheduler.Domain.Entities.StudentGroup", "StudentGroup")
+                        .WithMany()
+                        .HasForeignKey("StudentGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UniScheduler.Domain.Entities.StudyPlan", "StudyPlan")
+                        .WithMany("Groups")
+                        .HasForeignKey("StudyPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StudentGroup");
+
+                    b.Navigation("StudyPlan");
+                });
+
             modelBuilder.Entity("UniScheduler.Domain.Entities.TeacherAvailability", b =>
                 {
                     b.HasOne("UniScheduler.Domain.Entities.Teacher", "Teacher")
@@ -725,6 +910,13 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Navigation("Rooms");
                 });
 
+            modelBuilder.Entity("UniScheduler.Domain.Entities.CalendarPlan", b =>
+                {
+                    b.Navigation("StudyPlans");
+
+                    b.Navigation("Weeks");
+                });
+
             modelBuilder.Entity("UniScheduler.Domain.Entities.Faculty", b =>
                 {
                     b.Navigation("Groups");
@@ -748,6 +940,13 @@ namespace UniScheduler.Infrastructure.Migrations
             modelBuilder.Entity("UniScheduler.Domain.Entities.StudentGroup", b =>
                 {
                     b.Navigation("ScheduleEntryGroups");
+                });
+
+            modelBuilder.Entity("UniScheduler.Domain.Entities.StudyPlan", b =>
+                {
+                    b.Navigation("Entries");
+
+                    b.Navigation("Groups");
                 });
 
             modelBuilder.Entity("UniScheduler.Domain.Entities.Subject", b =>

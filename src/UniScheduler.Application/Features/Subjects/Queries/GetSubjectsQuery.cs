@@ -20,9 +20,7 @@ public class GetSubjectsQueryHandler : IRequestHandler<GetSubjectsQuery, List<Su
         if (request.AcademicYear.HasValue) query = query.Where(s => s.AcademicYear == request.AcademicYear);
         if (request.Term.HasValue) query = query.Where(s => s.Term == request.Term);
         return await query.OrderBy(s => s.AcademicYear).ThenBy(s => s.Term).ThenBy(s => s.Name)
-            .Select(s => new SubjectDto(s.Id, s.Name, s.ShortName, s.AcademicYear, s.Term,
-                s.LectureHoursPerWeek, s.PracticalHoursPerWeek, s.LabHoursPerWeek,
-                s.LectureWeekType, s.PracticalWeekType, s.LabWeekType))
+            .Select(s => new SubjectDto(s.Id, s.Name, s.ShortName, s.AcademicYear, s.Term))
             .ToListAsync(cancellationToken);
     }
 }

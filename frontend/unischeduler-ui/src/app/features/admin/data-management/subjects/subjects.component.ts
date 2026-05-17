@@ -13,8 +13,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../../../core/services/api.service';
 import { Subject } from '../../../../core/models';
-import { Term, WeekType } from '../../../../core/models/enums';
-import { WeekTypePipe } from '../../../../shared/pipes/week-type.pipe';
+import { Term } from '../../../../core/models/enums';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -25,7 +24,7 @@ const CURRENT_YEAR = new Date().getFullYear();
     CommonModule, ReactiveFormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
-    MatSnackBarModule, MatTooltipModule, WeekTypePipe
+    MatSnackBarModule, MatTooltipModule
   ],
   template: `
     <div class="page-header">
@@ -45,18 +44,6 @@ const CURRENT_YEAR = new Date().getFullYear();
           <th mat-header-cell *matHeaderCellDef>Год / Семестр</th>
           <td mat-cell *matCellDef="let s">{{ s.academicYear }} / {{ s.term === 'First' ? '1' : '2' }}</td>
         </ng-container>
-        <ng-container matColumnDef="hours">
-          <th mat-header-cell *matHeaderCellDef>Л / П / Лб (ч/нед)</th>
-          <td mat-cell *matCellDef="let s">
-            {{ s.lectureHoursPerWeek }}/{{ s.practicalHoursPerWeek }}/{{ s.labHoursPerWeek }}
-          </td>
-        </ng-container>
-        <ng-container matColumnDef="weekTypes">
-          <th mat-header-cell *matHeaderCellDef>Чередование</th>
-          <td mat-cell *matCellDef="let s">
-            Л:{{ s.lectureWeekType | weekType }} П:{{ s.practicalWeekType | weekType }} Лб:{{ s.labWeekType | weekType }}
-          </td>
-        </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let s">
@@ -68,17 +55,19 @@ const CURRENT_YEAR = new Date().getFullYear();
         <tr mat-row *matRowDef="let row; columns: columns;"></tr>
       </table>
     </mat-card>
+    <p class="hint">Часы по дисциплинам задаются в <strong>Учебных планах</strong>.</p>
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     h1 { margin: 0; }
     .full-width { width: 100%; }
     .short { color: #888; font-size: 12px; }
+    .hint { color: #888; font-size: 12px; margin-top: 8px; }
   `]
 })
 export class SubjectsComponent implements OnInit {
   subjects: Subject[] = [];
-  columns = ['name', 'period', 'hours', 'weekTypes', 'actions'];
+  columns = ['name', 'period', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
 
@@ -89,7 +78,7 @@ export class SubjectsComponent implements OnInit {
   }
 
   openDialog(subject: Subject | null): void {
-    const ref = this.dialog.open(SubjectDialogComponent, { data: subject, width: '520px' });
+    const ref = this.dialog.open(SubjectDialogComponent, { data: subject, width: '440px' });
     ref.afterClosed().subscribe(result => {
       if (!result) return;
       if (subject) {
@@ -146,46 +135,6 @@ export class SubjectsComponent implements OnInit {
             </mat-select>
           </mat-form-field>
         </div>
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Лекций/нед</mat-label>
-            <input matInput type="number" formControlName="lectureHoursPerWeek" min="0">
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Практик/нед</mat-label>
-            <input matInput type="number" formControlName="practicalHoursPerWeek" min="0">
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Лаборат./нед</mat-label>
-            <input matInput type="number" formControlName="labHoursPerWeek" min="0">
-          </mat-form-field>
-        </div>
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Нед. (Лекции)</mat-label>
-            <mat-select formControlName="lectureWeekType">
-              <mat-option value="Both">Каждую</mat-option>
-              <mat-option value="Odd">Нечётная</mat-option>
-              <mat-option value="Even">Чётная</mat-option>
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Нед. (Практики)</mat-label>
-            <mat-select formControlName="practicalWeekType">
-              <mat-option value="Both">Каждую</mat-option>
-              <mat-option value="Odd">Нечётная</mat-option>
-              <mat-option value="Even">Чётная</mat-option>
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Нед. (Лаборат.)</mat-label>
-            <mat-select formControlName="labWeekType">
-              <mat-option value="Both">Каждую</mat-option>
-              <mat-option value="Odd">Нечётная</mat-option>
-              <mat-option value="Even">Чётная</mat-option>
-            </mat-select>
-          </mat-form-field>
-        </div>
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -193,7 +142,7 @@ export class SubjectsComponent implements OnInit {
       <button mat-raised-button color="primary" [disabled]="form.invalid" (click)="submit()">Сохранить</button>
     </mat-dialog-actions>
   `,
-  styles: [`.full-width { width: 100%; margin-bottom: 8px; } .dialog-form { display: flex; flex-direction: column; padding-top: 8px; min-width: 440px; } .row { display: flex; gap: 8px; margin-bottom: 4px; } .flex1 { flex: 1; } .flex2 { flex: 2; }`]
+  styles: [`.dialog-form { display: flex; flex-direction: column; padding-top: 8px; min-width: 380px; gap: 4px; } .row { display: flex; gap: 8px; } .flex1 { flex: 1; } .flex2 { flex: 2; }`]
 })
 export class SubjectDialogComponent {
   form: FormGroup;
@@ -207,13 +156,7 @@ export class SubjectDialogComponent {
       name: [data?.name ?? '', Validators.required],
       shortName: [data?.shortName ?? '', Validators.required],
       academicYear: [data?.academicYear ?? CURRENT_YEAR, [Validators.required, Validators.min(2020)]],
-      term: [data?.term ?? Term.First, Validators.required],
-      lectureHoursPerWeek: [data?.lectureHoursPerWeek ?? 2, Validators.min(0)],
-      practicalHoursPerWeek: [data?.practicalHoursPerWeek ?? 2, Validators.min(0)],
-      labHoursPerWeek: [data?.labHoursPerWeek ?? 0, Validators.min(0)],
-      lectureWeekType: [data?.lectureWeekType ?? WeekType.Both, Validators.required],
-      practicalWeekType: [data?.practicalWeekType ?? WeekType.Both, Validators.required],
-      labWeekType: [data?.labWeekType ?? WeekType.Both, Validators.required]
+      term: [data?.term ?? Term.First, Validators.required]
     });
   }
 

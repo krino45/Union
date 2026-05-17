@@ -10,9 +10,7 @@ namespace UniScheduler.Application.Features.Subjects.Commands;
 
 public record UpdateSubjectCommand(
     Guid Id, string Name, string ShortName,
-    int AcademicYear, Term Term,
-    double LectureHoursPerWeek, double PracticalHoursPerWeek, double LabHoursPerWeek,
-    WeekType LectureWeekType, WeekType PracticalWeekType, WeekType LabWeekType) : IRequest<SubjectDto>;
+    int AcademicYear, Term Term) : IRequest<SubjectDto>;
 
 public class UpdateSubjectCommandHandler : IRequestHandler<UpdateSubjectCommand, SubjectDto>
 {
@@ -26,15 +24,7 @@ public class UpdateSubjectCommandHandler : IRequestHandler<UpdateSubjectCommand,
             ?? throw new NotFoundException(nameof(Subject), r.Id);
         subject.Name = r.Name; subject.ShortName = r.ShortName;
         subject.AcademicYear = r.AcademicYear; subject.Term = r.Term;
-        subject.LectureHoursPerWeek = r.LectureHoursPerWeek;
-        subject.PracticalHoursPerWeek = r.PracticalHoursPerWeek;
-        subject.LabHoursPerWeek = r.LabHoursPerWeek;
-        subject.LectureWeekType = r.LectureWeekType;
-        subject.PracticalWeekType = r.PracticalWeekType;
-        subject.LabWeekType = r.LabWeekType;
         await db.SaveChangesAsync(cancellationToken);
-        return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term,
-            subject.LectureHoursPerWeek, subject.PracticalHoursPerWeek, subject.LabHoursPerWeek,
-            subject.LectureWeekType, subject.PracticalWeekType, subject.LabWeekType);
+        return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term);
     }
 }

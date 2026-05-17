@@ -51,6 +51,14 @@ export const routes: Routes = [
       {
         path: 'excel',
         loadComponent: () => import('./features/admin/excel/excel.component').then(m => m.ExcelComponent)
+      },
+      {
+        path: 'study-plans',
+        loadComponent: () => import('./features/admin/data-management/study-plans/study-plans.component').then(m => m.StudyPlansComponent)
+      },
+      {
+        path: 'calendar-plans',
+        loadComponent: () => import('./features/admin/data-management/calendar-plans/calendar-plans.component').then(m => m.CalendarPlansComponent)
       }
     ]
   },

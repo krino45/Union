@@ -6,7 +6,9 @@ using UniScheduler.Application.DTOs;
 using UniScheduler.Application.Features.Schedules.Commands;
 using UniScheduler.Application.Features.Schedules.Queries;
 using UniScheduler.Domain.Enums;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 
 namespace UniScheduler.Api.Controllers;
 
@@ -77,6 +79,10 @@ public class SchedulesController : ControllerBase
         CancellationToken ct)
         => Ok(await mediator.Send(new GetScheduleEntriesQuery(id, groupId, teacherId, dayOfWeek), ct));
 
+    [HttpGet("{id:guid}/plan-progress")]
+    public async Task<ActionResult<List<PlanProgressItem>>> PlanProgress(Guid id, CancellationToken ct)
+        => Ok(await mediator.Send(new GetPlanProgressQuery(id), ct));
+
     [HttpGet("{id:guid}/export/json")]
     public async Task<IActionResult> ExportJson(Guid id, CancellationToken ct)
     {
@@ -91,8 +97,13 @@ public class SchedulesController : ControllerBase
             e.DayOfWeek, e.PairNumber, e.WeekType, e.LessonType, e.IsOnline
         )).ToList();
 
-        var json = JsonSerializer.Serialize(new { scheduleId = id, entries = items },
-            new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        var opts = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+        };
+        var json = JsonSerializer.Serialize(new { scheduleId = id, entries = items }, opts);
         return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", $"schedule-{id:N}.json");
     }
 

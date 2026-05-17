@@ -13,7 +13,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { forkJoin } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
-import { Schedule, ScheduleEntry, StudentGroup, Teacher, Subject, Room } from '../../../core/models';
+import { Schedule, ScheduleEntry, StudentGroup, Teacher, Subject, Room, PlanProgressItem, StudyPlan } from '../../../core/models';
 import { RussianDayOfWeek } from '../../../core/models/enums';
 import { ScheduleGridComponent } from './schedule-grid/schedule-grid.component';
 import { AddEntryDialogComponent, AddEntryDialogData } from './add-entry-dialog.component';
@@ -127,6 +127,47 @@ interface AuditResult {
       </div>
     </mat-expansion-panel>
 
+    <!-- Plan progress panel -->
+    <mat-expansion-panel class="progress-panel" *ngIf="studyPlans.length > 0" hideToggle>
+      <mat-expansion-panel-header (click)="progressExpanded = !progressExpanded">
+        <mat-panel-title class="conflict-title">
+          <mat-icon [class.icon-ok]="unplacedCount === 0 && partialCount === 0" [class.icon-warn]="unplacedCount > 0 || partialCount > 0">
+            {{ unplacedCount === 0 && partialCount === 0 ? 'assignment_turned_in' : 'assignment_late' }}
+          </mat-icon>
+          <ng-container *ngIf="unplacedCount > 0 || partialCount > 0">
+            <span class="warn-text" *ngIf="unplacedCount > 0">{{ unplacedCount }} не размещено</span>
+            <span class="warn-text" *ngIf="partialCount > 0"> · {{ partialCount }} частично</span>
+          </ng-container>
+          <span class="ok-text" *ngIf="unplacedCount === 0 && partialCount === 0">Все дисциплины размещены</span>
+          <span class="plan-names">{{ studyPlans.length }} уч. план(а/ов): {{ planNames }}</span>
+          <mat-icon class="expand-icon">{{ progressExpanded ? 'expand_less' : 'expand_more' }}</mat-icon>
+        </mat-panel-title>
+      </mat-expansion-panel-header>
+      <div *ngIf="progressExpanded" class="progress-table-wrap">
+        <div *ngIf="planProgress.length === 0" class="no-issues">Нет дисциплин в учебных планах для этого семестра.</div>
+        <table class="progress-table" *ngIf="planProgress.length > 0">
+          <thead><tr>
+            <th>Группа</th><th>Дисциплина</th><th>Тип</th>
+            <th>Ожид. (ак.ч.)</th><th>Пар/нед. факт/план</th><th>Статус</th>
+          </tr></thead>
+          <tbody>
+            <tr *ngFor="let p of planProgress" [class.unplaced]="p.isUnplaced" [class.partial]="!p.isUnplaced && isPartial(p)">
+              <td>{{ p.groupName }}</td>
+              <td>{{ p.subjectShortName }}</td>
+              <td>{{ ltLabel(p.lessonType) }}</td>
+              <td>{{ p.expectedHours }}</td>
+              <td>{{ p.actualPairsPerWeek | number:'1.0-1' }} / {{ (p.expectedHours / 2 / p.studyWeeks) | number:'1.0-1' }}</td>
+              <td>
+                <span *ngIf="p.isUnplaced" class="badge unplaced-badge">Не размещено</span>
+                <span *ngIf="!p.isUnplaced && isPartial(p)" class="badge partial-badge">Частично</span>
+                <span *ngIf="!p.isUnplaced && !isPartial(p)" class="badge ok-badge">✓</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </mat-expansion-panel>
+
     <div *ngIf="loading" class="loading-state">
       <mat-spinner diameter="48"></mat-spinner>
     </div>
@@ -179,6 +220,18 @@ interface AuditResult {
     .ii { font-size: 15px; color: #c62828; flex-shrink: 0; margin-top: 1px; }
     .warn-ii { color: #e65100; }
     .no-issues { font-size: 13px; color: #2e7d32; padding: 4px 8px; }
+    .plan-names { font-size: 12px; color: #888; margin-left: 8px; }
+    .progress-panel { margin-bottom: 12px; border-radius: 6px !important; }
+    .progress-table-wrap { overflow-x: auto; padding: 4px 0; }
+    .progress-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .progress-table th { background: #f5f5f5; padding: 5px 8px; text-align: left; border-bottom: 2px solid #e0e0e0; }
+    .progress-table td { padding: 3px 8px; border-bottom: 1px solid #f5f5f5; }
+    .progress-table tr.unplaced td { background: #fff3e0; }
+    .progress-table tr.partial td { background: #fffde7; }
+    .badge { padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+    .unplaced-badge { background: #ffccbc; color: #bf360c; }
+    .partial-badge  { background: #fff9c4; color: #f57f17; }
+    .ok-badge       { background: #c8e6c9; color: #1b5e20; }
   `]
 })
 export class ScheduleEditorComponent implements OnInit {
@@ -194,6 +247,9 @@ export class ScheduleEditorComponent implements OnInit {
   weekFilter = 'Both';
   audit: AuditResult | null = null;
   conflictsExpanded = true;
+  planProgress: PlanProgressItem[] = [];
+  studyPlans: StudyPlan[] = [];
+  progressExpanded = true;
 
   constructor(
     private route: ActivatedRoute,
@@ -217,6 +273,7 @@ export class ScheduleEditorComponent implements OnInit {
       this.api.getSubjects(schedule.academicYear, schedule.term).subscribe(s => this.subjects = s);
       this.loadEntries();
       this.loadAudit();
+      this.loadPlanProgress();
     });
   }
 
@@ -238,6 +295,21 @@ export class ScheduleEditorComponent implements OnInit {
       this.audit = a;
       this.conflictsExpanded = a.conflicts.length > 0;
     });
+  }
+
+  loadPlanProgress(): void {
+    if (!this.schedule) return;
+    this.api.getStudyPlans(this.schedule.academicYear, this.schedule.term).subscribe(plans => {
+      this.studyPlans = plans;
+    });
+    this.api.getPlanProgress(this.schedule.id).subscribe(items => {
+      this.planProgress = items;
+      this.progressExpanded = items.some(i => i.isUnplaced || this.isPartial(i));
+    });
+  }
+
+  get planNames(): string {
+    return this.studyPlans.map(p => p.name).join(', ');
   }
 
   onFilterChange(): void { this.loadEntries(); }
@@ -352,6 +424,22 @@ export class ScheduleEditorComponent implements OnInit {
     return 'group';
   }
 
+  get unplacedCount(): number { return this.planProgress.filter(p => p.isUnplaced).length; }
+  get partialCount(): number { return this.planProgress.filter(p => !p.isUnplaced && this.isPartial(p)).length; }
+
+  isPartial(p: PlanProgressItem): boolean {
+    const expectedPerWeek = p.expectedHours / 2 / p.studyWeeks;
+    return Math.abs(p.actualPairsPerWeek - expectedPerWeek) > 0.1;
+  }
+
+  ltLabel(lt: string): string {
+    if (lt === 'Lecture') return 'Лек.';
+    if (lt === 'Practical') return 'Пр.';
+    if (lt === 'Lab') return 'Лаб.';
+    if (lt === 'Seminar') return 'Сем.';
+    return lt;
+  }
+
   warningIcon(type: string): string {
     if (type.startsWith('SanPin')) return 'health_and_safety';
     if (type === 'Window') return 'hourglass_empty';
@@ -363,6 +451,7 @@ export class ScheduleEditorComponent implements OnInit {
   private refreshAfterMutation(): void {
     this.loadEntries();
     this.loadAudit();
+    this.loadPlanProgress();
     if (this.schedule) {
       this.api.getSchedule(this.schedule.id).subscribe(s => this.schedule = s);
     }

@@ -64,6 +64,18 @@ import { AuthService } from './core/services/auth.service';
           </mat-nav-list>
           <mat-divider></mat-divider>
           <mat-nav-list>
+            <h3 matSubheader>Учебные планы</h3>
+            <a mat-list-item routerLink="/admin/calendar-plans" routerLinkActive="active">
+              <mat-icon matListItemIcon>event_note</mat-icon>
+              <span matListItemTitle>Календарные планы</span>
+            </a>
+            <a mat-list-item routerLink="/admin/study-plans" routerLinkActive="active">
+              <mat-icon matListItemIcon>assignment</mat-icon>
+              <span matListItemTitle>Учебные планы</span>
+            </a>
+          </mat-nav-list>
+          <mat-divider></mat-divider>
+          <mat-nav-list>
             <h3 matSubheader>Управление</h3>
             <a mat-list-item routerLink="/admin/reschedule-requests" routerLinkActive="active">
               <mat-icon matListItemIcon>swap_horiz</mat-icon>

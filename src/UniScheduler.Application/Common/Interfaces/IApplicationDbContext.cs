@@ -20,6 +20,11 @@ public interface IApplicationDbContext
     DbSet<RescheduleRequest> RescheduleRequests { get; }
     DbSet<AppUser> AppUsers { get; }
     DbSet<PairTimeSlot> PairTimeSlots { get; }
+    DbSet<StudyPlan> StudyPlans { get; }
+    DbSet<StudyPlanGroup> StudyPlanGroups { get; }
+    DbSet<StudyPlanEntry> StudyPlanEntries { get; }
+    DbSet<CalendarPlan> CalendarPlans { get; }
+    DbSet<CalendarWeek> CalendarWeeks { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

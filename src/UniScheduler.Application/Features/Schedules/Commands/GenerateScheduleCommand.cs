@@ -4,6 +4,7 @@ using UniScheduler.Application.Common.Exceptions;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.Common.Models;
 using UniScheduler.Application.DTOs;
+using UniScheduler.Application.Features.StudyPlans;
 using UniScheduler.Domain.Entities;
 using UniScheduler.Domain.Enums;
 
@@ -78,79 +79,47 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         if (schedule.FacultyId.HasValue && !schedule.AllowCrossFacultyLessons)
             groupsQuery = groupsQuery.Where(g => g.FacultyId == schedule.FacultyId);
         var groups = await groupsQuery.ToListAsync(ct);
+        var groupIds = groups.Select(g => g.Id).ToHashSet();
 
-        var subjects = await db.Subjects
-            .Where(s => s.AcademicYear == schedule.AcademicYear && s.Term == schedule.Term)
+        // Study plans are the authoritative source for what needs to be scheduled
+        var studyPlans = await StudyPlanQ.BaseQuery(db)
+            .Where(sp => sp.AcademicYear == schedule.AcademicYear && sp.Term == schedule.Term)
             .ToListAsync(ct);
-        var subjectIds = subjects.Select(s => s.Id).ToHashSet();
+
+        // Load teacher-subject assignments for all subjects in the plans
+        var subjectIds = studyPlans.SelectMany(sp => sp.Entries.Select(e => e.SubjectId)).ToHashSet();
         var teacherSubjects = await db.TeacherSubjects
             .Where(ts => subjectIds.Contains(ts.SubjectId))
             .ToListAsync(ct);
+
         var distances = await db.BuildingDistances.ToListAsync(ct);
         var blocks = await db.TeacherAvailabilities.ToListAsync(ct);
-
         var pairSlots = await db.PairTimeSlots.OrderBy(p => p.PairNumber).ToListAsync(ct);
         int pairsPerDay = pairSlots.Count > 0 ? pairSlots.Max(p => p.PairNumber) : 6;
         var breakMinutes = ComputeBreakMinutes(pairSlots);
 
-        var groupIds = groups.Select(g => g.Id).ToList();
         var requirements = new List<SchedulerRequirement>();
         int idx = 0;
 
-        foreach (var subject in subjects)
+        foreach (var plan in studyPlans)
         {
-            if (groupIds.Count == 0) continue;
+            int studyWeeks = StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan);
+            var planGroupIds = plan.Groups
+                .Select(g => g.StudentGroupId)
+                .Where(gid => groupIds.Contains(gid))
+                .ToList();
+            if (planGroupIds.Count == 0) continue;
 
-            // Lectures: one merged requirement per teacher, groups split evenly across teachers
-            if (subject.LectureHoursPerWeek > 0)
+            foreach (var entry in plan.Entries)
             {
-                var lectureTeachers = teacherSubjects
-                    .Where(ts => ts.SubjectId == subject.Id && ts.LessonType == LessonType.Lecture)
-                    .Select(ts => ts.TeacherId).ToList();
-                if (lectureTeachers.Count > 0)
-                {
-                    var chunks = SplitRoundRobin(groupIds, lectureTeachers.Count);
-                    for (int i = 0; i < lectureTeachers.Count; i++)
-                    {
-                        if (chunks[i].Count == 0) continue;
-                        foreach (var wt in GetWeekTypeOccurrences(subject.LectureWeekType))
-                            requirements.Add(new SchedulerRequirement(idx++, chunks[i], subject.Id, LessonType.Lecture, lectureTeachers[i], wt, false, true, false, false));
-                    }
-                }
-            }
-
-            // Practicals: each group round-robined to a practical teacher
-            if (subject.PracticalHoursPerWeek > 0)
-            {
-                var practTeachers = teacherSubjects
-                    .Where(ts => ts.SubjectId == subject.Id && ts.LessonType == LessonType.Practical)
-                    .Select(ts => ts.TeacherId).ToList();
-                if (practTeachers.Count > 0)
-                {
-                    for (int gi = 0; gi < groupIds.Count; gi++)
-                    {
-                        var teacherId = practTeachers[gi % practTeachers.Count];
-                        foreach (var wt in GetWeekTypeOccurrences(subject.PracticalWeekType))
-                            requirements.Add(new SchedulerRequirement(idx++, [groupIds[gi]], subject.Id, LessonType.Practical, teacherId, wt, false, false, false, false));
-                    }
-                }
-            }
-
-            // Labs: each group round-robined to a lab teacher
-            if (subject.LabHoursPerWeek > 0)
-            {
-                var labTeachers = teacherSubjects
-                    .Where(ts => ts.SubjectId == subject.Id && ts.LessonType == LessonType.Lab)
-                    .Select(ts => ts.TeacherId).ToList();
-                if (labTeachers.Count > 0)
-                {
-                    for (int gi = 0; gi < groupIds.Count; gi++)
-                    {
-                        var teacherId = labTeachers[gi % labTeachers.Count];
-                        foreach (var wt in GetWeekTypeOccurrences(subject.LabWeekType))
-                            requirements.Add(new SchedulerRequirement(idx++, [groupIds[gi]], subject.Id, LessonType.Lab, teacherId, wt, false, false, false, true));
-                    }
-                }
+                AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lecture,
+                    entry.LectureHours, studyWeeks, planGroupIds, teacherSubjects, merged: true, isLab: false);
+                AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Practical,
+                    entry.PracticalHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: false);
+                AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lab,
+                    entry.LabHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: true);
+                AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Seminar,
+                    entry.SeminarHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: false);
             }
         }
 
@@ -169,9 +138,56 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         );
     }
 
-    /// <summary>
-    /// Distributes items across n buckets round-robin: item[i] → bucket[i % n].
-    /// </summary>
+    // Creates requirements for one lesson type based on total semester hours
+    private static void AddRequirements(
+        List<SchedulerRequirement> requirements, ref int idx,
+        Guid subjectId, LessonType lt, double totalHours, int studyWeeks,
+        List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
+        bool merged, bool isLab)
+    {
+        if (totalHours <= 0) return;
+        var teachers = teacherSubjects
+            .Where(ts => ts.SubjectId == subjectId && ts.LessonType == lt)
+            .Select(ts => ts.TeacherId).ToList();
+        if (teachers.Count == 0) return;
+
+        foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
+        {
+            if (merged)
+            {
+                // Lectures: groups split across available teachers
+                var chunks = SplitRoundRobin(planGroupIds, teachers.Count);
+                for (int i = 0; i < teachers.Count; i++)
+                {
+                    if (chunks[i].Count == 0) continue;
+                    requirements.Add(new SchedulerRequirement(idx++, chunks[i], subjectId, lt, teachers[i], wt, false, lt == LessonType.Lecture, false, isLab));
+                }
+            }
+            else
+            {
+                // Per-group: each group assigned round-robin to a teacher
+                for (int gi = 0; gi < planGroupIds.Count; gi++)
+                {
+                    var teacherId = teachers[gi % teachers.Count];
+                    requirements.Add(new SchedulerRequirement(idx++, [planGroupIds[gi]], subjectId, lt, teacherId, wt, false, false, false, isLab));
+                }
+            }
+        }
+    }
+
+    // Converts total semester hours to a list of WeekType occurrences per week
+    private static List<WeekType> HoursToWeekTypes(double totalHours, int studyWeeks)
+    {
+        if (studyWeeks <= 0 || totalHours <= 0) return [];
+        double pairsPerWeek = totalHours / 2.0 / studyWeeks;
+        var result = new List<WeekType>();
+        int whole = (int)pairsPerWeek;
+        for (int i = 0; i < whole; i++) result.Add(WeekType.Both);
+        double frac = pairsPerWeek - whole;
+        if (frac >= 0.25) result.Add(WeekType.Odd);
+        return result;
+    }
+
     private static List<List<Guid>> SplitRoundRobin(List<Guid> items, int buckets)
     {
         var result = Enumerable.Range(0, buckets).Select(_ => new List<Guid>()).ToList();
@@ -180,10 +196,6 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         return result;
     }
 
-    /// <summary>
-    /// Computes break duration (minutes) between consecutive pairs from the seeded timetable.
-    /// Result[i] = break between pair i+1 and pair i+2 (0-indexed gaps).
-    /// </summary>
     private static List<int> ComputeBreakMinutes(List<PairTimeSlot> slots)
     {
         var ordered = slots.OrderBy(s => s.PairNumber).ToList();
@@ -195,11 +207,4 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         }
         return breaks;
     }
-
-    private static IEnumerable<WeekType> GetWeekTypeOccurrences(WeekType weekType) => weekType switch
-    {
-        WeekType.Odd => new[] { WeekType.Odd },
-        WeekType.Even => new[] { WeekType.Even },
-        _ => new[] { WeekType.Both }
-    };
 }

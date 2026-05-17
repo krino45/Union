@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using UniScheduler.Application.Common.Exceptions;
 using UniScheduler.Application.Common.Interfaces;
+using UniScheduler.Application.Features.StudyPlans;
 using UniScheduler.Domain.Entities;
 using UniScheduler.Domain.Enums;
 
@@ -20,9 +21,7 @@ public record AuditIssueDto(string Type, string Description);
 
 public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuery, ScheduleAuditDto>
 {
-    // СанПиН 1.2.3685-21: max 8 академических часов = 4 пары in a day for higher education
-    private const int SanPinMaxPairsPerDay = 4;
-    // Max 36 аудиторных ак.ч./week = 18 пар
+    private const int SanPinMaxPairsPerDay  = 4;
     private const int SanPinMaxPairsPerWeek = 18;
 
     private readonly IApplicationDbContext db;
@@ -40,10 +39,16 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             .Where(e => e.ScheduleId == request.ScheduleId)
             .ToListAsync(ct);
 
-        // Load subjects and groups for this schedule to do hours & SanPiN checks
-        var subjectsForSchedule = await db.Subjects
-            .Where(s => s.AcademicYear == schedule.AcademicYear && s.Term == schedule.Term)
+        // ── Study plans ───────────────────────────────────────────────────────
+        var studyPlans = await StudyPlanQ.BaseQuery(db)
+            .Where(sp => sp.AcademicYear == schedule.AcademicYear && sp.Term == schedule.Term)
             .ToListAsync(ct);
+
+        // group → its plan (take first if somehow in multiple plans for same semester)
+        var planByGroup = studyPlans
+            .SelectMany(sp => sp.Groups.Select(g => (g.StudentGroupId, sp)))
+            .GroupBy(x => x.StudentGroupId)
+            .ToDictionary(g => g.Key, g => g.First().sp);
 
         var groupsQuery = db.StudentGroups.AsQueryable();
         if (schedule.FacultyId.HasValue && !schedule.AllowCrossFacultyLessons)
@@ -58,8 +63,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         for (int i = 0; i < entries.Count; i++)
         for (int j = i + 1; j < entries.Count; j++)
         {
-            var a = entries[i];
-            var b = entries[j];
+            var a = entries[i]; var b = entries[j];
             if (!SlotsOverlap(a, b)) continue;
 
             if (!a.IsOnline && !b.IsOnline && a.RoomId.HasValue && a.RoomId == b.RoomId)
@@ -77,26 +81,31 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
                     $"Группы пересекаются: {DayLabel(a.DayOfWeek)} пара {a.PairNumber}");
         }
 
-        // Build a fast lookup: groupId → list of entries
+        // Build group → entries lookup
         var entriesByGroup = new Dictionary<Guid, List<ScheduleEntry>>();
         foreach (var e in entries)
         foreach (var sg in e.StudentGroups)
         {
             if (!entriesByGroup.TryGetValue(sg.StudentGroupId, out var list))
-                entriesByGroup[sg.StudentGroupId] = list = new List<ScheduleEntry>();
+                entriesByGroup[sg.StudentGroupId] = list = new();
             list.Add(e);
         }
 
         foreach (var group in groups)
         {
-            var groupEntries = entriesByGroup.TryGetValue(group.Id, out var ge) ? ge : new List<ScheduleEntry>();
+            var groupEntries = entriesByGroup.TryGetValue(group.Id, out var ge) ? ge : new();
 
-            // ── Hours check ───────────────────────────────────────────────────
-            foreach (var subject in subjectsForSchedule)
+            // ── Hours check: study plan only ──────────────────────────────────
+            if (planByGroup.TryGetValue(group.Id, out var plan))
             {
-                CheckHours(warnings, seen, group, subject, groupEntries, LessonType.Lecture,   subject.LectureHoursPerWeek);
-                CheckHours(warnings, seen, group, subject, groupEntries, LessonType.Practical, subject.PracticalHoursPerWeek);
-                CheckHours(warnings, seen, group, subject, groupEntries, LessonType.Lab,       subject.LabHoursPerWeek);
+                int studyWeeks = StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan);
+                foreach (var spe in plan.Entries)
+                {
+                    CheckHours(warnings, seen, group, spe.Subject, groupEntries, LessonType.Lecture,   spe.LectureHours,   studyWeeks);
+                    CheckHours(warnings, seen, group, spe.Subject, groupEntries, LessonType.Practical, spe.PracticalHours, studyWeeks);
+                    CheckHours(warnings, seen, group, spe.Subject, groupEntries, LessonType.Lab,       spe.LabHours,       studyWeeks);
+                    CheckHours(warnings, seen, group, spe.Subject, groupEntries, LessonType.Seminar,   spe.SeminarHours,   studyWeeks);
+                }
             }
 
             // ── СанПиН: daily load ────────────────────────────────────────────
@@ -119,13 +128,13 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
                     $"СанПиН: {group.Name} — {maxWeek} пар/нед. (макс. {SanPinMaxPairsPerWeek}, т.е. 36 ак.ч.)");
 
             // ── СанПиН: no day off ────────────────────────────────────────────
-            var oddDays  = groupEntries.Where(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Odd).Select(e => e.DayOfWeek).Distinct().Count();
+            var oddDays  = groupEntries.Where(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Odd ).Select(e => e.DayOfWeek).Distinct().Count();
             var evenDays = groupEntries.Where(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Even).Select(e => e.DayOfWeek).Distinct().Count();
             if (Math.Max(oddDays, evenDays) >= 6)
                 AddUnique(warnings, seen, "SanPinNoDayOff",
                     $"СанПиН: {group.Name} — занятия все 6 дней, нет выходного");
 
-            // ── Окна (gaps between first and last class) ──────────────────────
+            // ── Windows (gaps) ────────────────────────────────────────────────
             foreach (RussianDayOfWeek day in Enum.GetValues<RussianDayOfWeek>())
             {
                 CheckWindows(warnings, seen, group, groupEntries, day, WeekType.Odd);
@@ -136,23 +145,30 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         return new ScheduleAuditDto(conflicts, warnings, schedule.GenerationNotes, entries.Count);
     }
 
+    // ── Validation helpers ────────────────────────────────────────────────────
+
     private static void CheckHours(
         List<AuditIssueDto> warnings, HashSet<string> seen,
         StudentGroup group, Subject subject, List<ScheduleEntry> groupEntries,
-        LessonType lt, double expectedHoursPerWeek)
+        LessonType lt, double expectedTotalHours, int studyWeeks)
     {
-        if (expectedHoursPerWeek <= 0) return;
+        if (expectedTotalHours <= 0) return;
 
-        double actual = groupEntries
+        // Odd/Even entries each contribute 0.5 pair/week on average; Both = 1.0
+        double actualPairsPerWeek = groupEntries
             .Where(e => e.SubjectId == subject.Id && e.LessonType == lt)
-            .Sum(e => e.WeekType == WeekType.Both ? 2.0 : 1.0);
+            .Sum(e => e.WeekType == WeekType.Both ? 1.0 : 0.5);
 
-        if (actual < expectedHoursPerWeek)
+        // 1 pair = 2 ак.ч.  ×  studyWeeks = total semester hours
+        double actualTotal = actualPairsPerWeek * 2.0 * studyWeeks;
+        const double tolerance = 2.0;
+
+        if (actualTotal < expectedTotalHours - tolerance)
             AddUnique(warnings, seen, "HoursUnderScheduled",
-                $"{group.Name}: {subject.ShortName} ({LtLabel(lt)}) — {actual} ак.ч./нед. вместо {expectedHoursPerWeek}");
-        else if (actual > expectedHoursPerWeek)
+                $"{group.Name}: {subject.ShortName} ({LtLabel(lt)}) — {actualTotal:F0} ак.ч. из {expectedTotalHours} (за {studyWeeks} нед.)");
+        else if (actualTotal > expectedTotalHours + tolerance)
             AddUnique(warnings, seen, "HoursOverScheduled",
-                $"{group.Name}: {subject.ShortName} ({LtLabel(lt)}) — {actual} ак.ч./нед. вместо {expectedHoursPerWeek}");
+                $"{group.Name}: {subject.ShortName} ({LtLabel(lt)}) — {actualTotal:F0} ак.ч. вместо {expectedTotalHours} (за {studyWeeks} нед.)");
     }
 
     private static void CheckWindows(
@@ -162,18 +178,14 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
     {
         var pairs = groupEntries
             .Where(e => e.DayOfWeek == day && (e.WeekType == WeekType.Both || e.WeekType == weekVariant))
-            .Select(e => e.PairNumber)
-            .OrderBy(p => p)
-            .ToList();
-
+            .Select(e => e.PairNumber).OrderBy(p => p).ToList();
         if (pairs.Count < 2) return;
-        int span = pairs[^1] - pairs[0] + 1;
-        int windows = span - pairs.Count;
+        int windows = pairs[^1] - pairs[0] + 1 - pairs.Count;
         if (windows > 0)
         {
-            string wkLabel = weekVariant == WeekType.Odd ? "нечётная" : "чётная";
+            string wk = weekVariant == WeekType.Odd ? "нечётная" : "чётная";
             AddUnique(warnings, seen, "Window",
-                $"Окно: {group.Name} — {DayLabel(day)} ({wkLabel}): {windows} пустых пар между {pairs[0]} и {pairs[^1]}");
+                $"Окно: {group.Name} — {DayLabel(day)} ({wk}): {windows} пустых пар между {pairs[0]} и {pairs[^1]}");
         }
     }
 

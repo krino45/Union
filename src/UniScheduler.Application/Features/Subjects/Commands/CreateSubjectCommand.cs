@@ -8,9 +8,7 @@ namespace UniScheduler.Application.Features.Subjects.Commands;
 
 public record CreateSubjectCommand(
     string Name, string ShortName,
-    int AcademicYear, Term Term,
-    double LectureHoursPerWeek, double PracticalHoursPerWeek, double LabHoursPerWeek,
-    WeekType LectureWeekType, WeekType PracticalWeekType, WeekType LabWeekType) : IRequest<SubjectDto>;
+    int AcademicYear, Term Term) : IRequest<SubjectDto>;
 
 public class CreateSubjectCommandHandler : IRequestHandler<CreateSubjectCommand, SubjectDto>
 {
@@ -23,18 +21,10 @@ public class CreateSubjectCommandHandler : IRequestHandler<CreateSubjectCommand,
         var subject = new Subject
         {
             Name = r.Name, ShortName = r.ShortName,
-            AcademicYear = r.AcademicYear, Term = r.Term,
-            LectureHoursPerWeek = r.LectureHoursPerWeek,
-            PracticalHoursPerWeek = r.PracticalHoursPerWeek,
-            LabHoursPerWeek = r.LabHoursPerWeek,
-            LectureWeekType = r.LectureWeekType,
-            PracticalWeekType = r.PracticalWeekType,
-            LabWeekType = r.LabWeekType
+            AcademicYear = r.AcademicYear, Term = r.Term
         };
         db.Subjects.Add(subject);
         await db.SaveChangesAsync(cancellationToken);
-        return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term,
-            subject.LectureHoursPerWeek, subject.PracticalHoursPerWeek, subject.LabHoursPerWeek,
-            subject.LectureWeekType, subject.PracticalWeekType, subject.LabWeekType);
+        return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term);
     }
 }

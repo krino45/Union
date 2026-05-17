@@ -12,7 +12,8 @@ import {
   Schedule, CreateScheduleDto, GenerationJobStatus, GenerateScheduleRequest,
   ScheduleEntry, MoveEntryDto, ConflictInfo, CreateScheduleEntryDto, UpdateScheduleEntryDto,
   TeacherAvailability, CreateTeacherAvailabilityDto, UpdateTeacherAvailabilityDto,
-  RescheduleRequest, CreateRescheduleRequestDto, ResolveRescheduleDto
+  RescheduleRequest, CreateRescheduleRequestDto, ResolveRescheduleDto,
+  StudyPlan, CalendarPlan, UpsertStudyPlanDto, UpsertCalendarPlanDto, PlanProgressItem
 } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -227,6 +228,51 @@ export class ApiService {
   }
   rejectRescheduleRequest(id: string, dto: ResolveRescheduleDto): Observable<void> {
     return this.http.put<void>(`${this.base}/reschedule-requests/${id}/reject`, dto);
+  }
+
+  // ── Study Plans ───────────────────────────────────────────────────────────
+  getStudyPlans(academicYear?: number, term?: string): Observable<StudyPlan[]> {
+    let params = new HttpParams();
+    if (academicYear != null) params = params.set('academicYear', academicYear.toString());
+    if (term) params = params.set('term', term);
+    return this.http.get<StudyPlan[]>(`${this.base}/study-plans`, { params });
+  }
+  getStudyPlan(id: string): Observable<StudyPlan> {
+    return this.http.get<StudyPlan>(`${this.base}/study-plans/${id}`);
+  }
+  createStudyPlan(dto: UpsertStudyPlanDto): Observable<StudyPlan> {
+    return this.http.post<StudyPlan>(`${this.base}/study-plans`, dto);
+  }
+  updateStudyPlan(id: string, dto: UpsertStudyPlanDto): Observable<StudyPlan> {
+    return this.http.put<StudyPlan>(`${this.base}/study-plans/${id}`, dto);
+  }
+  deleteStudyPlan(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/study-plans/${id}`);
+  }
+
+  // ── Calendar Plans ────────────────────────────────────────────────────────
+  getCalendarPlans(academicYear?: number, term?: string): Observable<CalendarPlan[]> {
+    let params = new HttpParams();
+    if (academicYear != null) params = params.set('academicYear', academicYear.toString());
+    if (term) params = params.set('term', term);
+    return this.http.get<CalendarPlan[]>(`${this.base}/calendar-plans`, { params });
+  }
+  getCalendarPlan(id: string): Observable<CalendarPlan> {
+    return this.http.get<CalendarPlan>(`${this.base}/calendar-plans/${id}`);
+  }
+  createCalendarPlan(dto: UpsertCalendarPlanDto): Observable<CalendarPlan> {
+    return this.http.post<CalendarPlan>(`${this.base}/calendar-plans`, dto);
+  }
+  updateCalendarPlan(id: string, dto: UpsertCalendarPlanDto): Observable<CalendarPlan> {
+    return this.http.put<CalendarPlan>(`${this.base}/calendar-plans/${id}`, dto);
+  }
+  deleteCalendarPlan(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/calendar-plans/${id}`);
+  }
+
+  // ── Plan progress ─────────────────────────────────────────────────────────
+  getPlanProgress(scheduleId: string): Observable<PlanProgressItem[]> {
+    return this.http.get<PlanProgressItem[]>(`${this.base}/schedules/${scheduleId}/plan-progress`);
   }
 
   // ── JSON Export / Import ──────────────────────────────────────────────────
