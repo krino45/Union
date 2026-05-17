@@ -6,6 +6,7 @@ using UniScheduler.Application.DTOs;
 using UniScheduler.Application.Features.Schedules.Commands;
 using UniScheduler.Application.Features.Schedules.Queries;
 using UniScheduler.Domain.Enums;
+using System.Text.Json;
 
 namespace UniScheduler.Api.Controllers;
 
@@ -75,4 +76,35 @@ public class SchedulesController : ControllerBase
         Guid id, [FromQuery] Guid? groupId, [FromQuery] Guid? teacherId, [FromQuery] RussianDayOfWeek? dayOfWeek,
         CancellationToken ct)
         => Ok(await mediator.Send(new GetScheduleEntriesQuery(id, groupId, teacherId, dayOfWeek), ct));
+
+    [HttpGet("{id:guid}/export/json")]
+    public async Task<IActionResult> ExportJson(Guid id, CancellationToken ct)
+    {
+        var entries = await mediator.Send(new GetScheduleEntriesQuery(id), ct);
+        var items = entries.Select(e => new JsonEntryImport(
+            e.SubjectShortName ?? e.SubjectName,
+            e.TeacherDisplayName.Split(' ').FirstOrDefault() ?? "",
+            e.TeacherDisplayName.Split(' ').Skip(1).FirstOrDefault() ?? "",
+            e.StudentGroups.Select(g => g.Name).ToList(),
+            e.BuildingShortCode,
+            e.RoomNumber,
+            e.DayOfWeek, e.PairNumber, e.WeekType, e.LessonType, e.IsOnline
+        )).ToList();
+
+        var json = JsonSerializer.Serialize(new { scheduleId = id, entries = items },
+            new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", $"schedule-{id:N}.json");
+    }
+
+    [HttpPost("{id:guid}/import/json")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<ActionResult<ImportFromJsonResult>> ImportJson(
+        Guid id, [FromBody] ImportFromJsonBody body, CancellationToken ct)
+    {
+        var cmd = new ImportFromJsonCommand(id, body.Replace, body.Entries);
+        var result = await mediator.Send(cmd, ct);
+        return Ok(result);
+    }
 }
+
+public record ImportFromJsonBody(bool Replace, List<JsonEntryImport> Entries);

@@ -74,9 +74,18 @@ interface AuditResult {
           <mat-button-toggle value="Odd">Нечётная</mat-button-toggle>
           <mat-button-toggle value="Even">Чётная</mat-button-toggle>
         </mat-button-toggle-group>
-        <button mat-stroked-button color="primary" (click)="publishSchedule()" *ngIf="schedule?.status === 'Draft'">
-          <mat-icon>publish</mat-icon> Опубликовать
-        </button>
+        <div class="action-buttons">
+          <button mat-stroked-button (click)="exportJson()" [disabled]="!schedule" title="Скачать расписание как JSON">
+            <mat-icon>download</mat-icon> JSON
+          </button>
+          <button mat-stroked-button (click)="jsonFileInput.click()" [disabled]="!schedule" title="Загрузить расписание из JSON">
+            <mat-icon>upload</mat-icon> JSON
+          </button>
+          <input #jsonFileInput type="file" accept=".json" style="display:none" (change)="importJson($event)">
+          <button mat-stroked-button color="primary" (click)="publishSchedule()" *ngIf="schedule?.status === 'Draft'">
+            <mat-icon>publish</mat-icon> Опубликовать
+          </button>
+        </div>
       </div>
     </div>
 
@@ -151,6 +160,7 @@ interface AuditResult {
     .header-filters { display: flex; gap: 8px; }
     .filter-field { min-width: 160px; }
     .week-toggle { height: 40px; }
+    .action-buttons { display: flex; gap: 6px; align-items: center; }
     .loading-state { display: flex; justify-content: center; padding: 64px; }
     .audit-panel { margin-bottom: 12px; border-radius: 6px !important; }
     .conflict-title { display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; }
@@ -288,6 +298,47 @@ export class ScheduleEditorComponent implements OnInit {
       },
       error: (e) => this.snackBar.open(e.error?.title || 'Ошибка публикации', 'OK', { duration: 4000 })
     });
+  }
+
+  exportJson(): void {
+    if (!this.schedule) return;
+    this.api.exportJson(this.schedule.id).subscribe(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `schedule-${this.schedule!.academicYear}-${this.schedule!.term}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  importJson(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file || !this.schedule) return;
+    (event.target as HTMLInputElement).value = '';
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result as string);
+        const entries = parsed.entries ?? parsed;
+        if (!Array.isArray(entries)) throw new Error('Ожидается массив entries');
+
+        const replace = confirm('Заменить все текущие занятия? Нажмите ОК для замены, Отмена — для добавления.');
+        this.api.importJson(this.schedule!.id, entries, replace).subscribe({
+          next: (r) => {
+            const msg = `Импортировано: ${r.committed}` + (r.errors.length ? `; ошибок: ${r.errors.length}` : '');
+            this.snackBar.open(msg, 'OK', { duration: r.errors.length ? 6000 : 3000 });
+            if (r.errors.length) console.warn('Import errors:', r.errors);
+            this.refreshAfterMutation();
+          },
+          error: (e) => this.snackBar.open(e.error?.title || 'Ошибка импорта', 'OK', { duration: 4000 })
+        });
+      } catch (e: any) {
+        this.snackBar.open('Неверный формат JSON: ' + e.message, 'OK', { duration: 5000 });
+      }
+    };
+    reader.readAsText(file);
   }
 
   parseScore(notes: string): string {

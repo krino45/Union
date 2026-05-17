@@ -229,6 +229,17 @@ export class ApiService {
     return this.http.put<void>(`${this.base}/reschedule-requests/${id}/reject`, dto);
   }
 
+  // ── JSON Export / Import ──────────────────────────────────────────────────
+  exportJson(scheduleId: string): Observable<Blob> {
+    return this.http.get(`${this.base}/schedules/${scheduleId}/export/json`, { responseType: 'blob' });
+  }
+  importJson(scheduleId: string, entries: any[], replace: boolean): Observable<{ committed: number; errors: string[] }> {
+    return this.http.post<{ committed: number; errors: string[] }>(
+      `${this.base}/schedules/${scheduleId}/import/json`,
+      { replace, entries }
+    );
+  }
+
   // ── Excel ─────────────────────────────────────────────────────────────────
   exportExcel(scheduleId: string, groupId?: string, teacherId?: string): Observable<Blob> {
     let params = new HttpParams();
