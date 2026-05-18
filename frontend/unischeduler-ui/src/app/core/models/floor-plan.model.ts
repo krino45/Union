@@ -1,9 +1,9 @@
 export enum FloorPlanNodeType {
-  Room = 0,
-  Staircase = 1,
-  Elevator = 2,
-  Entrance = 3,
-  Corridor = 4
+  Room      = 'Room',
+  Staircase = 'Staircase',
+  Elevator  = 'Elevator',
+  Entrance  = 'Entrance',
+  Corridor  = 'Corridor',
 }
 
 export interface FloorPlanNode {

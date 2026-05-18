@@ -13,7 +13,6 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
 import { Subject, of, Observable } from 'rxjs';
 import { ApiService } from '../../../../core/services/api.service';
@@ -258,9 +257,6 @@ export class BuildingsComponent implements OnInit {
   }
 }
 
-interface NominatimResult {
-  display_name: string;
-}
 
 @Component({
   selector: 'app-building-dialog',
@@ -337,7 +333,7 @@ export class BuildingDialogComponent implements OnDestroy {
     private dialogRef: MatDialogRef<BuildingDialogComponent>,
     @Inject(MAT_DIALOG_DATA) public data: { building: Building | null; city: string },
     private fb: FormBuilder,
-    private http: HttpClient
+    private api: ApiService
   ) {
     const b = data.building;
     this.cityPrefix = data.city ? data.city + ', ' : '';
@@ -361,15 +357,8 @@ export class BuildingDialogComponent implements OnDestroy {
   }
 
   private searchAddress(query: string): Observable<string[]> {
-    const city = this.data.city ? this.data.city + ' ' : '';
-    const q = encodeURIComponent(city + query);
-    const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=5&countrycodes=ru&addressdetails=0`;
-    return this.http.get<NominatimResult[]>(url, {
-      headers: { 'Accept-Language': 'ru' }
-    }).pipe(
-      catchError(() => of([] as NominatimResult[])),
-      switchMap(results => of(results.map(r => r.display_name)))
-    );
+    const text = (this.data.city ? this.data.city + ', ' : '') + query;
+    return this.api.suggestAddress(text).pipe(catchError(() => of([])));
   }
 
   submit(): void {

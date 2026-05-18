@@ -53,7 +53,10 @@ builder.Services.AddSingleton<GenerationJobQueue>();
 builder.Services.AddSingleton<IGenerationJobQueue>(sp => sp.GetRequiredService<GenerationJobQueue>());
 builder.Services.AddHostedService<GenerationBackgroundService>();
 
-//  Controllers + Swagger 
+//  HTTP client (used for external API proxying)
+builder.Services.AddHttpClient();
+
+//  Controllers + Swagger
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();

@@ -39,6 +39,9 @@ export class ApiService {
   deleteBuilding(id: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/buildings/${id}`);
   }
+  suggestAddress(text: string): Observable<string[]> {
+    return this.http.get<string[]>(`${this.base}/suggest`, { params: { text } });
+  }
   getBuildingDistances(): Observable<BuildingDistance[]> {
     return this.http.get<BuildingDistance[]>(`${this.base}/buildings/distances`);
   }
