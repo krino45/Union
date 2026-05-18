@@ -2,7 +2,8 @@ export interface Building {
   id: string;
   shortCode: string;
   address: string;
-  stairsDistancePerFloor: number;
+  numberOfFloors: number;
+  numberOfBasementFloors: number;
 }
 
 export interface BuildingDistance {
@@ -16,13 +17,15 @@ export interface BuildingDistance {
 export interface CreateBuildingDto {
   shortCode: string;
   address: string;
-  stairsDistancePerFloor: number;
+  numberOfFloors: number;
+  numberOfBasementFloors: number;
 }
 
 export interface UpdateBuildingDto {
   shortCode: string;
   address: string;
-  stairsDistancePerFloor: number;
+  numberOfFloors: number;
+  numberOfBasementFloors: number;
 }
 
 export interface UpsertDistanceDto {

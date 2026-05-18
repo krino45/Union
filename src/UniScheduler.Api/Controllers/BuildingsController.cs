@@ -28,7 +28,7 @@ public class BuildingsController : ControllerBase
 
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<BuildingDto>> Update(Guid id, [FromBody] UpdateBuildingRequest req, CancellationToken ct)
-        => Ok(await _mediator.Send(new UpdateBuildingCommand(id, req.ShortCode, req.Address, req.StairsDistancePerFloor), ct));
+        => Ok(await _mediator.Send(new UpdateBuildingCommand(id, req.ShortCode, req.Address, req.NumberOfFloors, req.NumberOfBasementFloors), ct));
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
@@ -47,6 +47,17 @@ public class BuildingsController : ControllerBase
         await _mediator.Send(new SetBuildingDistancesCommand(distances), ct);
         return NoContent();
     }
+
+    [HttpGet("{id:guid}/floorplan")]
+    public async Task<ActionResult<FloorPlanDto>> GetFloorPlan(Guid id, CancellationToken ct)
+        => Ok(await _mediator.Send(new GetFloorPlanQuery(id), ct));
+
+    [HttpPut("{id:guid}/floorplan")]
+    public async Task<IActionResult> SaveFloorPlan(Guid id, [FromBody] SaveFloorPlanRequest req, CancellationToken ct)
+    {
+        await _mediator.Send(new SaveFloorPlanCommand(id, req), ct);
+        return NoContent();
+    }
 }
 
-public record UpdateBuildingRequest(string ShortCode, string Address, int StairsDistancePerFloor = 20);
+public record UpdateBuildingRequest(string ShortCode, string Address, int NumberOfFloors = 5, int NumberOfBasementFloors = 0);

@@ -10,6 +10,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
     public DbSet<Building> Buildings => Set<Building>();
     public DbSet<BuildingDistance> BuildingDistances => Set<BuildingDistance>();
+    public DbSet<FloorPlanNode> FloorPlanNodes => Set<FloorPlanNode>();
+    public DbSet<FloorPlanEdge> FloorPlanEdges => Set<FloorPlanEdge>();
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<Faculty> Faculties => Set<Faculty>();
     public DbSet<Teacher> Teachers => Set<Teacher>();

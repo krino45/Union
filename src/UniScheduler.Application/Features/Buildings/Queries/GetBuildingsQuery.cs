@@ -15,6 +15,6 @@ public class GetBuildingsQueryHandler : IRequestHandler<GetBuildingsQuery, List<
     public async Task<List<BuildingDto>> Handle(GetBuildingsQuery request, CancellationToken cancellationToken)
         => await _db.Buildings
             .OrderBy(b => b.ShortCode)
-            .Select(b => new BuildingDto(b.Id, b.ShortCode, b.Address, b.StairsDistancePerFloor))
+            .Select(b => new BuildingDto(b.Id, b.ShortCode, b.Address, b.NumberOfFloors, b.NumberOfBasementFloors))
             .ToListAsync(cancellationToken);
 }

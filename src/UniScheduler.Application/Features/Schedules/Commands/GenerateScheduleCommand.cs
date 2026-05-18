@@ -93,6 +93,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .ToListAsync(ct);
 
         var distances = await db.BuildingDistances.ToListAsync(ct);
+        var floorPlanNodes = await db.FloorPlanNodes.ToListAsync(ct);
+        var floorPlanEdges = await db.FloorPlanEdges.ToListAsync(ct);
         var blocks = await db.TeacherAvailabilities.ToListAsync(ct);
         var pairSlots = await db.PairTimeSlots.OrderBy(p => p.PairNumber).ToListAsync(ct);
         int pairsPerDay = pairSlots.Count > 0 ? pairSlots.Max(p => p.PairNumber) : 6;
@@ -154,10 +156,12 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             }
         }
 
+        var roomDistances = ComputeRoomDistances(floorPlanNodes, floorPlanEdges);
+
         return new SchedulerInput(
             schedule.Id,
             rooms.Select(r => new SchedulerRoom(r.Id, r.BuildingId, r.RoomType, r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
-                r.Floor, r.DistanceFromStairsMeters, r.Building.StairsDistancePerFloor, r.AllowedLessonTypes)).ToList(),
+                r.Floor, r.AllowedLessonTypes)).ToList(),
             teachers.Select(t => new SchedulerTeacher(t.Id)).ToList(),
             groups.Select(g => new SchedulerGroup(g.Id, g.StudentCount)).ToList(),
             requirements,
@@ -165,7 +169,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             blocks.Select(b => new SchedulerBlock(b.TeacherId, b.DayOfWeek, b.PairNumber, b.WeekType)).ToList(),
             PairsPerDay: pairsPerDay,
             BreakMinutesBetweenPairs: breakMinutes,
-            SolverTimeoutSeconds: timeout
+            SolverTimeoutSeconds: timeout,
+            RoomDistances: roomDistances
         );
     }
 
@@ -237,5 +242,61 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             breaks.Add(Math.Max(0, gap));
         }
         return breaks;
+    }
+
+    private static IReadOnlyList<SchedulerRoomDistance> ComputeRoomDistances(
+        IEnumerable<FloorPlanNode> nodes, IEnumerable<FloorPlanEdge> edges)
+    {
+        var nodeList = nodes.ToList();
+        var edgeList = edges.ToList();
+        if (nodeList.Count == 0) return [];
+
+        var adj = nodeList.ToDictionary(n => n.Id, _ => new List<(Guid, int)>());
+        foreach (var e in edgeList)
+        {
+            if (adj.ContainsKey(e.FromNodeId) && adj.ContainsKey(e.ToNodeId))
+            {
+                adj[e.FromNodeId].Add((e.ToNodeId, e.DistanceMeters));
+                adj[e.ToNodeId].Add((e.FromNodeId, e.DistanceMeters));
+            }
+        }
+
+        var roomNodes = nodeList
+            .Where(n => n.NodeType == Domain.Enums.FloorPlanNodeType.Room && n.RoomId.HasValue)
+            .ToList();
+
+        var result = new List<SchedulerRoomDistance>();
+        var allIds = nodeList.Select(n => n.Id).ToArray();
+
+        foreach (var src in roomNodes)
+        {
+            var dist = Dijkstra(src.Id, adj, allIds);
+            foreach (var tgt in roomNodes)
+            {
+                if (tgt.Id == src.Id) continue;
+                if (dist.TryGetValue(tgt.Id, out int d) && d < int.MaxValue / 2)
+                    result.Add(new SchedulerRoomDistance(src.RoomId!.Value, tgt.RoomId!.Value, d));
+            }
+        }
+        return result;
+    }
+
+    private static Dictionary<Guid, int> Dijkstra(Guid source, Dictionary<Guid, List<(Guid, int)>> adj, Guid[] allIds)
+    {
+        var dist = allIds.ToDictionary(id => id, _ => int.MaxValue);
+        dist[source] = 0;
+        var pq = new PriorityQueue<Guid, int>();
+        pq.Enqueue(source, 0);
+
+        while (pq.TryDequeue(out var u, out int d))
+        {
+            if (d > dist[u]) continue;
+            foreach (var (v, w) in adj[u])
+            {
+                int nd = dist[u] + w;
+                if (nd < dist[v]) { dist[v] = nd; pq.Enqueue(v, nd); }
+            }
+        }
+        return dist;
     }
 }

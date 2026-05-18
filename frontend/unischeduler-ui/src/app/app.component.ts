@@ -123,6 +123,11 @@ import { AuthService } from './core/services/auth.service';
         <mat-toolbar color="primary" *ngIf="auth.isAuthenticated">
           <span>UniScheduler</span>
           <span class="spacer"></span>
+          <button mat-button routerLink="/admin/floor-plan" routerLinkActive="active-header-link"
+                  *ngIf="auth.isAdmin" class="header-floorplan-btn">
+            <mat-icon>map</mat-icon>
+            Редактор планировок
+          </button>
           <span class="role-badge">{{ auth.isAdmin ? 'Администратор' : 'Преподаватель' }}</span>
         </mat-toolbar>
         <div class="content">
@@ -143,6 +148,8 @@ import { AuthService } from './core/services/auth.service';
     .logout-btn { width: 100%; }
     .spacer { flex: 1; }
     .role-badge { font-size: 13px; opacity: 0.85; }
+    .header-floorplan-btn { color: #fff; margin-right: 12px; }
+    .header-floorplan-btn.active-header-link { background: rgba(255,255,255,0.18); }
     .content { padding: 24px; }
     mat-nav-list a.active { background: rgba(25,118,210,0.12); }
     h3[matSubheader] { color: #888; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }

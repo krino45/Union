@@ -13,7 +13,8 @@ import {
   ScheduleEntry, MoveEntryDto, ConflictInfo, CreateScheduleEntryDto, UpdateScheduleEntryDto,
   TeacherAvailability, CreateTeacherAvailabilityDto, UpdateTeacherAvailabilityDto,
   RescheduleRequest, CreateRescheduleRequestDto, ResolveRescheduleDto,
-  StudyPlan, CalendarPlan, UpsertStudyPlanDto, UpsertCalendarPlanDto, PlanProgressItem
+  StudyPlan, CalendarPlan, UpsertStudyPlanDto, UpsertCalendarPlanDto, PlanProgressItem,
+  FloorPlan, SaveFloorPlanRequest
 } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -43,6 +44,12 @@ export class ApiService {
   }
   upsertDistance(dto: UpsertDistanceDto): Observable<void> {
     return this.http.put<void>(`${this.base}/buildings/distances`, [dto]);
+  }
+  getFloorPlan(buildingId: string): Observable<FloorPlan> {
+    return this.http.get<FloorPlan>(`${this.base}/buildings/${buildingId}/floorplan`);
+  }
+  saveFloorPlan(buildingId: string, req: SaveFloorPlanRequest): Observable<void> {
+    return this.http.put<void>(`${this.base}/buildings/${buildingId}/floorplan`, req);
   }
 
   // ── Rooms ─────────────────────────────────────────────────────────────────

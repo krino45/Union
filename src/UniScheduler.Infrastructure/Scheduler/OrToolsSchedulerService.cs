@@ -25,6 +25,7 @@ public class OrToolsSchedulerService : ISchedulerService
         var teachers = input.Teachers.ToList();
 
         var distances = BuildDistanceMap(input.BuildingDistances);
+        var roomDistances = BuildRoomDistanceMap(input.RoomDistances);
         var blocked = BuildBlockedSet(input.TeacherBlocks);
 
         // key: (reqIdx, day, pair, weekTypeIdx, roomIdx)  value: BoolVar
@@ -183,7 +184,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
                 for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
                 {
-                    int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances);
+                    int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
                     if (dist / WalkSpeedMperMin <= allowedTravelMin) continue;
 
                     foreach (int ri1 in grIdxs)
@@ -335,7 +336,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
                 for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
                 {
-                    int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances);
+                    int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
                     if (dist == 0) continue;
                     double walkMins = dist / WalkSpeedMperMin;
                     if (walkMins > allowedTravelMin) continue;
@@ -507,14 +508,25 @@ public class OrToolsSchedulerService : ISchedulerService
         return map;
     }
 
-    private static int TravelDistanceMeters(SchedulerRoom r1, SchedulerRoom r2, Dictionary<(Guid, Guid), int> distanceMap)
+    private static Dictionary<(Guid, Guid), int> BuildRoomDistanceMap(IReadOnlyList<SchedulerRoomDistance>? distances)
+    {
+        var map = new Dictionary<(Guid, Guid), int>();
+        if (distances == null) return map;
+        foreach (var d in distances)
+        {
+            map[(d.FromRoomId, d.ToRoomId)] = d.DistanceMeters;
+            map[(d.ToRoomId, d.FromRoomId)] = d.DistanceMeters;
+        }
+        return map;
+    }
+
+    private static int TravelDistanceMeters(SchedulerRoom r1, SchedulerRoom r2,
+        Dictionary<(Guid, Guid), int> buildingDistanceMap,
+        Dictionary<(Guid, Guid), int> roomDistanceMap)
     {
         if (r1.BuildingId == r2.BuildingId)
-        {
-            return Math.Abs(r1.Floor - r2.Floor) * r1.StairsDistancePerFloor
-                   + r1.DistanceFromStairsMeters + r2.DistanceFromStairsMeters;
-        }
-        return distanceMap.TryGetValue((r1.BuildingId, r2.BuildingId), out int d) ? d : int.MaxValue / 2;
+            return roomDistanceMap.TryGetValue((r1.Id, r2.Id), out int rd) ? rd : 0;
+        return buildingDistanceMap.TryGetValue((r1.BuildingId, r2.BuildingId), out int d) ? d : int.MaxValue / 2;
     }
 
     private static HashSet<(Guid, int, int, int)> BuildBlockedSet(IEnumerable<SchedulerBlock> blocks)

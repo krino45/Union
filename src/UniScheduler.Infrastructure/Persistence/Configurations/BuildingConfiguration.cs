@@ -11,7 +11,8 @@ public class BuildingConfiguration : IEntityTypeConfiguration<Building>
         builder.HasKey(b => b.Id);
         builder.Property(b => b.ShortCode).IsRequired().HasMaxLength(20);
         builder.Property(b => b.Address).IsRequired();
-        builder.Property(b => b.StairsDistancePerFloor).IsRequired().HasDefaultValue(20);
+        builder.Property(b => b.NumberOfFloors).IsRequired().HasDefaultValue(5);
+        builder.Property(b => b.NumberOfBasementFloors).IsRequired().HasDefaultValue(0);
     }
 }
 

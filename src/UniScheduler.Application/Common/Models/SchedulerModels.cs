@@ -15,7 +15,8 @@ public record SchedulerInput(
     int DaysPerWeek = 6,
     int PairsPerDay = 7,
     IReadOnlyList<int>? BreakMinutesBetweenPairs = null,
-    int SolverTimeoutSeconds = 60
+    int SolverTimeoutSeconds = 60,
+    IReadOnlyList<SchedulerRoomDistance>? RoomDistances = null
 );
 
 public record SchedulerRoom(
@@ -28,10 +29,10 @@ public record SchedulerRoom(
     bool HasLab,
     bool IsOnline,
     int Floor = 1,
-    int DistanceFromStairsMeters = 0,
-    int StairsDistancePerFloor = 20,
     IReadOnlyList<LessonType>? AllowedLessonTypes = null
 );
+
+public record SchedulerRoomDistance(Guid FromRoomId, Guid ToRoomId, int DistanceMeters);
 
 public record SchedulerTeacher(Guid Id);
 

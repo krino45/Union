@@ -5,7 +5,7 @@ using UniScheduler.Domain.Entities;
 
 namespace UniScheduler.Application.Features.Buildings.Commands;
 
-public record CreateBuildingCommand(string ShortCode, string Address, int StairsDistancePerFloor = 20) : IRequest<BuildingDto>;
+public record CreateBuildingCommand(string ShortCode, string Address, int NumberOfFloors = 5, int NumberOfBasementFloors = 0) : IRequest<BuildingDto>;
 
 public class CreateBuildingCommandHandler : IRequestHandler<CreateBuildingCommand, BuildingDto>
 {
@@ -18,10 +18,11 @@ public class CreateBuildingCommandHandler : IRequestHandler<CreateBuildingComman
         {
             ShortCode = request.ShortCode,
             Address = request.Address,
-            StairsDistancePerFloor = request.StairsDistancePerFloor
+            NumberOfFloors = request.NumberOfFloors,
+            NumberOfBasementFloors = request.NumberOfBasementFloors
         };
         _db.Buildings.Add(building);
         await _db.SaveChangesAsync(cancellationToken);
-        return new BuildingDto(building.Id, building.ShortCode, building.Address, building.StairsDistancePerFloor);
+        return new BuildingDto(building.Id, building.ShortCode, building.Address, building.NumberOfFloors, building.NumberOfBasementFloors);
     }
 }

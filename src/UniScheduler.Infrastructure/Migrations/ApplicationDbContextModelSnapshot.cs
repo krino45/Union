@@ -64,19 +64,90 @@ namespace UniScheduler.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("NumberOfBasementFloors")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("NumberOfFloors")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(5);
+
                     b.Property<string>("ShortCode")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<int>("StairsDistancePerFloor")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(20);
-
                     b.HasKey("Id");
 
                     b.ToTable("Buildings");
+                });
+
+            modelBuilder.Entity("UniScheduler.Domain.Entities.FloorPlanEdge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BuildingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("DistanceMeters")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("FromNodeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ToNodeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuildingId");
+
+                    b.HasIndex("FromNodeId");
+
+                    b.HasIndex("ToNodeId");
+
+                    b.ToTable("FloorPlanEdges");
+                });
+
+            modelBuilder.Entity("UniScheduler.Domain.Entities.FloorPlanNode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BuildingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Floor")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("NodeType")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("X")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("Y")
+                        .HasColumnType("double precision");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuildingId");
+
+                    b.HasIndex("RoomId");
+
+                    b.ToTable("FloorPlanNodes");
                 });
 
             modelBuilder.Entity("UniScheduler.Domain.Entities.BuildingDistance", b =>
@@ -296,11 +367,6 @@ namespace UniScheduler.Infrastructure.Migrations
 
                     b.Property<int>("Capacity")
                         .HasColumnType("integer");
-
-                    b.Property<int>("DistanceFromStairsMeters")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
 
                     b.Property<int>("Floor")
                         .ValueGeneratedOnAdd()
@@ -912,11 +978,60 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Navigation("Teacher");
                 });
 
+            modelBuilder.Entity("UniScheduler.Domain.Entities.FloorPlanEdge", b =>
+                {
+                    b.HasOne("UniScheduler.Domain.Entities.Building", "Building")
+                        .WithMany("FloorPlanEdges")
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UniScheduler.Domain.Entities.FloorPlanNode", "FromNode")
+                        .WithMany("EdgesFrom")
+                        .HasForeignKey("FromNodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UniScheduler.Domain.Entities.FloorPlanNode", "ToNode")
+                        .WithMany("EdgesTo")
+                        .HasForeignKey("ToNodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Building");
+
+                    b.Navigation("FromNode");
+
+                    b.Navigation("ToNode");
+                });
+
+            modelBuilder.Entity("UniScheduler.Domain.Entities.FloorPlanNode", b =>
+                {
+                    b.HasOne("UniScheduler.Domain.Entities.Building", "Building")
+                        .WithMany("FloorPlanNodes")
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UniScheduler.Domain.Entities.Room", "Room")
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Building");
+
+                    b.Navigation("Room");
+                });
+
             modelBuilder.Entity("UniScheduler.Domain.Entities.Building", b =>
                 {
                     b.Navigation("DistancesFrom");
 
                     b.Navigation("DistancesTo");
+
+                    b.Navigation("FloorPlanEdges");
+
+                    b.Navigation("FloorPlanNodes");
 
                     b.Navigation("Rooms");
                 });

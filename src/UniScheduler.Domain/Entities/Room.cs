@@ -15,8 +15,6 @@ public class Room : Entity
     public bool IsOnline { get; set; }
     /// <summary>Floor number (1-based). Used for intra-building travel time calculation.</summary>
     public int Floor { get; set; } = 1;
-    /// <summary>Metres from the main staircase/lift to this room's door.</summary>
-    public int DistanceFromStairsMeters { get; set; } = 0;
     /// <summary>Lesson types the scheduler may place here. Empty list = all types allowed.</summary>
     public List<LessonType> AllowedLessonTypes { get; set; } = new();
 

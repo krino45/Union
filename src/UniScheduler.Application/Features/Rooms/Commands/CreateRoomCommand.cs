@@ -10,7 +10,7 @@ namespace UniScheduler.Application.Features.Rooms.Commands;
 public record CreateRoomCommand(
     Guid BuildingId, string Number, RoomType RoomType, int Capacity,
     bool HasProjector, bool HasComputers, bool HasLab, bool IsOnline,
-    int Floor = 1, int DistanceFromStairsMeters = 0,
+    int Floor = 1,
     List<LessonType>? AllowedLessonTypes = null) : IRequest<RoomDto>;
 
 public class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand, RoomDto>
@@ -25,7 +25,7 @@ public class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand, RoomD
             BuildingId = r.BuildingId, Number = r.Number, RoomType = r.RoomType,
             Capacity = r.Capacity, HasProjector = r.HasProjector,
             HasComputers = r.HasComputers, HasLab = r.HasLab, IsOnline = r.IsOnline,
-            Floor = r.Floor, DistanceFromStairsMeters = r.DistanceFromStairsMeters,
+            Floor = r.Floor,
             AllowedLessonTypes = r.AllowedLessonTypes ?? new List<LessonType>()
         };
         _db.Rooms.Add(room);
@@ -34,6 +34,6 @@ public class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand, RoomD
         var building = await _db.Buildings.FirstAsync(b => b.Id == r.BuildingId, cancellationToken);
         return new RoomDto(room.Id, room.BuildingId, building.ShortCode, room.Number, room.RoomType,
             room.Capacity, room.HasProjector, room.HasComputers, room.HasLab, room.IsOnline,
-            room.Floor, room.DistanceFromStairsMeters, room.AllowedLessonTypes);
+            room.Floor, room.AllowedLessonTypes);
     }
 }

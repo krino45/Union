@@ -59,6 +59,10 @@ export const routes: Routes = [
       {
         path: 'calendar-plans',
         loadComponent: () => import('./features/admin/data-management/calendar-plans/calendar-plans.component').then(m => m.CalendarPlansComponent)
+      },
+      {
+        path: 'floor-plan',
+        loadComponent: () => import('./features/admin/floor-plan-editor/floor-plan-editor.component').then(m => m.FloorPlanEditorComponent)
       }
     ]
   },

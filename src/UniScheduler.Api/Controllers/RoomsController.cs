@@ -30,7 +30,7 @@ public class RoomsController : ControllerBase
 
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<RoomDto>> Update(Guid id, [FromBody] UpdateRoomRequest req, CancellationToken ct)
-        => Ok(await _mediator.Send(new UpdateRoomCommand(id, req.BuildingId, req.Number, req.RoomType, req.Capacity, req.HasProjector, req.HasComputers, req.HasLab, req.IsOnline, req.Floor, req.DistanceFromStairsMeters, req.AllowedLessonTypes), ct));
+        => Ok(await _mediator.Send(new UpdateRoomCommand(id, req.BuildingId, req.Number, req.RoomType, req.Capacity, req.HasProjector, req.HasComputers, req.HasLab, req.IsOnline, req.Floor, req.AllowedLessonTypes), ct));
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
@@ -40,4 +40,4 @@ public class RoomsController : ControllerBase
     }
 }
 
-public record UpdateRoomRequest(Guid BuildingId, string Number, RoomType RoomType, int Capacity, bool HasProjector, bool HasComputers, bool HasLab, bool IsOnline, int Floor = 1, int DistanceFromStairsMeters = 0, List<LessonType>? AllowedLessonTypes = null);
+public record UpdateRoomRequest(Guid BuildingId, string Number, RoomType RoomType, int Capacity, bool HasProjector, bool HasComputers, bool HasLab, bool IsOnline, int Floor = 1, List<LessonType>? AllowedLessonTypes = null);

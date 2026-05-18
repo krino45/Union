@@ -12,7 +12,6 @@ export interface Room {
   hasLab: boolean;
   isOnline: boolean;
   floor: number;
-  distanceFromStairsMeters: number;
   allowedLessonTypes: LessonType[];
 }
 
@@ -26,7 +25,6 @@ export interface CreateRoomDto {
   hasLab: boolean;
   isOnline: boolean;
   floor: number;
-  distanceFromStairsMeters: number;
   allowedLessonTypes: LessonType[];
 }
 

@@ -14,7 +14,6 @@ public class RoomConfiguration : IEntityTypeConfiguration<Room>
         builder.Property(r => r.RoomType).IsRequired();
         builder.Property(r => r.Capacity).IsRequired();
         builder.Property(r => r.Floor).IsRequired().HasDefaultValue(1);
-        builder.Property(r => r.DistanceFromStairsMeters).IsRequired().HasDefaultValue(0);
         builder.Property(r => r.AllowedLessonTypes)
             .HasConversion(
                 v => string.Join(',', v.Select(lt => lt.ToString())),

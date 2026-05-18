@@ -7,7 +7,7 @@ using UniScheduler.Application.DTOs;
 
 namespace UniScheduler.Application.Features.Buildings.Commands;
 
-public record UpdateBuildingCommand(Guid Id, string ShortCode, string Address, int StairsDistancePerFloor) : IRequest<BuildingDto>;
+public record UpdateBuildingCommand(Guid Id, string ShortCode, string Address, int NumberOfFloors, int NumberOfBasementFloors) : IRequest<BuildingDto>;
 
 public class UpdateBuildingCommandHandler : IRequestHandler<UpdateBuildingCommand, BuildingDto>
 {
@@ -21,8 +21,9 @@ public class UpdateBuildingCommandHandler : IRequestHandler<UpdateBuildingComman
 
         building.ShortCode = request.ShortCode;
         building.Address = request.Address;
-        building.StairsDistancePerFloor = request.StairsDistancePerFloor;
+        building.NumberOfFloors = request.NumberOfFloors;
+        building.NumberOfBasementFloors = request.NumberOfBasementFloors;
         await _db.SaveChangesAsync(cancellationToken);
-        return new BuildingDto(building.Id, building.ShortCode, building.Address, building.StairsDistancePerFloor);
+        return new BuildingDto(building.Id, building.ShortCode, building.Address, building.NumberOfFloors, building.NumberOfBasementFloors);
     }
 }

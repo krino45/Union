@@ -18,7 +18,7 @@ public class ScheduleEntryCommandTests
         ScheduleStatus status = ScheduleStatus.Draft)
     {
         var faculty = new Faculty { Name = "ФИТ", ShortCode = "FIT" };
-        var building = new Building { ShortCode = "A", Address = "Main St 1", StairsDistancePerFloor = 20 };
+        var building = new Building { ShortCode = "A", Address = "Main St 1" };
         db.Faculties.Add(faculty);
         db.Buildings.Add(building);
         await db.SaveChangesAsync();

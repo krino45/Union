@@ -53,9 +53,9 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
           <td mat-cell *matCellDef="let r">{{ r.buildingShortCode }}</td>
         </ng-container>
         <ng-container matColumnDef="location">
-          <th mat-header-cell *matHeaderCellDef>Этаж / от лестн.</th>
+          <th mat-header-cell *matHeaderCellDef>Этаж</th>
           <td mat-cell *matCellDef="let r">
-            <span *ngIf="!r.isOnline">{{ r.floor }} эт. / {{ r.distanceFromStairsMeters }} м</span>
+            <span *ngIf="!r.isOnline">{{ r.floor }} эт.</span>
             <span *ngIf="r.isOnline">—</span>
           </td>
         </ng-container>
@@ -180,16 +180,11 @@ export class RoomsComponent implements OnInit {
           <mat-label>Номер аудитории</mat-label>
           <input matInput formControlName="number" placeholder="101, А-203...">
         </mat-form-field>
-        <div class="row-fields">
-          <mat-form-field appearance="outline" class="half-width">
-            <mat-label>Этаж</mat-label>
-            <input matInput type="number" formControlName="floor" min="1">
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="half-width">
-            <mat-label>Расст. от лестницы (м)</mat-label>
-            <input matInput type="number" formControlName="distanceFromStairsMeters" min="0" step="5">
-          </mat-form-field>
-        </div>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Этаж</mat-label>
+          <input matInput type="number" formControlName="floor">
+          <mat-hint>Отрицательный — цокольный/подвал (-1, -2...)</mat-hint>
+        </mat-form-field>
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Тип</mat-label>
           <mat-select formControlName="roomType">
@@ -265,8 +260,7 @@ export class RoomDialogComponent implements OnDestroy {
     this.form = this.fb.group({
       buildingId: [r?.buildingId ?? '', Validators.required],
       number: [r?.number ?? '', Validators.required],
-      floor: [r?.floor ?? 1, [Validators.required, Validators.min(1)]],
-      distanceFromStairsMeters: [r?.distanceFromStairsMeters ?? 0, [Validators.required, Validators.min(0)]],
+      floor: [r?.floor ?? 1, [Validators.required]],
       roomType: [r?.roomType ?? RoomType.RegularCabinet, Validators.required],
       capacity: [r?.capacity ?? 30, [Validators.required, Validators.min(1)]],
       hasProjector: [r?.hasProjector ?? false],

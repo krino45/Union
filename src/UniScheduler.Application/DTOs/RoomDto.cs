@@ -14,6 +14,5 @@ public record RoomDto(
     bool HasLab,
     bool IsOnline,
     int Floor,
-    int DistanceFromStairsMeters,
     List<LessonType> AllowedLessonTypes
 );

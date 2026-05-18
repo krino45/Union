@@ -71,9 +71,12 @@ const CITY_STORAGE_KEY = 'unischeduler_city';
           <th mat-header-cell *matHeaderCellDef>Адрес</th>
           <td mat-cell *matCellDef="let b">{{ b.address }}</td>
         </ng-container>
-        <ng-container matColumnDef="stairs">
-          <th mat-header-cell *matHeaderCellDef matTooltip="Расстояние между этажами по лестнице, м">Лестница (м/эт.)</th>
-          <td mat-cell *matCellDef="let b">{{ b.stairsDistancePerFloor }}</td>
+        <ng-container matColumnDef="floors">
+          <th mat-header-cell *matHeaderCellDef matTooltip="Этажей наземных / подземных">Этажи</th>
+          <td mat-cell *matCellDef="let b">
+            {{ b.numberOfFloors }}
+            <span *ngIf="b.numberOfBasementFloors > 0" class="basement-badge">+{{ b.numberOfBasementFloors }}п</span>
+          </td>
         </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
@@ -162,13 +165,14 @@ const CITY_STORAGE_KEY = 'unischeduler_city';
     .legend-red { color: #c62828; }
     .empty-msg { color: #888; text-align: center; padding: 16px; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
+    .basement-badge { font-size: 11px; color: #5c6bc0; margin-left: 4px; }
   `]
 })
 export class BuildingsComponent implements OnInit {
   buildings: Building[] = [];
   distances: BuildingDistance[] = [];
   loading = true;
-  columns = ['shortCode', 'address', 'stairs', 'actions'];
+  columns = ['shortCode', 'address', 'floors', 'actions'];
   city: string = '';
   editingCity = false;
 
@@ -288,11 +292,18 @@ interface NominatimResult {
           </mat-autocomplete>
           <mat-hint *ngIf="searchingAddress">Поиск...</mat-hint>
         </mat-form-field>
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Расстояние по лестнице (м/этаж)</mat-label>
-          <input matInput type="number" formControlName="stairsDistancePerFloor" min="0" step="5">
-          <mat-hint>Примерное расстояние по лестнице на 1 этаж (по умолчанию 20 м)</mat-hint>
-        </mat-form-field>
+        <div class="row-fields">
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Этажей (наземных)</mat-label>
+            <input matInput type="number" formControlName="numberOfFloors" min="1" step="1">
+            <mat-hint>1 и выше</mat-hint>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Подземных этажей</mat-label>
+            <input matInput type="number" formControlName="numberOfBasementFloors" min="0" step="1">
+            <mat-hint>0 = нет подвала</mat-hint>
+          </mat-form-field>
+        </div>
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -303,6 +314,8 @@ interface NominatimResult {
   styles: [`
     .full-width { width: 100%; margin-bottom: 12px; }
     .dialog-form { display: flex; flex-direction: column; padding-top: 8px; min-width: 360px; }
+    .row-fields { display: flex; gap: 12px; margin-bottom: 12px; }
+    .half-width { flex: 1; }
   `]
 })
 export class BuildingDialogComponent implements OnDestroy {
@@ -331,7 +344,8 @@ export class BuildingDialogComponent implements OnDestroy {
     this.form = this.fb.group({
       shortCode: [b?.shortCode ?? '', Validators.required],
       address: [b?.address ?? '', Validators.required],
-      stairsDistancePerFloor: [b?.stairsDistancePerFloor ?? 20, [Validators.required, Validators.min(0)]]
+      numberOfFloors: [b?.numberOfFloors ?? 5, [Validators.required, Validators.min(1)]],
+      numberOfBasementFloors: [b?.numberOfBasementFloors ?? 0, [Validators.required, Validators.min(0)]]
     });
   }
 

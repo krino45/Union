@@ -7,6 +7,8 @@ public interface IApplicationDbContext
 {
     DbSet<Building> Buildings { get; }
     DbSet<BuildingDistance> BuildingDistances { get; }
+    DbSet<FloorPlanNode> FloorPlanNodes { get; }
+    DbSet<FloorPlanEdge> FloorPlanEdges { get; }
     DbSet<Room> Rooms { get; }
     DbSet<Faculty> Faculties { get; }
     DbSet<Teacher> Teachers { get; }
