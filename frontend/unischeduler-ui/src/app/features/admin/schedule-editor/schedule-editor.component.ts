@@ -11,10 +11,10 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { forkJoin } from 'rxjs';
+import { forkJoin, switchMap } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
-import { Schedule, ScheduleEntry, StudentGroup, Teacher, Subject, Room, PlanProgressItem, StudyPlan } from '../../../core/models';
-import { RussianDayOfWeek } from '../../../core/models/enums';
+import { Schedule, ScheduleEntry, MoveEntryDto, StudentGroup, Teacher, Subject, Room, PlanProgressItem, StudyPlan } from '../../../core/models';
+import { RussianDayOfWeek, WeekType } from '../../../core/models/enums';
 import { ScheduleGridComponent } from './schedule-grid/schedule-grid.component';
 import { AddEntryDialogComponent, AddEntryDialogData } from './add-entry-dialog.component';
 
@@ -187,6 +187,7 @@ interface AuditResult {
       [weekFilter]="weekFilter"
       [readonly]="isArchived"
       (entryMoved)="onEntryMoved($event)"
+      (entrySplit)="onEntrySplit($event)"
       (entryDeleted)="onEntryDeleted($event)"
       (addRequested)="onAddRequested($event)">
     </app-schedule-grid>
@@ -261,6 +262,8 @@ export class ScheduleEditorComponent implements OnInit {
   weekFilter = 'Both';
   audit: AuditResult | null = null;
   conflictsExpanded = true;
+  private hasManualEdits = false;
+  private pendingMergeCheck = false;
   planProgress: PlanProgressItem[] = [];
   studyPlans: StudyPlan[] = [];
   progressExpanded = true;
@@ -298,7 +301,14 @@ export class ScheduleEditorComponent implements OnInit {
       groupId: this.selectedGroupId ?? undefined,
       teacherId: this.selectedTeacherId ?? undefined
     }).subscribe({
-      next: data => { this.entries = data; this.loading = false; },
+      next: data => {
+        this.entries = data;
+        this.loading = false;
+        if (this.pendingMergeCheck) {
+          this.pendingMergeCheck = false;
+          this.checkAndMergePairs();
+        }
+      },
       error: () => { this.loading = false; }
     });
   }
@@ -306,7 +316,7 @@ export class ScheduleEditorComponent implements OnInit {
   loadAudit(): void {
     if (!this.schedule) return;
     this.api.getScheduleAudit(this.schedule.id).subscribe(a => {
-      this.audit = a;
+      this.audit = this.hasManualEdits ? { ...a, generationNotes: null } : a;
       this.conflictsExpanded = a.conflicts.length > 0;
     });
   }
@@ -487,7 +497,80 @@ export class ScheduleEditorComponent implements OnInit {
     return 'info';
   }
 
+  onEntrySplit(event: { entry: ScheduleEntry; sourceWeekType: WeekType; dto: MoveEntryDto }): void {
+    const oppositeWeekType = event.sourceWeekType === WeekType.Odd ? WeekType.Even : WeekType.Odd;
+    this.api.moveEntry(event.entry.id, event.dto).pipe(
+      switchMap(() => this.api.createEntry({
+        scheduleId: event.entry.scheduleId,
+        subjectId: event.entry.subjectId,
+        teacherId: event.entry.teacherId,
+        roomId: event.entry.roomId,
+        dayOfWeek: event.entry.dayOfWeek,
+        pairNumber: event.entry.pairNumber,
+        weekType: oppositeWeekType,
+        lessonType: event.entry.lessonType,
+        isOnline: event.entry.isOnline,
+        groupIds: event.entry.studentGroups.map(g => g.id)
+      }))
+    ).subscribe({
+      next: () => {
+        this.snackBar.open('Занятие разделено', 'OK', { duration: 2000 });
+        this.refreshAfterMutation();
+      },
+      error: (e) => {
+        this.snackBar.open(e.error?.title || 'Ошибка разделения', 'OK', { duration: 4000 });
+        this.loadEntries();
+      }
+    });
+  }
+
+  private checkAndMergePairs(): void {
+    const odd = this.entries.filter(e => e.weekType === WeekType.Odd);
+    const even = this.entries.filter(e => e.weekType === WeekType.Even);
+    const merges: { keep: ScheduleEntry; remove: ScheduleEntry }[] = [];
+
+    for (const oddEntry of odd) {
+      const match = even.find(e =>
+        e.dayOfWeek === oddEntry.dayOfWeek &&
+        e.pairNumber === oddEntry.pairNumber &&
+        e.subjectId === oddEntry.subjectId &&
+        e.teacherId === oddEntry.teacherId &&
+        (e.roomId ?? null) === (oddEntry.roomId ?? null) &&
+        e.lessonType === oddEntry.lessonType &&
+        e.isOnline === oddEntry.isOnline &&
+        e.studentGroups.length === oddEntry.studentGroups.length &&
+        e.studentGroups.every(g => oddEntry.studentGroups.some(og => og.id === g.id))
+      );
+      if (match) merges.push({ keep: oddEntry, remove: match });
+    }
+
+    if (merges.length === 0) return;
+
+    forkJoin(merges.map(m => this.api.deleteEntry(m.remove.id))).pipe(
+      switchMap(() => forkJoin(merges.map(m => this.api.updateEntry(m.keep.id, {
+        subjectId: m.keep.subjectId,
+        teacherId: m.keep.teacherId,
+        roomId: m.keep.roomId,
+        dayOfWeek: m.keep.dayOfWeek,
+        pairNumber: m.keep.pairNumber,
+        weekType: WeekType.Both,
+        lessonType: m.keep.lessonType,
+        isOnline: m.keep.isOnline,
+        groupIds: m.keep.studentGroups.map(g => g.id)
+      }))))
+    ).subscribe({
+      next: () => {
+        this.snackBar.open('Занятия объединены', 'OK', { duration: 2000 });
+        this.loadEntries();
+        this.loadAudit();
+      },
+      error: () => this.loadEntries()
+    });
+  }
+
   private refreshAfterMutation(): void {
+    this.hasManualEdits = true;
+    this.pendingMergeCheck = true;
     this.loadEntries();
     this.loadAudit();
     this.loadPlanProgress();
