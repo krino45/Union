@@ -377,7 +377,7 @@ public class OrToolsSchedulerService : ISchedulerService
             objCoeffs.Add(300L);
         }
 
-        // S6: Penalize consecutive pairs of the same (subject, lessonType) for a group — weight 70
+        // S6: Penalize consecutive pairs of the same (subject, lessonType) for a group — weight depends on lessonType
         {
             var stGroups = reqs
                 .Select((r, i) => (r, i))
@@ -405,7 +405,7 @@ public class OrToolsSchedulerService : ISchedulerService
                             int varWi = VarWeekIndex(reqs[ri].WeekType);
                             for (int rmi = 0; rmi < rooms.Count; rmi++)
                             {
-                                if (vars.TryGetValue((ri, d, p,     varWi, rmi), out var vp))  atP.Add(vp);
+                                if (vars.TryGetValue((ri, d, p,        varWi, rmi), out var vp))  atP.Add(vp);
                                 if (vars.TryGetValue((ri, d, p + 1, varWi, rmi), out var vp1)) atP1.Add(vp1);
                             }
                         }
@@ -422,7 +422,7 @@ public class OrToolsSchedulerService : ISchedulerService
                         model.Add(LinearExpr.Sum(new BoolVar[] { usedP, usedP1 }) <= 1 + repPen);
 
                         objVars.Add(repPen);
-                        objCoeffs.Add(70L);
+                        objCoeffs.Add(GetLessonTypePenalty(stg.Key.LessonType));
                     }
                 }
             }
@@ -572,4 +572,14 @@ public class OrToolsSchedulerService : ISchedulerService
             _ => false
         };
     }
+
+    private static long GetLessonTypePenalty(LessonType lt) =>
+        lt switch
+        {
+            LessonType.Lecture => 70L,
+            LessonType.Practical => 30L,
+            LessonType.Seminar => 40L,
+            LessonType.Lab => 10L,
+            _ => 0L
+        };
 }
