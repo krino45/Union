@@ -7,13 +7,16 @@ import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly tokenKey = 'unischeduler_token';
   private readonly userKey = 'unischeduler_user';
   private currentUserSubject = new BehaviorSubject<CurrentUser | null>(this.loadUser());
 
   currentUser$ = this.currentUserSubject.asObservable();
 
-  constructor(private http: HttpClient, private router: Router) {}
+  constructor(private http: HttpClient, private router: Router) {
+    if (this.currentUser) {
+      this.tryRenewOnStartup();
+    }
+  }
 
   get currentUser(): CurrentUser | null {
     return this.currentUserSubject.value;
@@ -37,16 +40,13 @@ export class AuthService {
 
   login(request: LoginRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/login`, request).pipe(
-      tap(response => {
-        const user: CurrentUser = {
-          token: response.token,
-          username: response.username,
-          role: response.role,
-          teacherId: response.teacherId
-        };
-        localStorage.setItem(this.userKey, JSON.stringify(user));
-        this.currentUserSubject.next(user);
-      })
+      tap(response => this.storeUser(response))
+    );
+  }
+
+  renewToken(): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/renew`, {}).pipe(
+      tap(response => this.storeUser(response))
     );
   }
 
@@ -56,6 +56,17 @@ export class AuthService {
     this.router.navigate(['/login']);
   }
 
+  private storeUser(response: AuthResponse): void {
+    const user: CurrentUser = {
+      token: response.token,
+      username: response.username,
+      role: response.role,
+      teacherId: response.teacherId
+    };
+    localStorage.setItem(this.userKey, JSON.stringify(user));
+    this.currentUserSubject.next(user);
+  }
+
   private loadUser(): CurrentUser | null {
     try {
       const data = localStorage.getItem(this.userKey);
@@ -63,5 +74,10 @@ export class AuthService {
     } catch {
       return null;
     }
+  }
+
+  private tryRenewOnStartup(): void {
+    // Renew silently; if the token is expired the interceptor will catch the 401 and logout.
+    this.renewToken().subscribe({ error: () => {} });
   }
 }

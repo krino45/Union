@@ -5,7 +5,7 @@ using UniScheduler.Application.Common.Interfaces;
 namespace UniScheduler.Application.Features.Auth.Commands;
 
 public record LoginCommand(string Username, string Password) : IRequest<LoginResult>;
-public record LoginResult(string Token, string Role, Guid UserId, Guid? TeacherId);
+public record LoginResult(string Token, string Username, string Role, Guid UserId, Guid? TeacherId);
 
 public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
 {
@@ -27,6 +27,29 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
             throw new UnauthorizedAccessException("Invalid credentials.");
 
         var token = _jwt.GenerateToken(user);
-        return new LoginResult(token, user.Role, user.Id, user.TeacherId);
+        return new LoginResult(token, user.Username, user.Role, user.Id, user.TeacherId);
+    }
+}
+
+public record RenewTokenCommand(Guid UserId) : IRequest<LoginResult>;
+
+public class RenewTokenCommandHandler : IRequestHandler<RenewTokenCommand, LoginResult>
+{
+    private readonly IApplicationDbContext _db;
+    private readonly IJwtService _jwt;
+
+    public RenewTokenCommandHandler(IApplicationDbContext db, IJwtService jwt)
+    {
+        _db = db;
+        _jwt = jwt;
+    }
+
+    public async Task<LoginResult> Handle(RenewTokenCommand request, CancellationToken cancellationToken)
+    {
+        var user = await _db.AppUsers.FindAsync(new object[] { request.UserId }, cancellationToken)
+            ?? throw new UnauthorizedAccessException("User not found.");
+
+        var token = _jwt.GenerateToken(user);
+        return new LoginResult(token, user.Username, user.Role, user.Id, user.TeacherId);
     }
 }

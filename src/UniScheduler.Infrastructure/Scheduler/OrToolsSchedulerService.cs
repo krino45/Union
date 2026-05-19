@@ -493,7 +493,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 var subjFacultyId = reqs[ri].SubjectFacultyId;
                 if (roomFacultyId.HasValue && subjFacultyId.HasValue && roomFacultyId != subjFacultyId)
                 {
-                    objVars.Add((IntVar)v);
+                    objVars.Add(v);
                     objCoeffs.Add(w.DepartmentMismatchPenalty);
                 }
             }
@@ -507,7 +507,7 @@ public class OrToolsSchedulerService : ISchedulerService
         solver.StringParameters =
             $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
             "num_search_workers:8," +
-            "log_search_progress:true";
+            "log_search_progress:false";
 
         var status = solver.Solve(model);
 
@@ -543,8 +543,6 @@ public class OrToolsSchedulerService : ISchedulerService
             $"Status: {status}, Objective: {(objVars.Count > 0 ? solver.ObjectiveValue.ToString("F0") : "N/A")}, Entries: {assignments.Count}",
             assignments);
     }
-
-    //  Helpers
 
     /// <summary>
     /// The variable key wi used for a requirement. Both/Odd use wi=0; Even uses wi=1.
