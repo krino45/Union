@@ -44,7 +44,7 @@ public record CalendarWeekDto(
     string? Note
 );
 
-// ── Upsert inputs ─────────────────────────────────────────────────────────────
+//  Upsert inputs 
 
 public record UpsertStudyPlanDto(
     string Name,

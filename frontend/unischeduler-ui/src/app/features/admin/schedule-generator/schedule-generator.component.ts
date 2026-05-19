@@ -421,6 +421,19 @@ export class CreateScheduleDialogComponent {
           </mat-form-field>
         </div>
 
+        <p class="section-label">Штрафы за размещение (S8–S9)</p>
+        <div class="row">
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Суббота (S8)</mat-label>
+            <input matInput type="number" formControlName="saturdayPenalty" min="0">
+            <mat-hint>0 — субботы не ограничены</mat-hint>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Несоответствие кафедры (S9)</mat-label>
+            <input matInput type="number" formControlName="departmentMismatchPenalty" min="0">
+          </mat-form-field>
+        </div>
+
         <p class="section-label">Параметры решателя</p>
         <mat-form-field appearance="outline" class="half-width">
           <mat-label>Таймаут (сек, 30–60000)</mat-label>
@@ -459,18 +472,20 @@ export class SolverSettingsDialogComponent implements OnInit {
     this.api.getSolverSettings().subscribe({
       next: w => {
         this.form = this.fb.group({
-          studentWindow:   [w.studentWindow,   [Validators.required, Validators.min(0)]],
-          teacherWindow:   [w.teacherWindow,   [Validators.required, Validators.min(0)]],
-          activeDay:       [w.activeDay,       [Validators.required, Validators.min(0)]],
-          sanPinOverload:  [w.sanPinOverload,  [Validators.required, Validators.min(0)]],
-          consecLecture:   [w.consecLecture,   [Validators.required, Validators.min(0)]],
-          consecSeminar:   [w.consecSeminar,   [Validators.required, Validators.min(0)]],
-          consecPractical: [w.consecPractical, [Validators.required, Validators.min(0)]],
-          consecLab:       [w.consecLab,       [Validators.required, Validators.min(0)]],
-          earlyPair:       [w.earlyPair,       [Validators.required, Validators.min(0)]],
-          latePair:        [w.latePair,        [Validators.required, Validators.min(0)]],
-          consecRunScalar: [w.consecRunScalar, [Validators.required, Validators.min(1)]],
-          timeoutSeconds:  [120,               [Validators.required, Validators.min(10), Validators.max(600)]],
+          studentWindow:            [w.studentWindow,            [Validators.required, Validators.min(0)]],
+          teacherWindow:            [w.teacherWindow,            [Validators.required, Validators.min(0)]],
+          activeDay:                [w.activeDay,                [Validators.required, Validators.min(0)]],
+          sanPinOverload:           [w.sanPinOverload,           [Validators.required, Validators.min(0)]],
+          consecLecture:            [w.consecLecture,            [Validators.required, Validators.min(0)]],
+          consecSeminar:            [w.consecSeminar,            [Validators.required, Validators.min(0)]],
+          consecPractical:          [w.consecPractical,          [Validators.required, Validators.min(0)]],
+          consecLab:                [w.consecLab,                [Validators.required, Validators.min(0)]],
+          earlyPair:                [w.earlyPair,                [Validators.required, Validators.min(0)]],
+          latePair:                 [w.latePair,                 [Validators.required, Validators.min(0)]],
+          consecRunScalar:          [w.consecRunScalar,          [Validators.required, Validators.min(1)]],
+          saturdayPenalty:          [w.saturdayPenalty,          [Validators.required, Validators.min(0)]],
+          departmentMismatchPenalty:[w.departmentMismatchPenalty,[Validators.required, Validators.min(0)]],
+          timeoutSeconds:           [120,                        [Validators.required, Validators.min(10), Validators.max(600)]],
         });
         this.loading = false;
       },
@@ -496,6 +511,7 @@ export class SolverSettingsDialogComponent implements OnInit {
       studentWindow: [100], teacherWindow: [80], activeDay: [60], sanPinOverload: [300],
       consecLecture: [70], consecSeminar: [40], consecPractical: [30], consecLab: [10],
       earlyPair: [15], latePair: [25], consecRunScalar: [3],
+      saturdayPenalty: [30], departmentMismatchPenalty: [50],
       timeoutSeconds: [120],
     });
   }

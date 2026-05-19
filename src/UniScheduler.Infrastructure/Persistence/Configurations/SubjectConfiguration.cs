@@ -13,5 +13,11 @@ public class SubjectConfiguration : IEntityTypeConfiguration<Subject>
         builder.Property(s => s.ShortName).IsRequired();
         builder.Property(s => s.AcademicYear).IsRequired();
         builder.Property(s => s.Term).IsRequired();
+
+        builder.HasOne(s => s.Department)
+            .WithMany(d => d.Subjects)
+            .HasForeignKey(s => s.DepartmentId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

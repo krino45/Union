@@ -10,22 +10,23 @@ public record GetRoomsQuery(Guid? BuildingId = null, RoomType? RoomType = null, 
 
 public class GetRoomsQueryHandler : IRequestHandler<GetRoomsQuery, List<RoomDto>>
 {
-    private readonly IApplicationDbContext _db;
-    public GetRoomsQueryHandler(IApplicationDbContext db) => _db = db;
+    private readonly IApplicationDbContext db;
+    public GetRoomsQueryHandler(IApplicationDbContext db) => this.db = db;
 
     public async Task<List<RoomDto>> Handle(GetRoomsQuery request, CancellationToken cancellationToken)
     {
-        var query = _db.Rooms.Include(r => r.Building).AsQueryable();
+        var query = db.Rooms.Include(r => r.Building).Include(r => r.Department).AsQueryable();
 
         if (request.BuildingId.HasValue) query = query.Where(r => r.BuildingId == request.BuildingId);
         if (request.RoomType.HasValue) query = query.Where(r => r.RoomType == request.RoomType);
         if (request.MinCapacity.HasValue) query = query.Where(r => r.Capacity >= request.MinCapacity);
 
-        return await query
-            .OrderBy(r => r.Building.ShortCode).ThenBy(r => r.Floor).ThenBy(r => r.Number)
-            .Select(r => new RoomDto(r.Id, r.BuildingId, r.Building.ShortCode, r.Number, r.RoomType,
-                r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
-                r.Floor, r.AllowedLessonTypes))
+        var rooms = await query.OrderBy(r => r.Building.ShortCode).ThenBy(r => r.Floor).ThenBy(r => r.Number)
             .ToListAsync(cancellationToken);
+
+        return rooms.Select(r => new RoomDto(r.Id, r.BuildingId, r.Building.ShortCode, r.Number, r.RoomType,
+                r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
+                r.Floor, r.AllowedLessonTypes, r.IsEnabled, r.DepartmentId, r.Department?.Name))
+            .ToList();
     }
 }

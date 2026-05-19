@@ -16,11 +16,12 @@ public class GetSubjectsQueryHandler : IRequestHandler<GetSubjectsQuery, List<Su
 
     public async Task<List<SubjectDto>> Handle(GetSubjectsQuery request, CancellationToken cancellationToken)
     {
-        var query = db.Subjects.AsQueryable();
+        var query = db.Subjects.Include(s => s.Department).AsQueryable();
         if (request.AcademicYear.HasValue) query = query.Where(s => s.AcademicYear == request.AcademicYear);
         if (request.Term.HasValue) query = query.Where(s => s.Term == request.Term);
-        return await query.OrderBy(s => s.AcademicYear).ThenBy(s => s.Term).ThenBy(s => s.Name)
-            .Select(s => new SubjectDto(s.Id, s.Name, s.ShortName, s.AcademicYear, s.Term))
+        var subjects = await query.OrderBy(s => s.AcademicYear).ThenBy(s => s.Term).ThenBy(s => s.Name)
             .ToListAsync(cancellationToken);
+        return subjects.Select(s => new SubjectDto(s.Id, s.Name, s.ShortName, s.AcademicYear, s.Term,
+            s.DepartmentId, s.Department?.Name)).ToList();
     }
 }

@@ -28,6 +28,7 @@ public class OrToolsSchedulerService : ISchedulerService
         var distances = BuildDistanceMap(input.BuildingDistances);
         var roomDistances = BuildRoomDistanceMap(input.RoomDistances);
         var blocked = BuildBlockedSet(input.TeacherBlocks);
+        var groupBlockedDays = groups.ToDictionary(g => g.Id, g => (g.BlockedDays ?? Array.Empty<int>()).ToHashSet());
 
         // key: (reqIdx, day, pair, weekTypeIdx, roomIdx)  value: BoolVar
         // WeekType.Both requirements use wi=0 only; they occupy both odd AND even weeks.
@@ -43,6 +44,11 @@ public class OrToolsSchedulerService : ISchedulerService
             for (int d = 0; d < NumDays; d++)
             for (int p = 0; p < numPairs; p++)
             {
+                // Hard: skip days blocked for any group in this requirement
+                bool dayBlockedForGroup = req.GroupIds.Any(gId =>
+                    groupBlockedDays.TryGetValue(gId, out var bd) && bd.Contains(d));
+                if (dayBlockedForGroup) continue;
+
                 // Both-type requirements fire on every week — skip slot if blocked on either week index
                 bool slotBlocked = req.WeekType == WeekType.Both
                     ? blocked.Contains((req.TeacherId, d, p, 0)) || blocked.Contains((req.TeacherId, d, p, 1))
@@ -461,6 +467,36 @@ public class OrToolsSchedulerService : ISchedulerService
             if (pen <= 0) continue;
             objVars.Add(isGroupUsed[gi, d, p, wi]);
             objCoeffs.Add(pen);
+        }
+
+        // S8: Saturday discouragement — soft penalty per group slot on day 5 (Saturday)
+        const int saturdayIdx = 5;
+        if (w.SaturdayPenalty > 0)
+        {
+            progress?.Report("Целевая функция S8: штраф за субботу...");
+            for (int gi = 0; gi < groups.Count; gi++)
+            for (int p = 0; p < numPairs; p++)
+            for (int wi = 0; wi < 2; wi++)
+            {
+                objVars.Add(isGroupUsed[gi, saturdayIdx, p, wi]);
+                objCoeffs.Add(w.SaturdayPenalty);
+            }
+        }
+
+        // S9: Department mismatch — penalize when room's department faculty differs from subject's department faculty
+        if (w.DepartmentMismatchPenalty > 0)
+        {
+            progress?.Report("Целевая функция S9: штраф за несоответствие кафедры...");
+            foreach (var ((ri, _, _, _, rmi), v) in vars)
+            {
+                var roomFacultyId = rooms[rmi].DepartmentFacultyId;
+                var subjFacultyId = reqs[ri].SubjectFacultyId;
+                if (roomFacultyId.HasValue && subjFacultyId.HasValue && roomFacultyId != subjFacultyId)
+                {
+                    objVars.Add((IntVar)v);
+                    objCoeffs.Add(w.DepartmentMismatchPenalty);
+                }
+            }
         }
 
         if (objVars.Count > 0)

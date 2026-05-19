@@ -13,6 +13,9 @@ export interface Room {
   isOnline: boolean;
   floor: number;
   allowedLessonTypes: LessonType[];
+  isEnabled: boolean;
+  departmentId?: string | null;
+  departmentName?: string | null;
 }
 
 export interface CreateRoomDto {
@@ -26,6 +29,8 @@ export interface CreateRoomDto {
   isOnline: boolean;
   floor: number;
   allowedLessonTypes: LessonType[];
+  isEnabled: boolean;
+  departmentId?: string | null;
 }
 
 export interface UpdateRoomDto extends CreateRoomDto {}

@@ -60,7 +60,7 @@ public class ExcelExportService : IExcelExportService
         return ms.ToArray();
     }
 
-    // ── Grid builder ─────────────────────────────────────────────────────────
+    //  Grid builder 
 
     private static void BuildGrid(IXLWorksheet ws, List<Domain.Entities.ScheduleEntry> entries, bool isGroupView)
     {
@@ -68,7 +68,7 @@ public class ExcelExportService : IExcelExportService
         const int NumDays  = 6;
         int lastRow = 1 + NumPairs * 2; // header + 7 pairs × 2 rows
 
-        // ── Header ────────────────────────────────────────────────────────────
+        //  Header 
         ws.Cell(1, 1).Value = "Пара / Время";
         for (int d = 0; d < NumDays; d++)
             ws.Cell(1, d + 2).Value = DayNames[d];
@@ -78,7 +78,7 @@ public class ExcelExportService : IExcelExportService
         headerRange.Style.Fill.BackgroundColor = XLColor.FromArgb(0xD6, 0xE4, 0xF7);
         headerRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
-        // ── Pair rows ─────────────────────────────────────────────────────────
+        //  Pair rows 
         for (int p = 0; p < NumPairs; p++)
         {
             int oddRow  = 2 + p * 2;
@@ -144,12 +144,12 @@ public class ExcelExportService : IExcelExportService
             }
         }
 
-        // ── Column widths ─────────────────────────────────────────────────────
+        //  Column widths 
         ws.Column(1).Width = 13;
         for (int d = 2; d <= NumDays + 1; d++) ws.Column(d).Width = 23;
         ws.Rows().AdjustToContents(6, 60);
 
-        // ── Borders ───────────────────────────────────────────────────────────
+        //  Borders 
         ApplyBorders(ws, lastRow, NumDays + 1);
     }
 
@@ -171,14 +171,14 @@ public class ExcelExportService : IExcelExportService
         }
     }
 
-    // ── Formatting helpers ────────────────────────────────────────────────────
+    //  Formatting helpers 
 
     private static string FormatCellEntries(List<Domain.Entities.ScheduleEntry> list, bool isGroupView)
     {
         if (list.Count == 0) return "";
         // Deduplicate by entry ID (Both entries appear in both odd and even lists)
         var distinct = list.DistinctBy(e => e.Id).ToList();
-        return string.Join("\n───\n", distinct.Select(e => FormatEntry(e, isGroupView)));
+        return string.Join("\n\n", distinct.Select(e => FormatEntry(e, isGroupView)));
     }
 
     private static string FormatEntry(Domain.Entities.ScheduleEntry e, bool isGroupView)

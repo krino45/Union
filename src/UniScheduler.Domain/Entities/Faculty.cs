@@ -8,4 +8,5 @@ public class Faculty : Entity
     public string ShortCode { get; set; } = string.Empty;
 
     public ICollection<StudentGroup> Groups { get; set; } = new List<StudentGroup>();
+    public ICollection<Department> Departments { get; set; } = new List<Department>();
 }

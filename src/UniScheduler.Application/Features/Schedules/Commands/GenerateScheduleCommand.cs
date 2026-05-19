@@ -39,7 +39,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         var weights = settingsEntity == null ? new SolverWeights() : new SolverWeights(
             settingsEntity.StudentWindow, settingsEntity.TeacherWindow, settingsEntity.ActiveDay, settingsEntity.SanPinOverload,
             settingsEntity.ConsecLecture, settingsEntity.ConsecSeminar, settingsEntity.ConsecPractical, settingsEntity.ConsecLab,
-            settingsEntity.EarlyPair, settingsEntity.LatePair, settingsEntity.ConsecRunScalar);
+            settingsEntity.EarlyPair, settingsEntity.LatePair, settingsEntity.ConsecRunScalar,
+            settingsEntity.SaturdayPenalty, settingsEntity.DepartmentMismatchPenalty);
 
         var (input, scoreCtx) = await BuildInputAsync(schedule, request.SolverTimeoutSeconds, weights, cancellationToken);
 
@@ -93,10 +94,10 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
     private async Task<(SchedulerInput, ScoreContext)> BuildInputAsync(Schedule schedule, int timeout, SolverWeights weights, CancellationToken ct)
     {
-        var rooms = await db.Rooms.Include(r => r.Building).ToListAsync(ct);
+        var rooms = await db.Rooms.Include(r => r.Building).Include(r => r.Department).Where(r => r.IsEnabled).ToListAsync(ct);
         var teachers = await db.Teachers.ToListAsync(ct);
 
-        var groupsQuery = db.StudentGroups.AsQueryable();
+        var groupsQuery = db.StudentGroups.Include(g => g.BlockedDays).AsQueryable();
         if (schedule.FacultyId.HasValue && !schedule.AllowCrossFacultyLessons)
             groupsQuery = groupsQuery.Where(g => g.FacultyId == schedule.FacultyId);
         var groups = await groupsQuery.ToListAsync(ct);
@@ -107,11 +108,16 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .Where(sp => sp.AcademicYear == schedule.AcademicYear && sp.Term == schedule.Term)
             .ToListAsync(ct);
 
-        // Load teacher-subject assignments for all subjects in the plans
+        // Load teacher-subject assignments and subject departments for all subjects in the plans
         var subjectIds = studyPlans.SelectMany(sp => sp.Entries.Select(e => e.SubjectId)).ToHashSet();
         var teacherSubjects = await db.TeacherSubjects
             .Where(ts => subjectIds.Contains(ts.SubjectId))
             .ToListAsync(ct);
+        var subjectsWithDepts = await db.Subjects
+            .Include(s => s.Department)
+            .Where(s => subjectIds.Contains(s.Id))
+            .ToListAsync(ct);
+        var subjectFacultyIds = subjectsWithDepts.ToDictionary(s => s.Id, s => s.Department?.FacultyId);
 
         var distances = await db.BuildingDistances.ToListAsync(ct);
         var floorPlanNodes = await db.FloorPlanNodes.ToListAsync(ct);
@@ -135,14 +141,15 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
             foreach (var entry in plan.Entries)
             {
+                subjectFacultyIds.TryGetValue(entry.SubjectId, out var subjFacultyId);
                 AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lecture,
-                    entry.LectureHours, studyWeeks, planGroupIds, teacherSubjects, merged: true, isLab: false);
+                    entry.LectureHours, studyWeeks, planGroupIds, teacherSubjects, merged: true, isLab: false, subjFacultyId);
                 AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Practical,
-                    entry.PracticalHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: false);
+                    entry.PracticalHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: false, subjFacultyId);
                 AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lab,
-                    entry.LabHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: true);
+                    entry.LabHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: true, subjFacultyId);
                 AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Seminar,
-                    entry.SeminarHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: false);
+                    entry.SeminarHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: false, subjFacultyId);
             }
         }
 
@@ -194,9 +201,10 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         var input = new SchedulerInput(
             schedule.Id,
             rooms.Select(r => new SchedulerRoom(r.Id, r.BuildingId, r.RoomType, r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
-                r.Floor, r.AllowedLessonTypes)).ToList(),
+                r.Floor, r.AllowedLessonTypes, r.Department?.FacultyId)).ToList(),
             teachers.Select(t => new SchedulerTeacher(t.Id)).ToList(),
-            groups.Select(g => new SchedulerGroup(g.Id, g.StudentCount)).ToList(),
+            groups.Select(g => new SchedulerGroup(g.Id, g.StudentCount,
+                g.BlockedDays.Select(bd => (int)bd.DayOfWeek - 1).ToList())).ToList(),
             requirements,
             distances.Select(d => new SchedulerBuildingDistance(d.FromBuildingId, d.ToBuildingId, d.DistanceMeters)).ToList(),
             blocks.Select(b => new SchedulerBlock(b.TeacherId, b.DayOfWeek, b.PairNumber, b.WeekType)).ToList(),
@@ -214,7 +222,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         List<SchedulerRequirement> requirements, ref int idx,
         Guid subjectId, LessonType lt, double totalHours, int studyWeeks,
         List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
-        bool merged, bool isLab)
+        bool merged, bool isLab, Guid? subjectFacultyId = null)
     {
         if (totalHours <= 0) return;
         var teachers = teacherSubjects
@@ -231,7 +239,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 for (int i = 0; i < teachers.Count; i++)
                 {
                     if (chunks[i].Count == 0) continue;
-                    requirements.Add(new SchedulerRequirement(idx++, chunks[i], subjectId, lt, teachers[i], wt, false, lt == LessonType.Lecture, false, isLab));
+                    requirements.Add(new SchedulerRequirement(idx++, chunks[i], subjectId, lt, teachers[i], wt, false, lt == LessonType.Lecture, false, isLab, subjectFacultyId));
                 }
             }
             else
@@ -240,7 +248,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 for (int gi = 0; gi < planGroupIds.Count; gi++)
                 {
                     var teacherId = teachers[gi % teachers.Count];
-                    requirements.Add(new SchedulerRequirement(idx++, [planGroupIds[gi]], subjectId, lt, teacherId, wt, false, false, false, isLab));
+                    requirements.Add(new SchedulerRequirement(idx++, [planGroupIds[gi]], subjectId, lt, teacherId, wt, false, false, false, isLab, subjectFacultyId));
                 }
             }
         }

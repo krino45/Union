@@ -18,6 +18,10 @@ public class Room : Entity
     /// <summary>Lesson types the scheduler may place here. Empty list = all types allowed.</summary>
     public List<LessonType> AllowedLessonTypes { get; set; } = new();
 
+    public bool IsEnabled { get; set; } = true;
+    public Guid? DepartmentId { get; set; }
+
     public Building Building { get; set; } = null!;
+    public Department? Department { get; set; }
     public ICollection<ScheduleEntry> ScheduleEntries { get; set; } = new List<ScheduleEntry>();
 }

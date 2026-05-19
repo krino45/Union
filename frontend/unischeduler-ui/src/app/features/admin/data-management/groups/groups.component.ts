@@ -14,7 +14,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
 import { StudentGroup, Faculty } from '../../../../core/models';
-import { DegreeType } from '../../../../core/models/enums';
+import { DegreeType, RussianDayOfWeek } from '../../../../core/models/enums';
 
 @Component({
   selector: 'app-groups',
@@ -65,6 +65,13 @@ import { DegreeType } from '../../../../core/models/enums';
           <th mat-header-cell *matHeaderCellDef>Студентов</th>
           <td mat-cell *matCellDef="let g">{{ g.studentCount }}</td>
         </ng-container>
+        <ng-container matColumnDef="blockedDays">
+          <th mat-header-cell *matHeaderCellDef>Заблок. дни</th>
+          <td mat-cell *matCellDef="let g">
+            <span *ngIf="!g.blockedDays?.length" class="no-block">—</span>
+            <span *ngFor="let d of g.blockedDays" class="day-chip">{{ dayLabel(d) }}</span>
+          </td>
+        </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let g">
@@ -83,13 +90,15 @@ import { DegreeType } from '../../../../core/models/enums';
     h1 { margin: 0; }
     .full-width { width: 100%; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
+    .no-block { color: #ccc; }
+    .day-chip { display: inline-block; font-size: 11px; background: #fce4ec; color: #880e4f; border-radius: 4px; padding: 1px 5px; margin: 1px; }
   `]
 })
 export class GroupsComponent implements OnInit {
   groups: StudentGroup[] = [];
   faculties: Faculty[] = [];
   loading = true;
-  columns = ['name', 'faculty', 'year', 'degree', 'specialty', 'count', 'actions'];
+  columns = ['name', 'faculty', 'year', 'degree', 'specialty', 'count', 'blockedDays', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
 
@@ -103,6 +112,14 @@ export class GroupsComponent implements OnInit {
       next: data => { this.groups = data; this.loading = false; },
       error: () => { this.loading = false; }
     });
+  }
+
+  dayLabel(day: RussianDayOfWeek): string {
+    const map: Record<string, string> = {
+      Monday: 'Пн', Tuesday: 'Вт', Wednesday: 'Ср',
+      Thursday: 'Чт', Friday: 'Пт', Saturday: 'Сб'
+    };
+    return map[day] ?? day;
   }
 
   openDialog(group: StudentGroup | null): void {
@@ -199,6 +216,18 @@ export class GroupsComponent implements OnInit {
           <mat-label>Количество студентов</mat-label>
           <input matInput type="number" formControlName="studentCount" min="1">
         </mat-form-field>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Заблокированные дни (жёсткое ограничение)</mat-label>
+          <mat-select formControlName="blockedDays" multiple>
+            <mat-option value="Monday">Понедельник</mat-option>
+            <mat-option value="Tuesday">Вторник</mat-option>
+            <mat-option value="Wednesday">Среда</mat-option>
+            <mat-option value="Thursday">Четверг</mat-option>
+            <mat-option value="Friday">Пятница</mat-option>
+            <mat-option value="Saturday">Суббота</mat-option>
+          </mat-select>
+          <mat-hint>Занятия не будут ставиться в выбранные дни</mat-hint>
+        </mat-form-field>
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -223,7 +252,8 @@ export class GroupDialogComponent {
       degreeType: [g?.degreeType ?? DegreeType.Bachelor, Validators.required],
       year: [g?.year ?? 1, [Validators.required, Validators.min(1), Validators.max(6)]],
       specialty: [g?.specialty ?? '', Validators.required],
-      studentCount: [g?.studentCount ?? 25, [Validators.required, Validators.min(1)]]
+      studentCount: [g?.studentCount ?? 25, [Validators.required, Validators.min(1)]],
+      blockedDays: [g?.blockedDays ?? []]
     });
   }
 

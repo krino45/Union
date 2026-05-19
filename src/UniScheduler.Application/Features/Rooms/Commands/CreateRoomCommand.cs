@@ -11,12 +11,14 @@ public record CreateRoomCommand(
     Guid BuildingId, string Number, RoomType RoomType, int Capacity,
     bool HasProjector, bool HasComputers, bool HasLab, bool IsOnline,
     int Floor = 1,
-    List<LessonType>? AllowedLessonTypes = null) : IRequest<RoomDto>;
+    List<LessonType>? AllowedLessonTypes = null,
+    bool IsEnabled = true,
+    Guid? DepartmentId = null) : IRequest<RoomDto>;
 
 public class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand, RoomDto>
 {
-    private readonly IApplicationDbContext _db;
-    public CreateRoomCommandHandler(IApplicationDbContext db) => _db = db;
+    private readonly IApplicationDbContext db;
+    public CreateRoomCommandHandler(IApplicationDbContext db) => this.db = db;
 
     public async Task<RoomDto> Handle(CreateRoomCommand r, CancellationToken cancellationToken)
     {
@@ -25,15 +27,21 @@ public class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand, RoomD
             BuildingId = r.BuildingId, Number = r.Number, RoomType = r.RoomType,
             Capacity = r.Capacity, HasProjector = r.HasProjector,
             HasComputers = r.HasComputers, HasLab = r.HasLab, IsOnline = r.IsOnline,
-            Floor = r.Floor,
-            AllowedLessonTypes = r.AllowedLessonTypes ?? new List<LessonType>()
+            Floor = r.Floor, AllowedLessonTypes = r.AllowedLessonTypes ?? new List<LessonType>(),
+            IsEnabled = r.IsEnabled, DepartmentId = r.DepartmentId
         };
-        _db.Rooms.Add(room);
-        await _db.SaveChangesAsync(cancellationToken);
+        db.Rooms.Add(room);
+        await db.SaveChangesAsync(cancellationToken);
 
-        var building = await _db.Buildings.FirstAsync(b => b.Id == r.BuildingId, cancellationToken);
+        var building = await db.Buildings.FirstAsync(b => b.Id == r.BuildingId, cancellationToken);
+        string? deptName = null;
+        if (r.DepartmentId.HasValue)
+        {
+            var dept = await db.Departments.FindAsync(new object[] { r.DepartmentId.Value }, cancellationToken);
+            deptName = dept?.Name;
+        }
         return new RoomDto(room.Id, room.BuildingId, building.ShortCode, room.Number, room.RoomType,
             room.Capacity, room.HasProjector, room.HasComputers, room.HasLab, room.IsOnline,
-            room.Floor, room.AllowedLessonTypes);
+            room.Floor, room.AllowedLessonTypes, room.IsEnabled, room.DepartmentId, deptName);
     }
 }

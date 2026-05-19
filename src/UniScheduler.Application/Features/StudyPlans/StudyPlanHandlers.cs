@@ -8,7 +8,7 @@ using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.StudyPlans;
 
-// ── Queries ───────────────────────────────────────────────────────────────────
+//  Queries 
 
 public record GetStudyPlansQuery(int? AcademicYear = null, Term? Term = null)
     : IRequest<List<StudyPlanDto>>;
@@ -43,7 +43,7 @@ public class GetStudyPlanQueryHandler : IRequestHandler<GetStudyPlanQuery, Study
     }
 }
 
-// ── Commands ──────────────────────────────────────────────────────────────────
+//  Commands 
 
 public record CreateStudyPlanCommand(UpsertStudyPlanDto Dto) : IRequest<StudyPlanDto>;
 
@@ -116,7 +116,7 @@ public class DeleteStudyPlanCommandHandler : IRequestHandler<DeleteStudyPlanComm
     }
 }
 
-// ── Shared helpers (internal — also used by audit query) ─────────────────────
+//  Shared helpers (internal — also used by audit query) 
 
 public static class StudyPlanQ
 {

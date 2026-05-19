@@ -7,5 +7,7 @@ public record SubjectDto(
     string Name,
     string ShortName,
     int AcademicYear,
-    Term Term
+    Term Term,
+    Guid? DepartmentId,
+    string? DepartmentName
 );

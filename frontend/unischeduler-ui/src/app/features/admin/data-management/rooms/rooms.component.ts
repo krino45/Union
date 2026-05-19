@@ -16,7 +16,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
-import { Room, Building } from '../../../../core/models';
+import { Room, Building, Department } from '../../../../core/models';
 import { LessonType, RoomType } from '../../../../core/models/enums';
 import { RoomTypePipe } from '../../../../shared/pipes/room-type.pipe';
 import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
@@ -83,6 +83,21 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
             <mat-chip *ngFor="let lt of r.allowedLessonTypes" class="type-chip">{{ lt | lessonType }}</mat-chip>
           </td>
         </ng-container>
+        <ng-container matColumnDef="department">
+          <th mat-header-cell *matHeaderCellDef>Кафедра</th>
+          <td mat-cell *matCellDef="let r">
+            <span *ngIf="r.departmentName" class="dept-name">{{ r.departmentName }}</span>
+            <span *ngIf="!r.departmentName" class="no-dept">—</span>
+          </td>
+        </ng-container>
+        <ng-container matColumnDef="enabled">
+          <th mat-header-cell *matHeaderCellDef>Статус</th>
+          <td mat-cell *matCellDef="let r">
+            <mat-chip [class]="r.isEnabled ? 'chip-enabled' : 'chip-disabled'">
+              {{ r.isEnabled ? 'Активна' : 'Отключена' }}
+            </mat-chip>
+          </td>
+        </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let r">
@@ -95,7 +110,7 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
           </td>
         </ng-container>
         <tr mat-header-row *matHeaderRowDef="columns"></tr>
-        <tr mat-row *matRowDef="let row; columns: columns;"></tr>
+        <tr mat-row *matRowDef="let row; columns: columns;" [class.row-disabled]="!row.isEnabled"></tr>
       </table>
     </mat-card>
   `,
@@ -107,18 +122,25 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     .type-chip { background: #e3f2fd; color: #1565c0; font-size: 11px; margin: 1px; }
     .all-types { color: #9e9e9e; font-size: 12px; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
+    .dept-name { font-size: 12px; color: #555; }
+    .no-dept { color: #ccc; }
+    .chip-enabled { background: #e8f5e9; color: #1b5e20; font-size: 11px; }
+    .chip-disabled { background: #fce4ec; color: #880e4f; font-size: 11px; }
+    .row-disabled td { opacity: 0.5; }
   `]
 })
 export class RoomsComponent implements OnInit {
   rooms: Room[] = [];
   buildings: Building[] = [];
+  departments: Department[] = [];
   loading = true;
-  columns = ['number', 'building', 'location', 'type', 'capacity', 'features', 'allowedTypes', 'actions'];
+  columns = ['number', 'building', 'location', 'type', 'capacity', 'features', 'department', 'enabled', 'allowedTypes', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
 
   ngOnInit(): void {
-    this.api.getBuildings().subscribe(b => { this.buildings = b; this.load(); });
+    this.api.getBuildings().subscribe(b => { this.buildings = b; });
+    this.api.getDepartments().subscribe(d => { this.departments = d; this.load(); });
   }
 
   load(): void {
@@ -131,7 +153,7 @@ export class RoomsComponent implements OnInit {
 
   openDialog(room: Room | null): void {
     const ref = this.dialog.open(RoomDialogComponent, {
-      data: { room, buildings: this.buildings }, width: '560px'
+      data: { room, buildings: this.buildings, departments: this.departments }, width: '560px'
     });
     ref.afterClosed().subscribe(result => {
       if (!result) return;
@@ -215,6 +237,16 @@ export class RoomsComponent implements OnInit {
           </mat-select>
           <mat-hint>Оставьте пустым — допускаются все типы</mat-hint>
         </mat-form-field>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Кафедра (необязательно)</mat-label>
+          <mat-select formControlName="departmentId">
+            <mat-option [value]="null">— Без кафедры —</mat-option>
+            <mat-option *ngFor="let d of data.departments" [value]="d.id">{{ d.shortCode }} — {{ d.name }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <div class="checkboxes">
+          <mat-checkbox formControlName="isEnabled">Аудитория активна (доступна для расписания)</mat-checkbox>
+        </div>
         <div class="warn-note" *ngIf="data.room">
           <mat-icon class="warn-icon">warning</mat-icon>
           Изменение допустимых типов занятий не затрагивает уже размещённые занятия.
@@ -253,7 +285,7 @@ export class RoomDialogComponent implements OnDestroy {
 
   constructor(
     private dialogRef: MatDialogRef<RoomDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: { room: Room | null; buildings: Building[] },
+    @Inject(MAT_DIALOG_DATA) public data: { room: Room | null; buildings: Building[]; departments: Department[] },
     private fb: FormBuilder
   ) {
     const r = data.room;
@@ -267,7 +299,9 @@ export class RoomDialogComponent implements OnDestroy {
       hasComputers: [r?.hasComputers ?? false],
       hasLab: [r?.hasLab ?? false],
       isOnline: [r?.isOnline ?? false],
-      allowedLessonTypes: [r?.allowedLessonTypes ?? []]
+      allowedLessonTypes: [r?.allowedLessonTypes ?? []],
+      isEnabled: [r?.isEnabled ?? true],
+      departmentId: [r?.departmentId ?? null]
     });
 
     // Auto-suggest AllowedLessonTypes when room type changes (new rooms only)

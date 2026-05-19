@@ -5,17 +5,19 @@ namespace UniScheduler.Application.Common.Models;
 //  Input 
 
 public record SolverWeights(
-    int StudentWindow    = 100,
-    int TeacherWindow    = 80,
-    int ActiveDay        = 60,
-    int SanPinOverload   = 300,
-    int ConsecLecture    = 70,
-    int ConsecSeminar    = 40,
-    int ConsecPractical  = 30,
-    int ConsecLab        = 10,
-    int EarlyPair        = 15,
-    int LatePair         = 25,
-    int ConsecRunScalar  = 3
+    int StudentWindow           = 100,
+    int TeacherWindow           = 80,
+    int ActiveDay               = 60,
+    int SanPinOverload          = 300,
+    int ConsecLecture           = 70,
+    int ConsecSeminar           = 40,
+    int ConsecPractical         = 30,
+    int ConsecLab               = 10,
+    int EarlyPair               = 15,
+    int LatePair                = 25,
+    int ConsecRunScalar         = 3,
+    int SaturdayPenalty         = 30,
+    int DepartmentMismatchPenalty = 50
 );
 
 public record SchedulerInput(
@@ -44,14 +46,15 @@ public record SchedulerRoom(
     bool HasLab,
     bool IsOnline,
     int Floor = 1,
-    IReadOnlyList<LessonType>? AllowedLessonTypes = null
+    IReadOnlyList<LessonType>? AllowedLessonTypes = null,
+    Guid? DepartmentFacultyId = null
 );
 
 public record SchedulerRoomDistance(Guid FromRoomId, Guid ToRoomId, int DistanceMeters);
 
 public record SchedulerTeacher(Guid Id);
 
-public record SchedulerGroup(Guid Id, int StudentCount);
+public record SchedulerGroup(Guid Id, int StudentCount, IReadOnlyList<int>? BlockedDays = null);
 
 /// <summary>
 /// One class-per-week occurrence that must be placed in the schedule.
@@ -67,7 +70,8 @@ public record SchedulerRequirement(
     bool IsOnline,
     bool NeedsProjector,
     bool NeedsComputers,
-    bool NeedsLab
+    bool NeedsLab,
+    Guid? SubjectFacultyId = null
 );
 
 public record SchedulerBuildingDistance(Guid FromId, Guid ToId, int DistanceMeters);

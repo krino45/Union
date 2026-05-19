@@ -30,7 +30,7 @@ public class StudentGroupsController : ControllerBase
 
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<StudentGroupDto>> Update(Guid id, [FromBody] UpdateStudentGroupRequest req, CancellationToken ct)
-        => Ok(await mediator.Send(new UpdateStudentGroupCommand(id, req.Name, req.Year, req.Specialty, req.StudentCount, req.DegreeType, req.FacultyId), ct));
+        => Ok(await mediator.Send(new UpdateStudentGroupCommand(id, req.Name, req.Year, req.Specialty, req.StudentCount, req.DegreeType, req.FacultyId, req.BlockedDays), ct));
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
@@ -47,5 +47,5 @@ public class StudentGroupsController : ControllerBase
     }
 }
 
-public record UpdateStudentGroupRequest(string Name, int Year, string Specialty, int StudentCount, DegreeType DegreeType, Guid FacultyId);
+public record UpdateStudentGroupRequest(string Name, int Year, string Specialty, int StudentCount, DegreeType DegreeType, Guid FacultyId, List<RussianDayOfWeek>? BlockedDays = null);
 public record PromoteGroupsRequest(Guid? FacultyId);

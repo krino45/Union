@@ -8,7 +8,7 @@ using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.CalendarPlans;
 
-// ── Queries ───────────────────────────────────────────────────────────────────
+//  Queries 
 
 public record GetCalendarPlansQuery(int? AcademicYear = null, Term? Term = null)
     : IRequest<List<CalendarPlanDto>>;
@@ -44,7 +44,7 @@ public class GetCalendarPlanQueryHandler : IRequestHandler<GetCalendarPlanQuery,
     }
 }
 
-// ── Commands ──────────────────────────────────────────────────────────────────
+//  Commands 
 
 public record CreateCalendarPlanCommand(UpsertCalendarPlanDto Dto) : IRequest<CalendarPlanDto>;
 
@@ -103,7 +103,7 @@ public class DeleteCalendarPlanCommandHandler : IRequestHandler<DeleteCalendarPl
     }
 }
 
-// ── Mapping ───────────────────────────────────────────────────────────────────
+//  Mapping 
 
 public static class CalendarPlanQ
 {

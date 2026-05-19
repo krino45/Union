@@ -746,6 +746,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
       hasComputers:     false,
       hasLab:           false,
       isOnline:         false,
+      isEnabled:        true,
       floor:            node.floor,
       allowedLessonTypes: [],
     };

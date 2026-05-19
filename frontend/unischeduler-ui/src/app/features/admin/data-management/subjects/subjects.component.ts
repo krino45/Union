@@ -13,7 +13,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
-import { Subject } from '../../../../core/models';
+import { Subject, Department } from '../../../../core/models';
 import { Term } from '../../../../core/models/enums';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -46,6 +46,13 @@ const CURRENT_YEAR = new Date().getFullYear();
           <th mat-header-cell *matHeaderCellDef>Год / Семестр</th>
           <td mat-cell *matCellDef="let s">{{ s.academicYear }} / {{ s.term === 'First' ? '1' : '2' }}</td>
         </ng-container>
+        <ng-container matColumnDef="department">
+          <th mat-header-cell *matHeaderCellDef>Кафедра</th>
+          <td mat-cell *matCellDef="let s">
+            <span *ngIf="s.departmentName" class="dept-name">{{ s.departmentName }}</span>
+            <span *ngIf="!s.departmentName" class="no-dept">—</span>
+          </td>
+        </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let s">
@@ -66,16 +73,21 @@ const CURRENT_YEAR = new Date().getFullYear();
     .short { color: #888; font-size: 12px; }
     .hint { color: #888; font-size: 12px; margin-top: 8px; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
+    .dept-name { font-size: 12px; color: #555; }
+    .no-dept { color: #ccc; }
   `]
 })
 export class SubjectsComponent implements OnInit {
   subjects: Subject[] = [];
+  departments: Department[] = [];
   loading = true;
-  columns = ['name', 'period', 'actions'];
+  columns = ['name', 'period', 'department', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
 
-  ngOnInit(): void { this.load(); }
+  ngOnInit(): void {
+    this.api.getDepartments().subscribe(d => { this.departments = d; this.load(); });
+  }
 
   load(): void {
     this.loading = true;
@@ -86,7 +98,7 @@ export class SubjectsComponent implements OnInit {
   }
 
   openDialog(subject: Subject | null): void {
-    const ref = this.dialog.open(SubjectDialogComponent, { data: subject, width: '440px' });
+    const ref = this.dialog.open(SubjectDialogComponent, { data: { subject, departments: this.departments }, width: '480px' });
     ref.afterClosed().subscribe(result => {
       if (!result) return;
       if (subject) {
@@ -117,7 +129,7 @@ export class SubjectsComponent implements OnInit {
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatDialogModule],
   template: `
-    <h2 mat-dialog-title>{{ data ? 'Редактировать' : 'Добавить' }} дисциплину</h2>
+    <h2 mat-dialog-title>{{ data.subject ? 'Редактировать' : 'Добавить' }} дисциплину</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="dialog-form">
         <div class="row">
@@ -143,6 +155,13 @@ export class SubjectsComponent implements OnInit {
             </mat-select>
           </mat-form-field>
         </div>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Кафедра (необязательно)</mat-label>
+          <mat-select formControlName="departmentId">
+            <mat-option [value]="null">— Без кафедры —</mat-option>
+            <mat-option *ngFor="let d of data.departments" [value]="d.id">{{ d.shortCode }} — {{ d.name }}</mat-option>
+          </mat-select>
+        </mat-form-field>
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -150,21 +169,23 @@ export class SubjectsComponent implements OnInit {
       <button mat-raised-button color="primary" [disabled]="form.invalid" (click)="submit()">Сохранить</button>
     </mat-dialog-actions>
   `,
-  styles: [`.dialog-form { display: flex; flex-direction: column; padding-top: 8px; min-width: 380px; gap: 4px; } .row { display: flex; gap: 8px; } .flex1 { flex: 1; } .flex2 { flex: 2; }`]
+  styles: [`.dialog-form { display: flex; flex-direction: column; padding-top: 8px; min-width: 380px; gap: 4px; } .row { display: flex; gap: 8px; } .flex1 { flex: 1; } .flex2 { flex: 2; } .full-width { width: 100%; }`]
 })
 export class SubjectDialogComponent {
   form: FormGroup;
 
   constructor(
     private dialogRef: MatDialogRef<SubjectDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: Subject | null,
+    @Inject(MAT_DIALOG_DATA) public data: { subject: Subject | null; departments: Department[] },
     private fb: FormBuilder
   ) {
+    const s = data.subject;
     this.form = this.fb.group({
-      name: [data?.name ?? '', Validators.required],
-      shortName: [data?.shortName ?? '', Validators.required],
-      academicYear: [data?.academicYear ?? CURRENT_YEAR, [Validators.required, Validators.min(2020)]],
-      term: [data?.term ?? Term.First, Validators.required]
+      name: [s?.name ?? '', Validators.required],
+      shortName: [s?.shortName ?? '', Validators.required],
+      academicYear: [s?.academicYear ?? CURRENT_YEAR, [Validators.required, Validators.min(2020)]],
+      term: [s?.term ?? Term.First, Validators.required],
+      departmentId: [s?.departmentId ?? null]
     });
   }
 

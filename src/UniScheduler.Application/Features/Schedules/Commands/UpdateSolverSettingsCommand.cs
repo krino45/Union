@@ -34,6 +34,8 @@ public class UpdateSolverSettingsCommandHandler : IRequestHandler<UpdateSolverSe
         s.EarlyPair       = w.EarlyPair;
         s.LatePair        = w.LatePair;
         s.ConsecRunScalar = w.ConsecRunScalar;
+        s.SaturdayPenalty = w.SaturdayPenalty;
+        s.DepartmentMismatchPenalty = w.DepartmentMismatchPenalty;
 
         await db.SaveChangesAsync(cancellationToken);
     }

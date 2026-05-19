@@ -10,6 +10,8 @@ public interface IApplicationDbContext
     DbSet<FloorPlanNode> FloorPlanNodes { get; }
     DbSet<FloorPlanEdge> FloorPlanEdges { get; }
     DbSet<Room> Rooms { get; }
+    DbSet<Department> Departments { get; }
+    DbSet<GroupBlockedDay> GroupBlockedDays { get; }
     DbSet<Faculty> Faculties { get; }
     DbSet<Teacher> Teachers { get; }
     DbSet<TeacherSubject> TeacherSubjects { get; }

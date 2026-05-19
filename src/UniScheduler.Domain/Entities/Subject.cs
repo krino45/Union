@@ -10,6 +10,9 @@ public class Subject : Entity
     public int AcademicYear { get; set; }
     public Term Term { get; set; }
 
+    public Guid? DepartmentId { get; set; }
+
+    public Department? Department { get; set; }
     public ICollection<TeacherSubject> TeacherSubjects { get; set; } = new List<TeacherSubject>();
     public ICollection<ScheduleEntry> ScheduleEntries { get; set; } = new List<ScheduleEntry>();
 }

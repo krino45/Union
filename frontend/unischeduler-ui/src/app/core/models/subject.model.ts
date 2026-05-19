@@ -6,6 +6,8 @@ export interface Subject {
   shortName: string;
   academicYear: number;
   term: Term;
+  departmentId?: string | null;
+  departmentName?: string | null;
 }
 
 export interface CreateSubjectDto {
@@ -13,6 +15,7 @@ export interface CreateSubjectDto {
   shortName: string;
   academicYear: number;
   term: Term;
+  departmentId?: string | null;
 }
 
 export interface UpdateSubjectDto extends CreateSubjectDto {}

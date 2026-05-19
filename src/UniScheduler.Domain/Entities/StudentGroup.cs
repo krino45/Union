@@ -15,4 +15,5 @@ public class StudentGroup : Entity
     public Faculty Faculty { get; set; } = null!;
 
     public ICollection<ScheduleEntryStudentGroup> ScheduleEntryGroups { get; set; } = new List<ScheduleEntryStudentGroup>();
+    public ICollection<GroupBlockedDay> BlockedDays { get; set; } = new List<GroupBlockedDay>();
 }

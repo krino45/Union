@@ -13,6 +13,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<FloorPlanNode> FloorPlanNodes => Set<FloorPlanNode>();
     public DbSet<FloorPlanEdge> FloorPlanEdges => Set<FloorPlanEdge>();
     public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<GroupBlockedDay> GroupBlockedDays => Set<GroupBlockedDay>();
     public DbSet<Faculty> Faculties => Set<Faculty>();
     public DbSet<Teacher> Teachers => Set<Teacher>();
     public DbSet<TeacherSubject> TeacherSubjects => Set<TeacherSubject>();

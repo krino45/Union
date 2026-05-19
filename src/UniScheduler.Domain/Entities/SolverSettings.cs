@@ -22,4 +22,10 @@ public class SolverSettings
 
     // S6 run-length scalar — extra multiplier for runs of 3+ consecutive same-type lessons
     public int ConsecRunScalar { get; set; } = 3;
+
+    // S8 — Saturday discouragement (soft penalty per group-slot on Saturday)
+    public int SaturdayPenalty { get; set; } = 30;
+
+    // S9 — room department / subject department faculty mismatch
+    public int DepartmentMismatchPenalty { get; set; } = 50;
 }

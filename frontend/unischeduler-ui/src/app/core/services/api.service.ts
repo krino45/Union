@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   Building, CreateBuildingDto, UpdateBuildingDto, BuildingDistance, UpsertDistanceDto,
+  Department, CreateDepartmentDto, UpdateDepartmentDto,
   Room, CreateRoomDto, UpdateRoomDto,
   Faculty, CreateFacultyDto, UpdateFacultyDto,
   Teacher, CreateTeacherDto, UpdateTeacherDto, TeacherSubjectAssignment,
@@ -23,7 +24,7 @@ export class ApiService {
 
   constructor(private http: HttpClient) {}
 
-  // ── Buildings ─────────────────────────────────────────────────────────────
+  //  Buildings
   getBuildings(): Observable<Building[]> {
     return this.http.get<Building[]>(`${this.base}/buildings`);
   }
@@ -55,7 +56,23 @@ export class ApiService {
     return this.http.put<void>(`${this.base}/buildings/${buildingId}/floorplan`, req);
   }
 
-  // ── Rooms ─────────────────────────────────────────────────────────────────
+  //  Departments
+  getDepartments(facultyId?: string): Observable<Department[]> {
+    let params = new HttpParams();
+    if (facultyId) params = params.set('facultyId', facultyId);
+    return this.http.get<Department[]>(`${this.base}/departments`, { params });
+  }
+  createDepartment(dto: CreateDepartmentDto): Observable<Department> {
+    return this.http.post<Department>(`${this.base}/departments`, dto);
+  }
+  updateDepartment(id: string, dto: UpdateDepartmentDto): Observable<Department> {
+    return this.http.put<Department>(`${this.base}/departments/${id}`, dto);
+  }
+  deleteDepartment(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/departments/${id}`);
+  }
+
+  //  Rooms
   getRooms(filters?: { buildingId?: string; type?: string; minCapacity?: number }): Observable<Room[]> {
     let params = new HttpParams();
     if (filters?.buildingId) params = params.set('buildingId', filters.buildingId);
@@ -76,7 +93,7 @@ export class ApiService {
     return this.http.delete<void>(`${this.base}/rooms/${id}`);
   }
 
-  // ── Teachers ─────────────────────────────────────────────────────────────
+  //  Teachers
   getTeachers(): Observable<Teacher[]> {
     return this.http.get<Teacher[]>(`${this.base}/teachers`);
   }
@@ -100,7 +117,7 @@ export class ApiService {
     return this.http.post<{ promoted: number }>(`${this.base}/student-groups/promote`, { facultyId: facultyId ?? null });
   }
 
-  // ── Subjects ─────────────────────────────────────────────────────────────
+  //  Subjects
   getSubjects(academicYear?: number, term?: string): Observable<Subject[]> {
     let params = new HttpParams();
     if (academicYear != null) params = params.set('academicYear', academicYear.toString());
@@ -120,7 +137,7 @@ export class ApiService {
     return this.http.delete<void>(`${this.base}/subjects/${id}`);
   }
 
-  // ── Student Groups ────────────────────────────────────────────────────────
+  //  Student Groups
   getGroups(): Observable<StudentGroup[]> {
     return this.http.get<StudentGroup[]>(`${this.base}/student-groups`);
   }
@@ -137,7 +154,7 @@ export class ApiService {
     return this.http.delete<void>(`${this.base}/student-groups/${id}`);
   }
 
-  // ── Faculties ─────────────────────────────────────────────────────────────
+  //  Faculties
   getFaculties(): Observable<Faculty[]> {
     return this.http.get<Faculty[]>(`${this.base}/faculties`);
   }
@@ -151,12 +168,12 @@ export class ApiService {
     return this.http.delete<void>(`${this.base}/faculties/${id}`);
   }
 
-  // ── Pair Times ────────────────────────────────────────────────────────────
+  //  Pair Times
   getPairTimes(): Observable<{ pairNumber: number; startTime: string; endTime: string }[]> {
     return this.http.get<{ pairNumber: number; startTime: string; endTime: string }[]>(`${this.base}/pair-times`);
   }
 
-  // ── Schedules ─────────────────────────────────────────────────────────────
+  //  Schedules
   getSchedules(): Observable<Schedule[]> {
     return this.http.get<Schedule[]>(`${this.base}/schedules`);
   }
@@ -176,7 +193,7 @@ export class ApiService {
     return this.http.get<GenerationJobStatus>(`${this.base}/schedules/${id}/generate/status`);
   }
 
-  // ── Solver settings ───────────────────────────────────────────────────────
+  //  Solver settings
   getSolverSettings(): Observable<SolverWeights> {
     return this.http.get<SolverWeights>(`${this.base}/solver-settings`);
   }
@@ -213,7 +230,7 @@ export class ApiService {
     return this.http.get<ScheduleEntry[]>(`${this.base}/schedules/${scheduleId}/entries`, { params });
   }
 
-  // ── Schedule Entries ──────────────────────────────────────────────────────
+  //  Schedule Entries
   createEntry(dto: CreateScheduleEntryDto): Observable<ScheduleEntry> {
     return this.http.post<ScheduleEntry>(`${this.base}/schedule-entries`, dto);
   }
@@ -230,7 +247,7 @@ export class ApiService {
     return this.http.post<ConflictInfo[]>(`${this.base}/schedule-entries/conflicts`, dto);
   }
 
-  // ── Teacher Availability ──────────────────────────────────────────────────
+  //  Teacher Availability
   getAvailability(teacherId?: string): Observable<TeacherAvailability[]> {
     let params = new HttpParams();
     if (teacherId) params = params.set('teacherId', teacherId);
@@ -246,7 +263,7 @@ export class ApiService {
     return this.http.delete<void>(`${this.base}/teacher-availability/${id}`);
   }
 
-  // ── Reschedule Requests ───────────────────────────────────────────────────
+  //  Reschedule Requests
   getRescheduleRequests(): Observable<RescheduleRequest[]> {
     return this.http.get<RescheduleRequest[]>(`${this.base}/reschedule-requests`);
   }
@@ -260,7 +277,7 @@ export class ApiService {
     return this.http.put<void>(`${this.base}/reschedule-requests/${id}/reject`, dto);
   }
 
-  // ── Study Plans ───────────────────────────────────────────────────────────
+  //  Study Plans
   getStudyPlans(academicYear?: number, term?: string): Observable<StudyPlan[]> {
     let params = new HttpParams();
     if (academicYear != null) params = params.set('academicYear', academicYear.toString());
@@ -280,7 +297,7 @@ export class ApiService {
     return this.http.delete<void>(`${this.base}/study-plans/${id}`);
   }
 
-  // ── Calendar Plans ────────────────────────────────────────────────────────
+  //  Calendar Plans
   getCalendarPlans(academicYear?: number, term?: string): Observable<CalendarPlan[]> {
     let params = new HttpParams();
     if (academicYear != null) params = params.set('academicYear', academicYear.toString());
@@ -300,12 +317,12 @@ export class ApiService {
     return this.http.delete<void>(`${this.base}/calendar-plans/${id}`);
   }
 
-  // ── Plan progress ─────────────────────────────────────────────────────────
+  //  Plan progress
   getPlanProgress(scheduleId: string): Observable<PlanProgressItem[]> {
     return this.http.get<PlanProgressItem[]>(`${this.base}/schedules/${scheduleId}/plan-progress`);
   }
 
-  // ── JSON Export / Import ──────────────────────────────────────────────────
+  //  JSON Export / Import
   exportJson(scheduleId: string): Observable<Blob> {
     return this.http.get(`${this.base}/schedules/${scheduleId}/export/json`, { responseType: 'blob' });
   }
@@ -316,7 +333,7 @@ export class ApiService {
     );
   }
 
-  // ── Excel ─────────────────────────────────────────────────────────────────
+  //  Excel
   exportExcel(scheduleId: string, groupId?: string, teacherId?: string): Observable<Blob> {
     let params = new HttpParams();
     if (groupId) params = params.set('groupId', groupId);

@@ -62,6 +62,10 @@ import { AuthService } from './core/services/auth.service';
               <mat-icon matListItemIcon>domain</mat-icon>
               <span matListItemTitle>Факультеты</span>
             </a>
+            <a mat-list-item routerLink="/admin/departments" routerLinkActive="active">
+              <mat-icon matListItemIcon>account_balance</mat-icon>
+              <span matListItemTitle>Кафедры</span>
+            </a>
           </mat-nav-list>
           <mat-divider></mat-divider>
           <mat-nav-list>

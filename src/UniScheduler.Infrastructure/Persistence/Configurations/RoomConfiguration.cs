@@ -24,9 +24,17 @@ public class RoomConfiguration : IEntityTypeConfiguration<Room>
             .HasColumnType("text")
             .HasDefaultValueSql("''");
 
+        builder.Property(r => r.IsEnabled).IsRequired().HasDefaultValue(true);
+
         builder.HasOne(r => r.Building)
             .WithMany(b => b.Rooms)
             .HasForeignKey(r => r.BuildingId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(r => r.Department)
+            .WithMany(d => d.Rooms)
+            .HasForeignKey(r => r.DepartmentId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

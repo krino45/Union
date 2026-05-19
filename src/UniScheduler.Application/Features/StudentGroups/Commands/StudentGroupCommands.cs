@@ -8,8 +8,8 @@ using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.StudentGroups.Commands;
 
-public record CreateStudentGroupCommand(string Name, int Year, string Specialty, int StudentCount, DegreeType DegreeType, Guid FacultyId) : IRequest<StudentGroupDto>;
-public record UpdateStudentGroupCommand(Guid Id, string Name, int Year, string Specialty, int StudentCount, DegreeType DegreeType, Guid FacultyId) : IRequest<StudentGroupDto>;
+public record CreateStudentGroupCommand(string Name, int Year, string Specialty, int StudentCount, DegreeType DegreeType, Guid FacultyId, List<RussianDayOfWeek>? BlockedDays = null) : IRequest<StudentGroupDto>;
+public record UpdateStudentGroupCommand(Guid Id, string Name, int Year, string Specialty, int StudentCount, DegreeType DegreeType, Guid FacultyId, List<RussianDayOfWeek>? BlockedDays = null) : IRequest<StudentGroupDto>;
 public record DeleteStudentGroupCommand(Guid Id) : IRequest;
 
 public class CreateStudentGroupCommandHandler : IRequestHandler<CreateStudentGroupCommand, StudentGroupDto>
@@ -27,8 +27,12 @@ public class CreateStudentGroupCommandHandler : IRequestHandler<CreateStudentGro
         };
         db.StudentGroups.Add(group);
         await db.SaveChangesAsync(cancellationToken);
+
+        await StudentGroupHelpers.SyncBlockedDays(db, group.Id, r.BlockedDays, cancellationToken);
+
         var faculty = await db.Faculties.FindAsync(new object[] { r.FacultyId }, cancellationToken);
-        return new StudentGroupDto(group.Id, group.Name, group.Year, group.Specialty, group.StudentCount, group.DegreeType, group.FacultyId, faculty?.Name ?? string.Empty);
+        return new StudentGroupDto(group.Id, group.Name, group.Year, group.Specialty, group.StudentCount,
+            group.DegreeType, group.FacultyId, faculty?.Name ?? string.Empty, r.BlockedDays ?? new List<RussianDayOfWeek>());
     }
 }
 
@@ -45,7 +49,11 @@ public class UpdateStudentGroupCommandHandler : IRequestHandler<UpdateStudentGro
         group.Name = r.Name; group.Year = r.Year; group.Specialty = r.Specialty;
         group.StudentCount = r.StudentCount; group.DegreeType = r.DegreeType; group.FacultyId = r.FacultyId;
         await db.SaveChangesAsync(cancellationToken);
-        return new StudentGroupDto(group.Id, group.Name, group.Year, group.Specialty, group.StudentCount, group.DegreeType, group.FacultyId, group.Faculty.Name);
+
+        await StudentGroupHelpers.SyncBlockedDays(db, group.Id, r.BlockedDays, cancellationToken);
+
+        return new StudentGroupDto(group.Id, group.Name, group.Year, group.Specialty, group.StudentCount,
+            group.DegreeType, group.FacultyId, group.Faculty.Name, r.BlockedDays ?? new List<RussianDayOfWeek>());
     }
 }
 
@@ -61,5 +69,21 @@ public class DeleteStudentGroupCommandHandler : IRequestHandler<DeleteStudentGro
             ?? throw new NotFoundException(nameof(StudentGroup), request.Id);
         db.StudentGroups.Remove(group);
         await db.SaveChangesAsync(cancellationToken);
+    }
+}
+
+file static class StudentGroupHelpers
+{
+    internal static async Task SyncBlockedDays(IApplicationDbContext db, Guid groupId,
+        List<RussianDayOfWeek>? desired, CancellationToken ct)
+    {
+        var existing = await db.GroupBlockedDays.Where(bd => bd.GroupId == groupId).ToListAsync(ct);
+        db.GroupBlockedDays.RemoveRange(existing);
+        if (desired != null)
+        {
+            foreach (var day in desired.Distinct())
+                db.GroupBlockedDays.Add(new GroupBlockedDay { GroupId = groupId, DayOfWeek = day });
+        }
+        await db.SaveChangesAsync(ct);
     }
 }

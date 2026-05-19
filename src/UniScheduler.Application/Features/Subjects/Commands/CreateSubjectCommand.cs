@@ -8,7 +8,8 @@ namespace UniScheduler.Application.Features.Subjects.Commands;
 
 public record CreateSubjectCommand(
     string Name, string ShortName,
-    int AcademicYear, Term Term) : IRequest<SubjectDto>;
+    int AcademicYear, Term Term,
+    Guid? DepartmentId = null) : IRequest<SubjectDto>;
 
 public class CreateSubjectCommandHandler : IRequestHandler<CreateSubjectCommand, SubjectDto>
 {
@@ -21,10 +22,17 @@ public class CreateSubjectCommandHandler : IRequestHandler<CreateSubjectCommand,
         var subject = new Subject
         {
             Name = r.Name, ShortName = r.ShortName,
-            AcademicYear = r.AcademicYear, Term = r.Term
+            AcademicYear = r.AcademicYear, Term = r.Term,
+            DepartmentId = r.DepartmentId
         };
         db.Subjects.Add(subject);
         await db.SaveChangesAsync(cancellationToken);
-        return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term);
+        string? deptName = null;
+        if (r.DepartmentId.HasValue)
+        {
+            var dept = await db.Departments.FindAsync(new object[] { r.DepartmentId.Value }, cancellationToken);
+            deptName = dept?.Name;
+        }
+        return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term, subject.DepartmentId, deptName);
     }
 }

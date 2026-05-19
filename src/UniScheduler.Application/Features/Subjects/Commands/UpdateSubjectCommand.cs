@@ -10,7 +10,8 @@ namespace UniScheduler.Application.Features.Subjects.Commands;
 
 public record UpdateSubjectCommand(
     Guid Id, string Name, string ShortName,
-    int AcademicYear, Term Term) : IRequest<SubjectDto>;
+    int AcademicYear, Term Term,
+    Guid? DepartmentId = null) : IRequest<SubjectDto>;
 
 public class UpdateSubjectCommandHandler : IRequestHandler<UpdateSubjectCommand, SubjectDto>
 {
@@ -20,11 +21,13 @@ public class UpdateSubjectCommandHandler : IRequestHandler<UpdateSubjectCommand,
 
     public async Task<SubjectDto> Handle(UpdateSubjectCommand r, CancellationToken cancellationToken)
     {
-        var subject = await db.Subjects.FirstOrDefaultAsync(x => x.Id == r.Id, cancellationToken)
+        var subject = await db.Subjects.Include(s => s.Department).FirstOrDefaultAsync(x => x.Id == r.Id, cancellationToken)
             ?? throw new NotFoundException(nameof(Subject), r.Id);
         subject.Name = r.Name; subject.ShortName = r.ShortName;
         subject.AcademicYear = r.AcademicYear; subject.Term = r.Term;
+        subject.DepartmentId = r.DepartmentId;
         await db.SaveChangesAsync(cancellationToken);
-        return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term);
+        return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term,
+            subject.DepartmentId, subject.Department?.Name);
     }
 }

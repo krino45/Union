@@ -1,4 +1,5 @@
 export * from './building.model';
+export * from './department.model';
 export * from './room.model';
 export * from './faculty.model';
 export * from './teacher.model';

@@ -14,5 +14,8 @@ public record RoomDto(
     bool HasLab,
     bool IsOnline,
     int Floor,
-    List<LessonType> AllowedLessonTypes
+    List<LessonType> AllowedLessonTypes,
+    bool IsEnabled,
+    Guid? DepartmentId,
+    string? DepartmentName
 );

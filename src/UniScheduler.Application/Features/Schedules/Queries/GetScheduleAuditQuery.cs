@@ -41,7 +41,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             .Where(e => e.ScheduleId == request.ScheduleId)
             .ToListAsync(ct);
 
-        // ── Study plans ───────────────────────────────────────────────────────
+        //  Study plans 
         var studyPlans = await StudyPlanQ.BaseQuery(db)
             .Where(sp => sp.AcademicYear == schedule.AcademicYear && sp.Term == schedule.Term)
             .ToListAsync(ct);
@@ -61,7 +61,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         var warnings  = new List<AuditIssueDto>();
         var seen = new HashSet<string>();
 
-        // ── Hard conflicts: double-booking ────────────────────────────────────
+        //  Hard conflicts: double-booking 
         for (int i = 0; i < entries.Count; i++)
         for (int j = i + 1; j < entries.Count; j++)
         {
@@ -97,7 +97,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         {
             var groupEntries = entriesByGroup.TryGetValue(group.Id, out var ge) ? ge : new();
 
-            // ── Hours check: study plan only ──────────────────────────────────
+            //  Hours check: study plan only 
             if (planByGroup.TryGetValue(group.Id, out var plan))
             {
                 int studyWeeks = StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan);
@@ -110,7 +110,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
                 }
             }
 
-            // ── СанПиН: daily load ────────────────────────────────────────────
+            //  СанПиН: daily load 
             foreach (RussianDayOfWeek day in Enum.GetValues<RussianDayOfWeek>())
             {
                 int oddDay  = groupEntries.Count(e => e.DayOfWeek == day && (e.WeekType == WeekType.Both || e.WeekType == WeekType.Odd));
@@ -121,7 +121,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
                         $"СанПиН: {group.Name} — {DayLabel(day)}: {max} пар/день (макс. {SanPinMaxPairsPerDay})");
             }
 
-            // ── СанПиН: weekly load ───────────────────────────────────────────
+            //  СанПиН: weekly load 
             int oddWeek  = groupEntries.Count(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Odd);
             int evenWeek = groupEntries.Count(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Even);
             int maxWeek  = Math.Max(oddWeek, evenWeek);
@@ -129,14 +129,14 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
                 AddUnique(warnings, seen, "SanPinWeeklyOverload",
                     $"СанПиН: {group.Name} — {maxWeek} пар/нед. (макс. {SanPinMaxPairsPerWeek}, т.е. 36 ак.ч.)");
 
-            // ── СанПиН: no day off ────────────────────────────────────────────
+            //  СанПиН: no day off 
             var oddDays  = groupEntries.Where(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Odd ).Select(e => e.DayOfWeek).Distinct().Count();
             var evenDays = groupEntries.Where(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Even).Select(e => e.DayOfWeek).Distinct().Count();
             if (Math.Max(oddDays, evenDays) >= 6)
                 AddUnique(warnings, seen, "SanPinNoDayOff",
                     $"СанПиН: {group.Name} — занятия все 6 дней, нет выходного");
 
-            // ── Windows (gaps) ────────────────────────────────────────────────
+            //  Windows (gaps) 
             foreach (RussianDayOfWeek day in Enum.GetValues<RussianDayOfWeek>())
             {
                 CheckWindows(warnings, seen, group, groupEntries, day, WeekType.Odd);
@@ -155,7 +155,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         return new ScheduleAuditDto(conflicts, warnings, schedule.GenerationNotes, entries.Count, currentScore, schedule.BaseScore);
     }
 
-    // ── Validation helpers ────────────────────────────────────────────────────
+    //  Validation helpers 
 
     private static void CheckHours(
         List<AuditIssueDto> warnings, HashSet<string> seen,

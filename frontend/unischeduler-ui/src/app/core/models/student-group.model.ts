@@ -1,4 +1,4 @@
-import { DegreeType } from './enums';
+import { DegreeType, RussianDayOfWeek } from './enums';
 
 export interface StudentGroup {
   id: string;
@@ -9,6 +9,7 @@ export interface StudentGroup {
   degreeType: DegreeType;
   facultyId: string;
   facultyName: string;
+  blockedDays: RussianDayOfWeek[];
 }
 
 export interface CreateStudentGroupDto {
@@ -18,6 +19,7 @@ export interface CreateStudentGroupDto {
   studentCount: number;
   degreeType: DegreeType;
   facultyId: string;
+  blockedDays: RussianDayOfWeek[];
 }
 
 export interface UpdateStudentGroupDto extends CreateStudentGroupDto {}

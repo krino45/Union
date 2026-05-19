@@ -45,6 +45,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/admin/data-management/faculties/faculties.component').then(m => m.FacultiesComponent)
       },
       {
+        path: 'departments',
+        loadComponent: () => import('./features/admin/data-management/departments/departments.component').then(m => m.DepartmentsComponent)
+      },
+      {
         path: 'reschedule-requests',
         loadComponent: () => import('./features/admin/reschedule-requests/reschedule-requests.component').then(m => m.RescheduleRequestsComponent)
       },

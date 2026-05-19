@@ -48,4 +48,6 @@ export interface SolverWeights {
   earlyPair: number;
   latePair: number;
   consecRunScalar: number;
+  saturdayPenalty: number;
+  departmentMismatchPenalty: number;
 }
