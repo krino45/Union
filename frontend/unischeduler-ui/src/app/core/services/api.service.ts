@@ -189,8 +189,13 @@ export class ApiService {
     warnings: { type: string; description: string }[];
     generationNotes: string | null;
     totalEntries: number;
+    currentScore: number;
+    baseScore: number | null;
   }> {
     return this.http.get<any>(`${this.base}/schedules/${scheduleId}/audit`);
+  }
+  updateScore(scheduleId: string): Observable<number> {
+    return this.http.post<number>(`${this.base}/schedules/${scheduleId}/update-score`, {});
   }
   getScheduleEntries(scheduleId: string, filters?: { groupId?: string; teacherId?: string }): Observable<ScheduleEntry[]> {
     let params = new HttpParams();
@@ -203,8 +208,8 @@ export class ApiService {
   createEntry(dto: CreateScheduleEntryDto): Observable<ScheduleEntry> {
     return this.http.post<ScheduleEntry>(`${this.base}/schedule-entries`, dto);
   }
-  updateEntry(id: string, dto: UpdateScheduleEntryDto): Observable<void> {
-    return this.http.put<void>(`${this.base}/schedule-entries/${id}`, dto);
+  updateEntry(id: string, dto: UpdateScheduleEntryDto): Observable<ScheduleEntry> {
+    return this.http.post<ScheduleEntry>(`${this.base}/schedule-entries/${id}/update`, dto);
   }
   deleteEntry(id: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/schedule-entries/${id}`);

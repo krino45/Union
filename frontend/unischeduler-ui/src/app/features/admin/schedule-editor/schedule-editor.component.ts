@@ -16,13 +16,15 @@ import { ApiService } from '../../../core/services/api.service';
 import { Schedule, ScheduleEntry, MoveEntryDto, StudentGroup, Teacher, Subject, Room, PlanProgressItem, StudyPlan } from '../../../core/models';
 import { RussianDayOfWeek, WeekType } from '../../../core/models/enums';
 import { ScheduleGridComponent } from './schedule-grid/schedule-grid.component';
-import { AddEntryDialogComponent, AddEntryDialogData } from './add-entry-dialog.component';
+import { AddEntryDialogComponent, AddEntryDialogData, AddEntryDialogResult } from './add-entry-dialog.component';
 
 interface AuditResult {
   conflicts: { type: string; description: string }[];
   warnings: { type: string; description: string }[];
   generationNotes: string | null;
   totalEntries: number;
+  currentScore: number;
+  baseScore: number | null;
 }
 
 @Component({
@@ -47,8 +49,11 @@ interface AuditResult {
         <p class="subtitle" *ngIf="schedule">
           {{ schedule.startDate | date:'dd.MM.yyyy' }} – {{ schedule.endDate | date:'dd.MM.yyyy' }}
           <span *ngIf="audit"> · {{ audit.totalEntries }} занятий</span>
-          <span *ngIf="audit?.generationNotes && parseScore(audit!.generationNotes!)" class="score-note" [title]="audit!.generationNotes!">
-            · {{ parseScore(audit!.generationNotes!) }}
+          <span *ngIf="audit" class="score-note"
+                [class.score-better]="audit.baseScore != null && audit.currentScore < audit.baseScore"
+                [class.score-worse]="audit.baseScore != null && audit.currentScore > audit.baseScore"
+                [title]="'Штрафные очки: меньше = лучше. Не включает штраф за время хода между корпусами.'">
+            · {{ audit.baseScore != null ? (audit.baseScore + ' → ') : '' }}{{ audit.currentScore }}
           </span>
         </p>
       </div>
@@ -75,6 +80,9 @@ interface AuditResult {
           <mat-button-toggle value="Even">Чётная</mat-button-toggle>
         </mat-button-toggle-group>
         <div class="action-buttons">
+          <button mat-stroked-button (click)="updateScore()" [disabled]="!schedule || isArchived" title="Пересчитать базовую оценку">
+            <mat-icon>refresh</mat-icon> Оценка
+          </button>
           <button mat-stroked-button (click)="exportJson()" [disabled]="!schedule" title="Скачать расписание как JSON">
             <mat-icon>download</mat-icon> JSON
           </button>
@@ -212,6 +220,8 @@ interface AuditResult {
     .archive-banner mat-icon { font-size: 18px; color: #9e9e9e; }
     .subtitle { margin: 4px 0 0; color: #666; font-size: 13px; }
     .score-note { color: #1976d2; cursor: help; }
+    .score-better { color: #2e7d32; }
+    .score-worse  { color: #c62828; }
     .header-right { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
     .header-filters { display: flex; gap: 8px; }
     .filter-field { min-width: 160px; }
@@ -262,7 +272,6 @@ export class ScheduleEditorComponent implements OnInit {
   weekFilter = 'Both';
   audit: AuditResult | null = null;
   conflictsExpanded = true;
-  private hasManualEdits = false;
   private pendingMergeCheck = false;
   planProgress: PlanProgressItem[] = [];
   studyPlans: StudyPlan[] = [];
@@ -316,7 +325,7 @@ export class ScheduleEditorComponent implements OnInit {
   loadAudit(): void {
     if (!this.schedule) return;
     this.api.getScheduleAudit(this.schedule.id).subscribe(a => {
-      this.audit = this.hasManualEdits ? { ...a, generationNotes: null } : a;
+      this.audit = a;
       this.conflictsExpanded = a.conflicts.length > 0;
     });
   }
@@ -338,7 +347,43 @@ export class ScheduleEditorComponent implements OnInit {
 
   onFilterChange(): void { this.loadEntries(); }
 
-  onEntryMoved(event: { entryId: string; dto: any }): void {
+  onEntryMoved(event: { entryId: string; dto: MoveEntryDto }): void {
+    const movedEntry = this.entries.find(e => e.id === event.entryId);
+    if (movedEntry && movedEntry.weekType !== WeekType.Both) {
+      const match = this.entries.find(e =>
+        e.id !== event.entryId &&
+        e.dayOfWeek === event.dto.dayOfWeek &&
+        e.pairNumber === event.dto.pairNumber &&
+        (e.weekType === WeekType.Odd || e.weekType === WeekType.Even) &&
+        e.weekType !== event.dto.weekType &&
+        e.subjectId === movedEntry.subjectId &&
+        e.teacherId === movedEntry.teacherId &&
+        (e.roomId ?? null) === ((event.dto.roomId ?? movedEntry.roomId) ?? null) &&
+        e.lessonType === movedEntry.lessonType &&
+        e.isOnline === movedEntry.isOnline &&
+        e.studentGroups.length === movedEntry.studentGroups.length &&
+        e.studentGroups.every(g => movedEntry.studentGroups.some(mg => mg.id === g.id))
+      );
+      if (match) {
+        this.api.updateEntry(match.id, {
+          subjectId: match.subjectId, teacherId: match.teacherId, roomId: match.roomId,
+          dayOfWeek: match.dayOfWeek, pairNumber: match.pairNumber, weekType: WeekType.Both,
+          lessonType: match.lessonType, isOnline: match.isOnline,
+          groupIds: match.studentGroups.map(g => g.id)
+        }).pipe(switchMap(() => this.api.deleteEntry(event.entryId)))
+        .subscribe({
+          next: () => {
+            this.snackBar.open('Занятия объединены', 'OK', { duration: 2000 });
+            this.refreshAfterMutation();
+          },
+          error: (e) => {
+            this.snackBar.open(e.error?.title || 'Ошибка объединения', 'OK', { duration: 4000 });
+            this.loadEntries();
+          }
+        });
+        return;
+      }
+    }
     this.api.moveEntry(event.entryId, event.dto).subscribe({
       next: () => {
         this.snackBar.open('Занятие перенесено', 'OK', { duration: 2000 });
@@ -361,7 +406,7 @@ export class ScheduleEditorComponent implements OnInit {
     });
   }
 
-  onAddRequested(event: { day: RussianDayOfWeek; pair: number; weekType: string }): void {
+  onAddRequested(event: { day: RussianDayOfWeek; pair: number; weekType: string; existingEntry?: ScheduleEntry }): void {
     const data: AddEntryDialogData = {
       scheduleId: this.schedule!.id,
       day: event.day,
@@ -370,18 +415,29 @@ export class ScheduleEditorComponent implements OnInit {
       subjects: this.subjects,
       teachers: this.teachers,
       groups: this.groups,
-      rooms: this.rooms
+      rooms: this.rooms,
+      existingEntry: event.existingEntry
     };
     this.dialog.open(AddEntryDialogComponent, { data, width: '480px' })
-      .afterClosed().subscribe(dto => {
-        if (!dto) return;
-        this.api.createEntry(dto).subscribe({
-          next: () => {
-            this.snackBar.open('Занятие добавлено', 'OK', { duration: 2000 });
-            this.refreshAfterMutation();
-          },
-          error: (e) => this.snackBar.open(e.error?.title || 'Конфликт при добавлении', 'OK', { duration: 4000 })
-        });
+      .afterClosed().subscribe((result: AddEntryDialogResult | undefined) => {
+        if (!result) return;
+        if (result.mode === 'create') {
+          this.api.createEntry(result.dto).subscribe({
+            next: () => {
+              this.snackBar.open('Занятие добавлено', 'OK', { duration: 2000 });
+              this.refreshAfterMutation();
+            },
+            error: (e) => this.snackBar.open(e.error?.title || 'Конфликт при добавлении', 'OK', { duration: 4000 })
+          });
+        } else {
+          this.api.updateEntry(result.entryId, result.dto).subscribe({
+            next: () => {
+              this.snackBar.open('Занятие обновлено', 'OK', { duration: 2000 });
+              this.refreshAfterMutation();
+            },
+            error: (e) => this.snackBar.open(e.error?.title || 'Конфликт при изменении', 'OK', { duration: 4000 })
+          });
+        }
       });
   }
 
@@ -499,7 +555,7 @@ export class ScheduleEditorComponent implements OnInit {
 
   onEntrySplit(event: { entry: ScheduleEntry; sourceWeekType: WeekType; dto: MoveEntryDto }): void {
     const oppositeWeekType = event.sourceWeekType === WeekType.Odd ? WeekType.Even : WeekType.Odd;
-    this.api.moveEntry(event.entry.id, event.dto).pipe(
+    this.api.moveEntry(event.entry.id, { ...event.dto, weekType: event.sourceWeekType }).pipe(
       switchMap(() => this.api.createEntry({
         scheduleId: event.entry.scheduleId,
         subjectId: event.entry.subjectId,
@@ -568,8 +624,18 @@ export class ScheduleEditorComponent implements OnInit {
     });
   }
 
+  updateScore(): void {
+    if (!this.schedule) return;
+    this.api.updateScore(this.schedule.id).subscribe({
+      next: () => {
+        this.snackBar.open('Базовая оценка обновлена', 'OK', { duration: 2000 });
+        this.loadAudit();
+      },
+      error: (e) => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 3000 })
+    });
+  }
+
   private refreshAfterMutation(): void {
-    this.hasManualEdits = true;
     this.pendingMergeCheck = true;
     this.loadEntries();
     this.loadAudit();

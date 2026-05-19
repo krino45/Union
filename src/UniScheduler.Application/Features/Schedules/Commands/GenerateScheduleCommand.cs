@@ -32,7 +32,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         var existing = await db.ScheduleEntries.Where(e => e.ScheduleId == request.ScheduleId).ToListAsync(cancellationToken);
         db.ScheduleEntries.RemoveRange(existing);
 
-        var input = await BuildInputAsync(schedule, request.SolverTimeoutSeconds, cancellationToken);
+        var (input, scoreCtx) = await BuildInputAsync(schedule, request.SolverTimeoutSeconds, cancellationToken);
         var output = await scheduler.SolveAsync(input, cancellationToken);
 
         if (output.Status == SolverStatus.Infeasible)
@@ -67,10 +67,18 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         schedule.GeneratedAt = DateTime.UtcNow;
         schedule.GenerationNotes = output.Message;
         await db.SaveChangesAsync(cancellationToken);
+
+        var scoreEntries = await db.ScheduleEntries
+            .Include(e => e.StudentGroups)
+            .Where(e => e.ScheduleId == request.ScheduleId)
+            .ToListAsync(cancellationToken);
+        schedule.BaseScore = ScheduleScoreCalculator.Compute(scoreEntries, scoreCtx);
+        await db.SaveChangesAsync(cancellationToken);
+
         return new GenerateScheduleResult(true, output.Status.ToString(), output.Message, output.Assignments.Count);
     }
 
-    private async Task<SchedulerInput> BuildInputAsync(Schedule schedule, int timeout, CancellationToken ct)
+    private async Task<(SchedulerInput, ScoreContext)> BuildInputAsync(Schedule schedule, int timeout, CancellationToken ct)
     {
         var rooms = await db.Rooms.Include(r => r.Building).ToListAsync(ct);
         var teachers = await db.Teachers.ToListAsync(ct);
@@ -98,7 +106,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         var blocks = await db.TeacherAvailabilities.ToListAsync(ct);
         var pairSlots = await db.PairTimeSlots.OrderBy(p => p.PairNumber).ToListAsync(ct);
         int pairsPerDay = pairSlots.Count > 0 ? pairSlots.Max(p => p.PairNumber) : 6;
-        var breakMinutes = ComputeBreakMinutes(pairSlots);
+        var breakMinutes = ScheduleScoreCalculator.ComputeBreakMinutes(pairSlots);
 
         var requirements = new List<SchedulerRequirement>();
         int idx = 0;
@@ -156,9 +164,21 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             }
         }
 
-        var roomDistances = ComputeRoomDistances(floorPlanNodes, floorPlanEdges);
+        var roomDistMap = ScheduleScoreCalculator.ComputeRoomDistances(floorPlanNodes, floorPlanEdges);
+        var roomDistList = roomDistMap
+            .Select(kv => new SchedulerRoomDistance(kv.Key.Item1, kv.Key.Item2, kv.Value))
+            .ToList();
 
-        return new SchedulerInput(
+        var bldDistMap = new Dictionary<(Guid, Guid), int>();
+        foreach (var d in distances)
+        {
+            bldDistMap[(d.FromBuildingId, d.ToBuildingId)] = d.DistanceMeters;
+            bldDistMap[(d.ToBuildingId, d.FromBuildingId)] = d.DistanceMeters;
+        }
+        var scoreCtx = new ScoreContext(roomDistMap, bldDistMap,
+            rooms.ToDictionary(r => r.Id, r => r.BuildingId), breakMinutes);
+
+        var input = new SchedulerInput(
             schedule.Id,
             rooms.Select(r => new SchedulerRoom(r.Id, r.BuildingId, r.RoomType, r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
                 r.Floor, r.AllowedLessonTypes)).ToList(),
@@ -170,8 +190,9 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             PairsPerDay: pairsPerDay,
             BreakMinutesBetweenPairs: breakMinutes,
             SolverTimeoutSeconds: timeout,
-            RoomDistances: roomDistances
+            RoomDistances: roomDistList
         );
+        return (input, scoreCtx);
     }
 
     // Creates requirements for one lesson type based on total semester hours
@@ -232,71 +253,4 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         return result;
     }
 
-    private static List<int> ComputeBreakMinutes(List<PairTimeSlot> slots)
-    {
-        var ordered = slots.OrderBy(s => s.PairNumber).ToList();
-        var breaks = new List<int>();
-        for (int i = 0; i < ordered.Count - 1; i++)
-        {
-            var gap = (int)(ordered[i + 1].StartTime - ordered[i].EndTime).TotalMinutes;
-            breaks.Add(Math.Max(0, gap));
-        }
-        return breaks;
-    }
-
-    private static IReadOnlyList<SchedulerRoomDistance> ComputeRoomDistances(
-        IEnumerable<FloorPlanNode> nodes, IEnumerable<FloorPlanEdge> edges)
-    {
-        var nodeList = nodes.ToList();
-        var edgeList = edges.ToList();
-        if (nodeList.Count == 0) return [];
-
-        var adj = nodeList.ToDictionary(n => n.Id, _ => new List<(Guid, int)>());
-        foreach (var e in edgeList)
-        {
-            if (adj.ContainsKey(e.FromNodeId) && adj.ContainsKey(e.ToNodeId))
-            {
-                adj[e.FromNodeId].Add((e.ToNodeId, e.DistanceMeters));
-                adj[e.ToNodeId].Add((e.FromNodeId, e.DistanceMeters));
-            }
-        }
-
-        var roomNodes = nodeList
-            .Where(n => n.NodeType == Domain.Enums.FloorPlanNodeType.Room && n.RoomId.HasValue)
-            .ToList();
-
-        var result = new List<SchedulerRoomDistance>();
-        var allIds = nodeList.Select(n => n.Id).ToArray();
-
-        foreach (var src in roomNodes)
-        {
-            var dist = Dijkstra(src.Id, adj, allIds);
-            foreach (var tgt in roomNodes)
-            {
-                if (tgt.Id == src.Id) continue;
-                if (dist.TryGetValue(tgt.Id, out int d) && d < int.MaxValue / 2)
-                    result.Add(new SchedulerRoomDistance(src.RoomId!.Value, tgt.RoomId!.Value, d));
-            }
-        }
-        return result;
-    }
-
-    private static Dictionary<Guid, int> Dijkstra(Guid source, Dictionary<Guid, List<(Guid, int)>> adj, Guid[] allIds)
-    {
-        var dist = allIds.ToDictionary(id => id, _ => int.MaxValue);
-        dist[source] = 0;
-        var pq = new PriorityQueue<Guid, int>();
-        pq.Enqueue(source, 0);
-
-        while (pq.TryDequeue(out var u, out int d))
-        {
-            if (d > dist[u]) continue;
-            foreach (var (v, w) in adj[u])
-            {
-                int nd = dist[u] + w;
-                if (nd < dist[v]) { dist[v] = nd; pq.Enqueue(v, nd); }
-            }
-        }
-        return dist;
-    }
 }

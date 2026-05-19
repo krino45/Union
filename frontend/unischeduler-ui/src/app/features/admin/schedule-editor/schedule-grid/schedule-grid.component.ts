@@ -46,7 +46,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                   <div class="week-half" *ngIf="weekFilter === 'Both' || weekFilter === 'Odd'">
                     <div class="half-header">
                       <span class="week-label num-label" *ngIf="weekFilter === 'Both'">Неч.</span>
-                      <button class="add-btn num-add" *ngIf="!readonly" (click)="requestAdd(d, p, 'Odd')" [title]="getCellNum(d, p).length > 0 ? 'Изменить занятие' : 'Добавить занятие'">{{ getCellNum(d, p).length > 0 ? '✎' : '+' }}</button>
+                      <button class="add-btn num-add" *ngIf="!readonly" (click)="requestAdd(d, p, 'Odd', getCellNum(d, p)[0])" [title]="getCellNum(d, p).length > 0 ? 'Изменить занятие' : 'Добавить занятие'">{{ getCellNum(d, p).length > 0 ? '✎' : '+' }}</button>
                     </div>
                     <div
                       cdkDropList
@@ -84,7 +84,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                   <div class="week-half" *ngIf="weekFilter === 'Both' || weekFilter === 'Even'">
                     <div class="half-header">
                       <span class="week-label den-label" *ngIf="weekFilter === 'Both'">Чёт.</span>
-                      <button class="add-btn den-add" *ngIf="!readonly" (click)="requestAdd(d, p, 'Even')" [title]="getCellDen(d, p).length > 0 ? 'Изменить занятие' : 'Добавить занятие'">{{ getCellDen(d, p).length > 0 ? '✎' : '+' }}</button>
+                      <button class="add-btn den-add" *ngIf="!readonly" (click)="requestAdd(d, p, 'Even', getCellDen(d, p)[0])" [title]="getCellDen(d, p).length > 0 ? 'Изменить занятие' : 'Добавить занятие'">{{ getCellDen(d, p).length > 0 ? '✎' : '+' }}</button>
                     </div>
                     <div
                       cdkDropList
@@ -199,7 +199,7 @@ export class ScheduleGridComponent implements OnChanges {
   @Output() entryMoved = new EventEmitter<{ entryId: string; dto: MoveEntryDto }>();
   @Output() entrySplit = new EventEmitter<{ entry: ScheduleEntry; sourceWeekType: WeekType; dto: MoveEntryDto }>();
   @Output() entryDeleted = new EventEmitter<string>();
-  @Output() addRequested = new EventEmitter<{ day: RussianDayOfWeek; pair: number; weekType: string }>();
+  @Output() addRequested = new EventEmitter<{ day: RussianDayOfWeek; pair: number; weekType: string; existingEntry?: ScheduleEntry }>();
 
   days = [...DAYS];
   pairs = [...PAIRS];
@@ -271,8 +271,8 @@ export class ScheduleGridComponent implements OnChanges {
     }
   }
 
-  requestAdd(day: RussianDayOfWeek, pair: number, weekType: string): void {
-    this.addRequested.emit({ day, pair, weekType });
+  requestAdd(day: RussianDayOfWeek, pair: number, weekType: string, existingEntry?: ScheduleEntry): void {
+    this.addRequested.emit({ day, pair, weekType, existingEntry });
   }
 
   deleteEntry(entry: ScheduleEntry): void {

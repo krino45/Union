@@ -6,7 +6,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { Subject, Teacher, StudentGroup, Room, CreateScheduleEntryDto } from '../../../core/models';
+import { Subject, Teacher, StudentGroup, Room, ScheduleEntry, CreateScheduleEntryDto, UpdateScheduleEntryDto } from '../../../core/models';
 import { RussianDayOfWeek, WeekType, LessonType } from '../../../core/models/enums';
 import { DayOfWeekPipe } from '../../../shared/pipes/day-of-week.pipe';
 
@@ -19,7 +19,12 @@ export interface AddEntryDialogData {
   teachers: Teacher[];
   groups: StudentGroup[];
   rooms: Room[];
+  existingEntry?: ScheduleEntry;
 }
+
+export type AddEntryDialogResult =
+  | { mode: 'create'; dto: CreateScheduleEntryDto }
+  | { mode: 'update'; entryId: string; dto: UpdateScheduleEntryDto };
 
 @Component({
   selector: 'app-add-entry-dialog',
@@ -31,7 +36,7 @@ export interface AddEntryDialogData {
     DayOfWeekPipe
   ],
   template: `
-    <h2 mat-dialog-title>Добавить занятие</h2>
+    <h2 mat-dialog-title>{{ isEdit ? 'Редактировать занятие' : 'Добавить занятие' }}</h2>
     <mat-dialog-content>
       <div class="slot-info">
         {{ data.day | dayOfWeek: 'full' }}, пара {{ data.pair }}
@@ -95,7 +100,7 @@ export interface AddEntryDialogData {
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Отмена</button>
       <button mat-raised-button color="primary" [disabled]="form.invalid" (click)="submit()">
-        Добавить
+        {{ isEdit ? 'Сохранить' : 'Добавить' }}
       </button>
     </mat-dialog-actions>
   `,
@@ -110,9 +115,10 @@ export interface AddEntryDialogData {
 })
 export class AddEntryDialogComponent {
   form: FormGroup;
+  isEdit: boolean;
 
   get weekLabel(): string {
-    const wt = this.data.weekType;
+    const wt = this.form.value.weekType ?? this.data.weekType;
     if (wt === 'Odd') return 'нечётная';
     if (wt === 'Even') return 'чётная';
     return 'обе недели';
@@ -123,32 +129,53 @@ export class AddEntryDialogComponent {
     public dialogRef: MatDialogRef<AddEntryDialogComponent>,
     @Inject(MAT_DIALOG_DATA) public data: AddEntryDialogData
   ) {
+    const e = data.existingEntry;
+    this.isEdit = !!e;
     this.form = this.fb.group({
-      subjectId: ['', Validators.required],
-      lessonType: ['Lecture', Validators.required],
-      weekType: [data.weekType, Validators.required],
-      teacherId: ['', Validators.required],
-      groupIds: [[], Validators.required],
-      isOnline: [false],
-      roomId: [null]
+      subjectId:  [e?.subjectId  ?? '',        Validators.required],
+      lessonType: [e?.lessonType ?? 'Lecture', Validators.required],
+      weekType:   [e?.weekType   ?? data.weekType, Validators.required],
+      teacherId:  [e?.teacherId  ?? '',        Validators.required],
+      groupIds:   [e?.studentGroups?.map(g => g.id) ?? [], Validators.required],
+      isOnline:   [e?.isOnline   ?? false],
+      roomId:     [e?.roomId     ?? null]
     });
   }
 
   submit(): void {
     if (this.form.invalid) return;
     const v = this.form.value;
-    const dto: CreateScheduleEntryDto = {
-      scheduleId: this.data.scheduleId,
-      subjectId: v.subjectId,
-      teacherId: v.teacherId,
-      roomId: v.isOnline ? undefined : (v.roomId ?? undefined),
-      groupIds: v.groupIds,
-      dayOfWeek: this.data.day,
-      pairNumber: this.data.pair,
-      weekType: v.weekType as WeekType,
-      lessonType: v.lessonType as LessonType,
-      isOnline: v.isOnline
-    };
-    this.dialogRef.close(dto);
+    const roomId = v.isOnline ? undefined : (v.roomId ?? undefined);
+
+    if (this.isEdit) {
+      const dto: UpdateScheduleEntryDto = {
+        subjectId:  v.subjectId,
+        teacherId:  v.teacherId,
+        roomId,
+        groupIds:   v.groupIds,
+        dayOfWeek:  this.data.day,
+        pairNumber: this.data.pair,
+        weekType:   v.weekType as WeekType,
+        lessonType: v.lessonType as LessonType,
+        isOnline:   v.isOnline
+      };
+      const result: AddEntryDialogResult = { mode: 'update', entryId: this.data.existingEntry!.id, dto };
+      this.dialogRef.close(result);
+    } else {
+      const dto: CreateScheduleEntryDto = {
+        scheduleId: this.data.scheduleId,
+        subjectId:  v.subjectId,
+        teacherId:  v.teacherId,
+        roomId,
+        groupIds:   v.groupIds,
+        dayOfWeek:  this.data.day,
+        pairNumber: this.data.pair,
+        weekType:   v.weekType as WeekType,
+        lessonType: v.lessonType as LessonType,
+        isOnline:   v.isOnline
+      };
+      const result: AddEntryDialogResult = { mode: 'create', dto };
+      this.dialogRef.close(result);
+    }
   }
 }

@@ -424,6 +424,9 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Property<string>("GenerationNotes")
                         .HasColumnType("text");
 
+                    b.Property<int?>("BaseScore")
+                        .HasColumnType("integer");
+
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 

@@ -14,7 +14,9 @@ public record ScheduleAuditDto(
     List<AuditIssueDto> Conflicts,
     List<AuditIssueDto> Warnings,
     string? GenerationNotes,
-    int TotalEntries
+    int TotalEntries,
+    int CurrentScore,
+    int? BaseScore
 );
 
 public record AuditIssueDto(string Type, string Description);
@@ -142,7 +144,15 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             }
         }
 
-        return new ScheduleAuditDto(conflicts, warnings, schedule.GenerationNotes, entries.Count);
+        var nodes = await db.FloorPlanNodes.ToListAsync(ct);
+        var edges = await db.FloorPlanEdges.ToListAsync(ct);
+        var bldDists = await db.BuildingDistances.ToListAsync(ct);
+        var rooms = await db.Rooms.ToListAsync(ct);
+        var pairSlots = await db.PairTimeSlots.ToListAsync(ct);
+        var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(nodes, edges, bldDists, rooms, pairSlots);
+
+        var currentScore = ScheduleScoreCalculator.Compute(entries, scoreCtx);
+        return new ScheduleAuditDto(conflicts, warnings, schedule.GenerationNotes, entries.Count, currentScore, schedule.BaseScore);
     }
 
     // ── Validation helpers ────────────────────────────────────────────────────

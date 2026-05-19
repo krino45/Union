@@ -69,6 +69,10 @@ public class SchedulesController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{id:guid}/update-score")]
+    public async Task<ActionResult<int>> UpdateScore(Guid id, CancellationToken ct)
+        => Ok(await mediator.Send(new UpdateBaseScoreCommand(id), ct));
+
     [HttpPost("{id:guid}/generate")]
     public IActionResult Generate(Guid id, [FromQuery] int timeoutSeconds = 60)
     {

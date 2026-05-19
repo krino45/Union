@@ -36,6 +36,12 @@ public class ScheduleEntriesController : ControllerBase
     public async Task<ActionResult<ScheduleEntryDto>> Move(Guid id, [FromBody] MoveRequest req, CancellationToken ct)
         => Ok(await _mediator.Send(new MoveEntryCommand(id, req.DayOfWeek, req.PairNumber, req.WeekType, req.RoomId), ct));
 
+    [HttpPost("{id:guid}/update")]
+    public async Task<ActionResult<ScheduleEntryDto>> Update(Guid id, [FromBody] UpdateRequest req, CancellationToken ct)
+        => Ok(await _mediator.Send(new UpdateEntryCommand(id,
+            req.SubjectId, req.TeacherId, req.RoomId, req.GroupIds,
+            req.DayOfWeek, req.PairNumber, req.WeekType, req.LessonType, req.IsOnline), ct));
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
@@ -71,3 +77,9 @@ public class ScheduleEntriesController : ControllerBase
 }
 
 public record MoveRequest(RussianDayOfWeek DayOfWeek, int PairNumber, WeekType WeekType, Guid? RoomId);
+
+public record UpdateRequest(
+    Guid SubjectId, Guid TeacherId, Guid? RoomId,
+    List<Guid> GroupIds,
+    RussianDayOfWeek DayOfWeek, int PairNumber, WeekType WeekType,
+    LessonType LessonType, bool IsOnline);

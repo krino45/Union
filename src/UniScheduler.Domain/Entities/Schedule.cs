@@ -15,6 +15,7 @@ public class Schedule : Entity
     public ScheduleStatus Status { get; set; } = ScheduleStatus.Draft;
     public DateTime? GeneratedAt { get; set; }
     public string? GenerationNotes { get; set; }
+    public int? BaseScore { get; set; }
 
     public ICollection<ScheduleEntry> Entries { get; set; } = new List<ScheduleEntry>();
 }
