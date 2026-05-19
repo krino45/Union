@@ -27,6 +27,7 @@ export interface GenerationJobStatus {
   scheduleId: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'not_found';
   message?: string;
+  stage?: string;
   entriesCreated: number;
   completedAt?: string;
 }

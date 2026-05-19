@@ -10,7 +10,7 @@ using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.Schedules.Commands;
 
-public record GenerateScheduleCommand(Guid ScheduleId, int SolverTimeoutSeconds = 60) : IRequest<GenerateScheduleResult>;
+public record GenerateScheduleCommand(Guid ScheduleId, int SolverTimeoutSeconds = 60, IProgress<string>? Progress = null) : IRequest<GenerateScheduleResult>;
 
 public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCommand, GenerateScheduleResult>
 {
@@ -29,15 +29,21 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken)
             ?? throw new NotFoundException(nameof(Schedule), request.ScheduleId);
 
+        var p = request.Progress;
+
+        p?.Report("Загрузка данных...");
         var existing = await db.ScheduleEntries.Where(e => e.ScheduleId == request.ScheduleId).ToListAsync(cancellationToken);
         db.ScheduleEntries.RemoveRange(existing);
 
         var (input, scoreCtx) = await BuildInputAsync(schedule, request.SolverTimeoutSeconds, cancellationToken);
-        var output = await scheduler.SolveAsync(input, cancellationToken);
+
+        p?.Report($"Поиск расписания ({input.Requirements.Count} занятий)...");
+        var output = await scheduler.SolveAsync(input, cancellationToken, p);
 
         if (output.Status == SolverStatus.Infeasible)
             return new GenerateScheduleResult(false, "Infeasible", output.Message, 0);
 
+        p?.Report($"Сохранение результатов ({output.Assignments.Count} занятий)...");
         foreach (var assignment in output.Assignments)
         {
             var req = input.Requirements[assignment.RequirementIndex];
@@ -68,6 +74,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         schedule.GenerationNotes = output.Message;
         await db.SaveChangesAsync(cancellationToken);
 
+        p?.Report("Вычисление оценки...");
         var scoreEntries = await db.ScheduleEntries
             .Include(e => e.StudentGroups)
             .Where(e => e.ScheduleId == request.ScheduleId)

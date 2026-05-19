@@ -249,11 +249,11 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
 
   genStatusLabel(gs: GenerationJobStatus): string {
     switch (gs.status) {
-      case 'queued': return 'В очереди...';
-      case 'running': return 'Генерация...';
+      case 'queued':    return 'В очереди...';
+      case 'running':   return gs.stage ?? 'Генерация...';
       case 'completed': return 'Готово';
-      case 'failed': return `Ошибка: ${gs.message}`;
-      default: return '';
+      case 'failed':    return `Ошибка: ${gs.message}`;
+      default:          return '';
     }
   }
 }

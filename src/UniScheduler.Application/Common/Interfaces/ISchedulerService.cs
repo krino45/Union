@@ -4,5 +4,5 @@ namespace UniScheduler.Application.Common.Interfaces;
 
 public interface ISchedulerService
 {
-    Task<SchedulerOutput> SolveAsync(SchedulerInput input, CancellationToken cancellationToken = default);
+    Task<SchedulerOutput> SolveAsync(SchedulerInput input, CancellationToken cancellationToken = default, IProgress<string>? progress = null);
 }

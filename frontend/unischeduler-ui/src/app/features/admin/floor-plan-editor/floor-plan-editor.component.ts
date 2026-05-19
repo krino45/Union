@@ -1,6 +1,6 @@
 import {
   Component, OnInit, OnDestroy, AfterViewInit,
-  ViewChild, ElementRef, HostListener
+  ViewChild, ElementRef, HostListener, NgZone
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -483,20 +483,20 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
 
   private wheelHandler = (e: WheelEvent) => {
     e.preventDefault();
+    const r = this.svgCanvas?.nativeElement?.getBoundingClientRect();
+    if (!r || r.width === 0) return;
     if (e.ctrlKey || e.metaKey) {
       const factor = e.deltaY > 0 ? 0.87 : 1.15;
-      const r = this.svgCanvas?.nativeElement?.getBoundingClientRect();
-      if (!r) return;
       const sx = e.clientX - r.left, sy = e.clientY - r.top;
-      const wx = this.vx + sx / this.zoomLevel;
-      const wy = this.vy + sy / this.zoomLevel;
+      const wx = this.vx + (sx / r.width)  * (this.containerW / this.zoomLevel);
+      const wy = this.vy + (sy / r.height) * (this.containerH / this.zoomLevel);
       const nz = Math.max(0.1, Math.min(20, this.zoomLevel * factor));
-      this.vx = wx - sx / nz;
-      this.vy = wy - sy / nz;
+      this.vx = wx - (sx / r.width)  * (this.containerW / nz);
+      this.vy = wy - (sy / r.height) * (this.containerH / nz);
       this.zoomLevel = nz;
     } else {
-      this.vx += e.deltaX / this.zoomLevel;
-      this.vy += e.deltaY / this.zoomLevel;
+      this.vx += (e.deltaX / r.width)  * (this.containerW / this.zoomLevel);
+      this.vy += (e.deltaY / r.height) * (this.containerH / this.zoomLevel);
     }
   };
 
@@ -526,7 +526,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     return 'default';
   }
 
-  constructor(private api: ApiService, private snackBar: MatSnackBar) {}
+  constructor(private api: ApiService, private snackBar: MatSnackBar, private ngZone: NgZone) {}
 
   ngOnInit(): void {
     this.api.getBuildings().subscribe(bs => { this.buildings = bs; });
@@ -535,11 +535,11 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
   ngAfterViewInit(): void {
     this.svgCanvas?.nativeElement?.addEventListener('wheel', this.wheelHandler, { passive: false });
     this.resizeObserver = new ResizeObserver(entries => {
-      const cr = entries[0]?.contentRect;
-      if (cr) { this.containerW = cr.width; this.containerH = cr.height; }
+      this.ngZone.run(() => {
+        const cr = entries[0]?.contentRect;
+        if (cr) { this.containerW = cr.width; this.containerH = cr.height; }
+      });
     });
-    if (this.canvasWrapper?.nativeElement)
-      this.resizeObserver.observe(this.canvasWrapper.nativeElement);
   }
 
   ngOnDestroy(): void {
@@ -578,6 +578,15 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
         .onAction().subscribe(() => this.restoreDraft(id));
     }
     this.loadFloorPlan(id);
+    setTimeout(() => {
+      this.resizeObserver?.disconnect();
+      const el = this.canvasWrapper?.nativeElement;
+      if (el) {
+        this.resizeObserver.observe(el);
+        const r = el.getBoundingClientRect();
+        if (r.width > 0) this.ngZone.run(() => { this.containerW = r.width; this.containerH = r.height; });
+      }
+    }, 0);
   }
 
   buildFloors(): void {
@@ -850,8 +859,13 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
 
   onMouseMove(event: MouseEvent): void {
     if (this.panning) {
-      this.vx = this.panAnchor.vx - (event.clientX - this.panAnchor.sx) / this.zoomLevel;
-      this.vy = this.panAnchor.vy - (event.clientY - this.panAnchor.sy) / this.zoomLevel;
+      const r = this.svgCanvas?.nativeElement?.getBoundingClientRect();
+      if (r && r.width > 0) {
+        const vw = this.containerW / this.zoomLevel;
+        const vh = this.containerH / this.zoomLevel;
+        this.vx = this.panAnchor.vx - (event.clientX - this.panAnchor.sx) / r.width  * vw;
+        this.vy = this.panAnchor.vy - (event.clientY - this.panAnchor.sy) / r.height * vh;
+      }
       return;
     }
     const { x, y } = this.svgPoint(event);
@@ -922,11 +936,13 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     });
   }
 
-  // ── SVG coord ─────────────────────────────────────────────────────────────────
 
   private svgPoint(event: MouseEvent): { x: number; y: number } {
     const r = this.svgCanvas?.nativeElement?.getBoundingClientRect();
-    if (!r) return { x: 0, y: 0 };
-    return { x: this.vx + (event.clientX - r.left) / this.zoomLevel, y: this.vy + (event.clientY - r.top) / this.zoomLevel };
+    if (!r || r.width === 0) return { x: 0, y: 0 };
+    return {
+      x: this.vx + (event.clientX - r.left) / r.width  * (this.containerW / this.zoomLevel),
+      y: this.vy + (event.clientY - r.top)  / r.height * (this.containerH / this.zoomLevel),
+    };
   }
 }

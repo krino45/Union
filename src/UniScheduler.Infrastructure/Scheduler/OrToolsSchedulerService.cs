@@ -10,10 +10,10 @@ public class OrToolsSchedulerService : ISchedulerService
     private const int NumDays = 6;
     private const double WalkSpeedMperMin = 80.0;
 
-    public Task<SchedulerOutput> SolveAsync(SchedulerInput input, CancellationToken cancellationToken = default)
-        => Task.FromResult(Solve(input));
+    public Task<SchedulerOutput> SolveAsync(SchedulerInput input, CancellationToken cancellationToken = default, IProgress<string>? progress = null)
+        => Task.FromResult(Solve(input, progress));
 
-    private SchedulerOutput Solve(SchedulerInput input)
+    private SchedulerOutput Solve(SchedulerInput input, IProgress<string>? progress)
     {
         int numPairs = input.PairsPerDay;
         int[] breakMinutes = BuildBreakArray(input.BreakMinutesBetweenPairs, numPairs);
@@ -33,6 +33,7 @@ public class OrToolsSchedulerService : ISchedulerService
         // WeekType.Odd  → wi=0, WeekType.Even → wi=1.
         var vars = new Dictionary<(int ri, int d, int p, int wi, int rmi), BoolVar>();
 
+        progress?.Report($"Создание переменных ({reqs.Count} занятий, {rooms.Count} аудиторий)...");
         for (int ri = 0; ri < reqs.Count; ri++)
         {
             var req = reqs[ri];
@@ -55,7 +56,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  Pre-solve diagnostic: detect requirements that provably cannot be placed
+        progress?.Report($"Проверка совместимости ({vars.Count} переменных)...");
         var noRoomLines = new List<string>();
         var noSlotLines = new List<string>();
         for (int ri = 0; ri < reqs.Count; ri++)
@@ -81,7 +82,7 @@ public class OrToolsSchedulerService : ISchedulerService
             return new SchedulerOutput(SolverStatus.Infeasible, string.Join(" | ", parts), Array.Empty<SchedulerAssignment>());
         }
 
-        // Hard: each (group, subject, lessonType) must have exactly one teacher
+        progress?.Report("Ограничение H1: у группы один учитель");
         {
             var gstTeachers = new Dictionary<(Guid grp, Guid subj, LessonType lt), HashSet<Guid>>();
             foreach (var req in reqs)
@@ -102,6 +103,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     Array.Empty<SchedulerAssignment>());
         }
 
+        progress?.Report("Ограничение H2: каждое занятие ровно один раз");
         //  H1: Each requirement scheduled exactly once
         for (int ri = 0; ri < reqs.Count; ri++)
         {
@@ -110,7 +112,7 @@ public class OrToolsSchedulerService : ISchedulerService
             model.AddExactlyOne(slotVars);
         }
 
-        //  H4: All rooms — at most one assignment per (room, day, pair, calendar-week-type)
+        progress?.Report("Ограничение H4: конфликты аудиторий...");
         // Both-type vars (wi=0) occupy the slot on both odd and even weeks, so they appear in
         // BOTH the wi=0 and the wi=1 conflict cells.
         for (int rmi = 0; rmi < rooms.Count; rmi++)
@@ -125,7 +127,7 @@ public class OrToolsSchedulerService : ISchedulerService
             if (cell.Count > 1) model.AddAtMostOne(cell);
         }
 
-        //  H5: Teacher — at most one per (day, pair, calendar-week)
+        progress?.Report("Ограничение H5: конфликты преподавателей...");
         var teacherReqs = teachers.ToDictionary(t => t.Id, t =>
             reqs.Select((r, i) => (r, i)).Where(x => x.r.TeacherId == t.Id).Select(x => x.i).ToList());
 
@@ -148,7 +150,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  H6: Group — at most one per (day, pair, calendar-week)
+        progress?.Report("Ограничение H6: конфликты групп...");
         var groupReqs = groups.ToDictionary(g => g.Id, g =>
             reqs.Select((r, i) => (r, i)).Where(x => x.r.GroupIds.Contains(g.Id)).Select(x => x.i).ToList());
 
@@ -171,7 +173,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  H_travel: Consecutive pairs cannot require impossible building travel
+        progress?.Report("Ограничение H_travel: нарушение перемены...");
         foreach (var group in groups)
         {
             var grIdxs = groupReqs[group.Id];
@@ -202,7 +204,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  Auxiliary "is_used" boolean variables
+        progress?.Report("Создание вспомогательных переменных...");
         var isGroupUsed = new BoolVar[groups.Count, NumDays, numPairs, 2];
         for (int gi = 0; gi < groups.Count; gi++)
         {
@@ -257,7 +259,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        //  Build objective
+        progress?.Report("Построение целевой функции (S1–S6)...");
         var objVars = new List<IntVar>();
         var objCoeffs = new List<long>();
 
@@ -307,7 +309,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     LinearExpr.Sum(new LinearExpr[] { before, after }) - (LinearExpr)isTeacherUsed[ti, d, pm, wi] - 1);
 
                 objVars.Add(windowVar);
-                objCoeffs.Add(80L);
+                objCoeffs.Add(70L);
             }
         }
 
@@ -320,7 +322,7 @@ public class OrToolsSchedulerService : ISchedulerService
             var daySlotVars = Enumerable.Range(0, numPairs).Select(p => (IntVar)isGroupUsed[gi, d, p, wi]).ToArray();
             model.AddMaxEquality(dayHasClass, daySlotVars);
             objVars.Add(dayHasClass);
-            objCoeffs.Add(60L);
+            objCoeffs.Add(120L);
         }
 
         // S4: Walking penalty for adjacent pairs (weight 1–119)
@@ -429,7 +431,7 @@ public class OrToolsSchedulerService : ISchedulerService
         if (objVars.Count > 0)
             model.Minimize(LinearExpr.WeightedSum(objVars.ToArray(), objCoeffs.ToArray()));
 
-        //  Solve
+        progress?.Report($"Запуск решателя (таймаут {input.SolverTimeoutSeconds}с, {objVars.Count} слагаемых в целевой функции)...");
         var solver = new CpSolver();
         solver.StringParameters =
             $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
@@ -450,6 +452,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     []);
         }
 
+        progress?.Report($"Извлечение результатов (статус: {status})...");
         //  Extract assignments
         var assignments = new List<SchedulerAssignment>();
         foreach (var ((ri, d, p, wi, rmi), v) in vars)
