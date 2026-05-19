@@ -70,10 +70,10 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
         <ng-container matColumnDef="features">
           <th mat-header-cell *matHeaderCellDef>Оснащение</th>
           <td mat-cell *matCellDef="let r">
-            <mat-chip *ngIf="r.hasProjector">Проектор</mat-chip>
-            <mat-chip *ngIf="r.hasComputers">ПК</mat-chip>
-            <mat-chip *ngIf="r.hasLab">Лаборатория</mat-chip>
-            <mat-chip *ngIf="r.isOnline">Онлайн</mat-chip>
+            <mat-chip *ngIf="r.hasProjector" class="features-chip">Проектор</mat-chip>
+            <mat-chip *ngIf="r.hasComputers" class="features-chip">ПК</mat-chip>
+            <mat-chip *ngIf="r.hasLab" class="features-chip">Лаборатория</mat-chip>
+            <mat-chip *ngIf="r.isOnline" class="features-chip">Онлайн</mat-chip>
           </td>
         </ng-container>
         <ng-container matColumnDef="allowedTypes">
