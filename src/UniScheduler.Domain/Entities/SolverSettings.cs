@@ -16,9 +16,10 @@ public class SolverSettings
     public int ConsecPractical { get; set; } = 30;
     public int ConsecLab      { get; set; } = 10;
 
-    // S7 — pair time preference (penalty per step away from pairs 2-3)
-    public int EarlyPair { get; set; } = 15;
-    public int LatePair  { get; set; } = 25;
+    // S7 — pair time preference
+    public int EarlyPair  { get; set; } = 15;  // penalty per step below pair 3
+    public int MiddlePair { get; set; } = 0;   // flat penalty for pairs 3–4
+    public int LatePair   { get; set; } = 25;  // penalty per step above pair 4
 
     // S6 run-length scalar — extra multiplier for runs of 3+ consecutive same-type lessons
     public int ConsecRunScalar { get; set; } = 3;

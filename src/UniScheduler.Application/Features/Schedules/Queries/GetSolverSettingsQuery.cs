@@ -18,7 +18,7 @@ public class GetSolverSettingsQueryHandler : IRequestHandler<GetSolverSettingsQu
         return s == null ? new SolverWeights() : new SolverWeights(
             s.StudentWindow, s.TeacherWindow, s.ActiveDay, s.SanPinOverload,
             s.ConsecLecture, s.ConsecSeminar, s.ConsecPractical, s.ConsecLab,
-            s.EarlyPair, s.LatePair, s.ConsecRunScalar,
+            s.EarlyPair, s.MiddlePair, s.LatePair, s.ConsecRunScalar,
             s.SaturdayPenalty, s.DepartmentMismatchPenalty, s.WalkingPenaltyMax);
     }
 }

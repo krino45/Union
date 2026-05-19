@@ -46,6 +46,7 @@ export interface SolverWeights {
   consecPractical: number;
   consecLab: number;
   earlyPair: number;
+  middlePair: number;
   latePair: number;
   consecRunScalar: number;
   saturdayPenalty: number;

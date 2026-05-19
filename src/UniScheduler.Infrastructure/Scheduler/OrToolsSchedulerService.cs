@@ -651,11 +651,11 @@ public class OrToolsSchedulerService : ISchedulerService
         _ => 0L
     };
 
-    // Pairs 2-3 (0-indexed) preferred; penalize steps away linearly.
+    // Pairs 2-3 (0-indexed) preferred; middle pairs get flat penalty, early/late scale linearly.
     private static long PairPositionPenalty(int p, SolverWeights w)
     {
-        if (p < 2) return w.EarlyPair * (long)(2 - p);
-        if (p > 3) return w.LatePair  * (long)(p - 3);
-        return 0;
+        if (p < 2) return w.EarlyPair  * (long)(2 - p);
+        if (p > 3) return w.LatePair   * (long)(p - 3);
+        return w.MiddlePair;
     }
 }

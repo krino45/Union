@@ -13,13 +13,19 @@ public record SolverWeights(
     int ConsecPractical = 30,
     int ConsecLab = 10,
     int EarlyPair = 15,
+    int MiddlePair = 0,
     int LatePair = 25,
     int ConsecRunScalar = 3,
     int SaturdayPenalty = 30,
     int DepartmentMismatchPenalty = 50,
-    int WalkingPenaltyMax = 120
-)
+    int WalkingPenaltyMax = 120)
 {
+    #region  Constructors
+
+    public SolverWeights() : this(100)
+    {
+    }
+
     public SolverWeights(SolverSettings? solverSettings) : this()
     {
         if (solverSettings is null)
@@ -33,6 +39,7 @@ public record SolverWeights(
         ConsecPractical = solverSettings.ConsecPractical;
         ConsecLab = solverSettings.ConsecLab;
         EarlyPair = solverSettings.EarlyPair;
+        MiddlePair = solverSettings.MiddlePair;
         LatePair = solverSettings.LatePair;
         ConsecRunScalar = solverSettings.ConsecRunScalar;
         SaturdayPenalty = solverSettings.SaturdayPenalty;
@@ -53,6 +60,7 @@ public record SolverWeights(
             ConsecPractical = ConsecPractical,
             ConsecLab = ConsecLab,
             EarlyPair = EarlyPair,
+            MiddlePair = MiddlePair,
             LatePair = LatePair,
             ConsecRunScalar = ConsecRunScalar,
             SaturdayPenalty = SaturdayPenalty,
@@ -60,6 +68,8 @@ public record SolverWeights(
             WalkingPenaltyMax = WalkingPenaltyMax
         };
     }
+
+    #endregion
 };
 
 public record SchedulerInput(

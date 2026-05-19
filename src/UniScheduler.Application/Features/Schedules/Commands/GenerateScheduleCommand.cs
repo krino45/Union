@@ -39,7 +39,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         var weights = settingsEntity == null ? new SolverWeights() : new SolverWeights(
             settingsEntity.StudentWindow, settingsEntity.TeacherWindow, settingsEntity.ActiveDay, settingsEntity.SanPinOverload,
             settingsEntity.ConsecLecture, settingsEntity.ConsecSeminar, settingsEntity.ConsecPractical, settingsEntity.ConsecLab,
-            settingsEntity.EarlyPair, settingsEntity.LatePair, settingsEntity.ConsecRunScalar,
+            settingsEntity.EarlyPair, settingsEntity.MiddlePair, settingsEntity.LatePair, settingsEntity.ConsecRunScalar,
             settingsEntity.SaturdayPenalty, settingsEntity.DepartmentMismatchPenalty, settingsEntity.WalkingPenaltyMax);
 
         var (input, scoreCtx) = await BuildInputAsync(schedule, request.SolverTimeoutSeconds, weights, cancellationToken);

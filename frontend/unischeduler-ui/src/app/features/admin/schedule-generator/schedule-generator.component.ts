@@ -409,14 +409,18 @@ export class CreateScheduleDialogComponent {
           </mat-form-field>
         </div>
 
-        <p class="section-label">Предпочтительное время занятий (S7) — штраф/шаг от пар 3–4</p>
+        <p class="section-label">Предпочтительное время занятий (S7) — штраф за слот</p>
         <div class="row">
           <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Ранние пары (пары 1–2)</mat-label>
+            <mat-label>Ранние пары (пары 1–2, /шаг)</mat-label>
             <input matInput type="number" formControlName="earlyPair" min="0">
           </mat-form-field>
           <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Поздние пары (пары 5+)</mat-label>
+            <mat-label>Средние пары (пары 3–4, фикс.)</mat-label>
+            <input matInput type="number" formControlName="middlePair" min="0">
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Поздние пары (пары 5+, /шаг)</mat-label>
             <input matInput type="number" formControlName="latePair" min="0">
           </mat-form-field>
         </div>
@@ -488,6 +492,7 @@ export class SolverSettingsDialogComponent implements OnInit {
           consecPractical:          [w.consecPractical,          [Validators.required, Validators.min(0)]],
           consecLab:                [w.consecLab,                [Validators.required, Validators.min(0)]],
           earlyPair:                [w.earlyPair,                [Validators.required, Validators.min(0)]],
+          middlePair:               [w.middlePair,               [Validators.required, Validators.min(0)]],
           latePair:                 [w.latePair,                 [Validators.required, Validators.min(0)]],
           consecRunScalar:          [w.consecRunScalar,          [Validators.required, Validators.min(1)]],
           saturdayPenalty:          [w.saturdayPenalty,          [Validators.required, Validators.min(0)]],
@@ -518,7 +523,7 @@ export class SolverSettingsDialogComponent implements OnInit {
     return this.fb.group({
       studentWindow: [100], teacherWindow: [80], activeDay: [60], sanPinOverload: [300],
       consecLecture: [70], consecSeminar: [40], consecPractical: [30], consecLab: [10],
-      earlyPair: [15], latePair: [25], consecRunScalar: [3],
+      earlyPair: [15], middlePair: [0], latePair: [25], consecRunScalar: [3],
       saturdayPenalty: [30], departmentMismatchPenalty: [50], walkingPenaltyMax: [120],
       timeoutSeconds: [120],
     });

@@ -150,12 +150,13 @@ public static class ScheduleScoreCalculator
                 }
             }
 
-            // S7: EarlyPair/LatePair — prefer pairs 3–4 (1-indexed)
+            // S7: EarlyPair/MiddlePair/LatePair — prefer pairs 3–4 (1-indexed)
             foreach (var p in pairs)
             {
                 int p0 = p - 1;
-                if (p0 < 2) score += penalties.EarlyPair * (2 - p0);
-                else if (p0 > 3) score += penalties.LatePair * (p0 - 3);
+                if (p0 < 2)      score += penalties.EarlyPair * (2 - p0);
+                else if (p0 > 3) score += penalties.LatePair  * (p0 - 3);
+                else             score += penalties.MiddlePair;
             }
 
             // S4: walking penalty for consecutive pairs

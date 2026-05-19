@@ -32,6 +32,7 @@ public class UpdateSolverSettingsCommandHandler : IRequestHandler<UpdateSolverSe
         s.ConsecPractical = w.ConsecPractical;
         s.ConsecLab       = w.ConsecLab;
         s.EarlyPair       = w.EarlyPair;
+        s.MiddlePair      = w.MiddlePair;
         s.LatePair        = w.LatePair;
         s.ConsecRunScalar = w.ConsecRunScalar;
         s.SaturdayPenalty = w.SaturdayPenalty;
