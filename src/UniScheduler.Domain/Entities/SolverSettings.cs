@@ -1,8 +1,10 @@
+using UniScheduler.Domain.Common;
+
 namespace UniScheduler.Domain.Entities;
 
-public class SolverSettings
+public class SolverSettings : Entity
 {
-    public Guid Id { get; set; } = Guid.Empty;
+    public Guid UniversityId { get; set; }
 
     // S1 / S2 / S3 / S5
     public int StudentWindow  { get; set; } = 100;
@@ -17,19 +19,21 @@ public class SolverSettings
     public int ConsecLab      { get; set; } = 10;
 
     // S7 — pair time preference
-    public int EarlyPair  { get; set; } = 15;  // penalty per step below pair 3
-    public int MiddlePair { get; set; } = 0;   // flat penalty for pairs 3–4
-    public int LatePair   { get; set; } = 25;  // penalty per step above pair 4
+    public int EarlyPair  { get; set; } = 15;
+    public int MiddlePair { get; set; } = 0;
+    public int LatePair   { get; set; } = 25;
 
-    // S6 run-length scalar — extra multiplier for runs of 3+ consecutive same-type lessons
+    // S6 run-length scalar
     public int ConsecRunScalar { get; set; } = 3;
 
-    // S8 — Saturday discouragement (soft penalty per group-slot on Saturday)
+    // S8 — Saturday discouragement
     public int SaturdayPenalty { get; set; } = 30;
 
-    // S9 — room department / subject department faculty mismatch
+    // S9 — room department mismatch
     public int DepartmentMismatchPenalty { get; set; } = 50;
 
-    // S4 — walking penalty max coefficient (penalty when walkMins / breakMins ≈ 1.0)
+    // S4 — walking penalty max
     public int WalkingPenaltyMax { get; set; } = 120;
+
+    public University University { get; set; } = null!;
 }

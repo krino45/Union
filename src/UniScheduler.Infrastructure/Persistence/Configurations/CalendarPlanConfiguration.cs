@@ -13,6 +13,11 @@ public class CalendarPlanConfiguration : IEntityTypeConfiguration<CalendarPlan>
         builder.Property(cp => cp.AcademicYear).IsRequired();
         builder.Property(cp => cp.Term).IsRequired();
 
+        builder.HasOne(cp => cp.University)
+            .WithMany(u => u.CalendarPlans)
+            .HasForeignKey(cp => cp.UniversityId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         builder.HasMany(cp => cp.Weeks)
                .WithOne(w => w.CalendarPlan)
                .HasForeignKey(w => w.CalendarPlanId)

@@ -13,3 +13,4 @@ export * from './auth.model';
 export * from './enums';
 export * from './study-plan.model';
 export * from './floor-plan.model';
+export * from './semester.model';

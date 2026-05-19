@@ -83,8 +83,15 @@ export class LoginComponent {
     this.auth.login(this.form.value).subscribe({
       next: (res) => {
         this.loading = false;
-        if (res.role === 'Admin') this.router.navigate(['/admin/schedules']);
-        else this.router.navigate(['/teacher/my-schedule']);
+        if (res.role === 'SuperAdmin') {
+          this.router.navigate(['/superadmin']);
+        } else if (res.universities?.length === 1) {
+          this.auth.selectUniversity(res.universities[0]);
+          if (res.universities[0].role === 'Admin') this.router.navigate(['/admin/schedules']);
+          else this.router.navigate(['/teacher/my-schedule']);
+        } else {
+          this.router.navigate(['/select-university']);
+        }
       },
       error: (err) => {
         this.loading = false;

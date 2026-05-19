@@ -7,9 +7,11 @@ public class Teacher : Entity
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string MiddleName { get; set; } = string.Empty;
+    public Guid UniversityId { get; set; }
     public string Email { get; set; } = string.Empty;
     public Guid? UserId { get; set; }
 
+    public University University { get; set; } = null!;
     public ICollection<TeacherSubject> TeacherSubjects { get; set; } = new List<TeacherSubject>();
     public ICollection<TeacherAvailability> Availabilities { get; set; } = new List<TeacherAvailability>();
     public ICollection<ScheduleEntry> ScheduleEntries { get; set; } = new List<ScheduleEntry>();

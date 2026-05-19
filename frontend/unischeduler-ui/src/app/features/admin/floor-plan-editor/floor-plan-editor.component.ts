@@ -572,11 +572,6 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     this.selectedBuilding = this.buildings.find(b => b.id === id) ?? null;
     this.buildFloors();
     this.api.getRooms({ buildingId: id }).subscribe(r => { this.buildingRooms = r; });
-    const draft = localStorage.getItem(`fp_draft_${id}`);
-    if (draft) {
-      this.snackBar.open('Обнаружен несохранённый черновик', 'Восстановить', { duration: 8000 })
-        .onAction().subscribe(() => this.restoreDraft(id));
-    }
     this.loadFloorPlan(id);
     setTimeout(() => {
       this.resizeObserver?.disconnect();
@@ -603,32 +598,45 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
       next: fp => {
         this.nodes = fp.nodes.map(n => ({ ...n, selected: false }));
         this.edges = fp.edges; this.dirty = false; this.loading = false;
+        // After loading saved state, check if there is a newer draft
+        this.checkDraft(id);
       },
       error: () => { this.loading = false; }
     });
   }
 
+  private checkDraft(id: string): void {
+    this.api.getFloorPlanDraft(id).subscribe({
+      next: draft => {
+        if (draft) {
+          this.snackBar.open('Обнаружен несохранённый черновик', 'Восстановить', { duration: 8000 })
+            .onAction().subscribe(() => this.restoreDraft(id, draft.draftJson));
+        }
+      },
+      error: () => {}
+    });
+  }
+
   reload(): void {
     if (!this.selectedBuildingId) return;
-    localStorage.removeItem(`fp_draft_${this.selectedBuildingId}`);
+    // Delete the draft and reload saved state
+    this.api.deleteFloorPlanDraft(this.selectedBuildingId).subscribe({ error: () => {} });
     this.loadFloorPlan(this.selectedBuildingId);
   }
 
-  restoreDraft(id: string): void {
-    const raw = localStorage.getItem(`fp_draft_${id}`);
-    if (!raw) return;
+  restoreDraft(id: string, draftJson: string): void {
     try {
-      const d = JSON.parse(raw);
+      const d = JSON.parse(draftJson);
       this.nodes = (d.nodes as EditorNode[]).map(n => ({ ...n, selected: false }));
       this.edges = d.edges; this.scale = d.scale ?? 5; this.dirty = true;
       this.snackBar.open('Черновик восстановлен', '', { duration: 2000 });
-    } catch { localStorage.removeItem(`fp_draft_${id}`); }
+    } catch { /* ignore bad draft */ }
   }
 
   private saveDraft(): void {
     if (!this.selectedBuildingId) return;
-    localStorage.setItem(`fp_draft_${this.selectedBuildingId}`,
-      JSON.stringify({ nodes: this.nodes, edges: this.edges, scale: this.scale }));
+    const draftJson = JSON.stringify({ nodes: this.nodes, edges: this.edges, scale: this.scale });
+    this.api.saveFloorPlanDraft(this.selectedBuildingId, draftJson).subscribe({ error: () => {} });
   }
 
   // ── Floors / view ─────────────────────────────────────────────────────────────

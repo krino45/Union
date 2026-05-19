@@ -6,8 +6,18 @@ namespace UniScheduler.Infrastructure.Persistence;
 
 public class ApplicationDbContext : DbContext, IApplicationDbContext
 {
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+    private readonly ICurrentUniversityService _currentUniversity;
 
+    public ApplicationDbContext(
+        DbContextOptions<ApplicationDbContext> options,
+        ICurrentUniversityService currentUniversity) : base(options)
+    {
+        _currentUniversity = currentUniversity;
+    }
+
+    public DbSet<University> Universities => Set<University>();
+    public DbSet<UserUniversityAccess> UserUniversityAccesses => Set<UserUniversityAccess>();
+    public DbSet<FloorPlanDraft> FloorPlanDrafts => Set<FloorPlanDraft>();
     public DbSet<Building> Buildings => Set<Building>();
     public DbSet<BuildingDistance> BuildingDistances => Set<BuildingDistance>();
     public DbSet<FloorPlanNode> FloorPlanNodes => Set<FloorPlanNode>();
@@ -37,6 +47,43 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+
+        // Global query filters: scope all root-level tenant entities to the current university.
+        // SuperAdmin requests (no X-University-Id header) bypass filters via IgnoreQueryFilters().
+        modelBuilder.Entity<Faculty>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<Building>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<Teacher>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<CalendarPlan>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<PairTimeSlot>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<Schedule>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<SolverSettings>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+
         base.OnModelCreating(modelBuilder);
+    }
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        // Auto-populate UniversityId on new entities when university context is present
+        if (_currentUniversity.HasContext)
+        {
+            var universityId = _currentUniversity.UniversityId!.Value;
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                if (entry.State != EntityState.Added) continue;
+                var prop = entry.Metadata.FindProperty("UniversityId");
+                if (prop == null) continue;
+                var current = entry.CurrentValues[prop];
+                if (current is Guid id && id == Guid.Empty)
+                    entry.CurrentValues[prop] = universityId;
+            }
+        }
+        return await base.SaveChangesAsync(cancellationToken);
     }
 }

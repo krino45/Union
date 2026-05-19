@@ -55,6 +55,41 @@ export class ApiService {
   saveFloorPlan(buildingId: string, req: SaveFloorPlanRequest): Observable<void> {
     return this.http.put<void>(`${this.base}/buildings/${buildingId}/floorplan`, req);
   }
+  getFloorPlanDraft(buildingId: string): Observable<{ draftJson: string; lastModified: string } | null> {
+    return this.http.get<{ draftJson: string; lastModified: string }>(`${this.base}/buildings/${buildingId}/floorplan/draft`);
+  }
+  saveFloorPlanDraft(buildingId: string, draftJson: string): Observable<void> {
+    return this.http.put<void>(`${this.base}/buildings/${buildingId}/floorplan/draft`, { draftJson });
+  }
+  deleteFloorPlanDraft(buildingId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/buildings/${buildingId}/floorplan/draft`);
+  }
+
+  //  Universities (SuperAdmin)
+  getUniversities(): Observable<{ id: string; name: string; shortName: string; logoUrl?: string }[]> {
+    return this.http.get<any[]>(`${this.base}/universities`);
+  }
+  createUniversity(dto: { name: string; shortName: string; logoUrl?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/universities`, dto);
+  }
+  updateUniversity(id: string, dto: { name: string; shortName: string; logoUrl?: string }): Observable<void> {
+    return this.http.put<void>(`${this.base}/universities/${id}`, dto);
+  }
+  deleteUniversity(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/universities/${id}`);
+  }
+  getUniversityUsers(universityId: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/universities/${universityId}/users`);
+  }
+  assignUniversityUser(universityId: string, userId: string, role: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/universities/${universityId}/users`, { userId, role });
+  }
+  revokeUniversityUser(universityId: string, userId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/universities/${universityId}/users/${userId}`);
+  }
+  getUsers(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/users`);
+  }
 
   //  Departments
   getDepartments(facultyId?: string): Observable<Department[]> {

@@ -11,6 +11,13 @@ public class FacultyConfiguration : IEntityTypeConfiguration<Faculty>
         builder.HasKey(f => f.Id);
         builder.Property(f => f.Name).IsRequired().HasMaxLength(200);
         builder.Property(f => f.ShortCode).IsRequired().HasMaxLength(20);
-        builder.HasIndex(f => f.ShortCode).IsUnique();
+
+        // ShortCode is unique per university (not globally)
+        builder.HasIndex(f => new { f.UniversityId, f.ShortCode }).IsUnique();
+
+        builder.HasOne(f => f.University)
+            .WithMany(u => u.Faculties)
+            .HasForeignKey(f => f.UniversityId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

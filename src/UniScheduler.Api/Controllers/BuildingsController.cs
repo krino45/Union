@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using UniScheduler.Application.DTOs;
 using UniScheduler.Application.Features.Buildings.Commands;
 using UniScheduler.Application.Features.Buildings.Queries;
+using UniScheduler.Application.Features.FloorPlan.Commands;
+using UniScheduler.Application.Features.FloorPlan.Queries;
 
 namespace UniScheduler.Api.Controllers;
 
@@ -58,6 +60,29 @@ public class BuildingsController : ControllerBase
         await _mediator.Send(new SaveFloorPlanCommand(id, req), ct);
         return NoContent();
     }
+
+    [HttpGet("{id:guid}/floorplan/draft")]
+    public async Task<ActionResult<FloorPlanDraftDto>> GetFloorPlanDraft(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetFloorPlanDraftQuery(id), ct);
+        if (result == null) return NotFound();
+        return Ok(result);
+    }
+
+    [HttpPut("{id:guid}/floorplan/draft")]
+    public async Task<IActionResult> SaveFloorPlanDraft(Guid id, [FromBody] SaveFloorPlanDraftRequest req, CancellationToken ct)
+    {
+        await _mediator.Send(new SaveFloorPlanDraftCommand(id, req.DraftJson), ct);
+        return NoContent();
+    }
+
+    [HttpDelete("{id:guid}/floorplan/draft")]
+    public async Task<IActionResult> DeleteFloorPlanDraft(Guid id, CancellationToken ct)
+    {
+        await _mediator.Send(new DeleteFloorPlanDraftCommand(id), ct);
+        return NoContent();
+    }
 }
 
 public record UpdateBuildingRequest(string ShortCode, string Address, int NumberOfFloors = 5, int NumberOfBasementFloors = 0);
+public record SaveFloorPlanDraftRequest(string DraftJson);

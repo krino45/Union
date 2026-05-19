@@ -10,17 +10,25 @@ public record UpdateSolverSettingsCommand(SolverWeights Weights) : IRequest;
 
 public class UpdateSolverSettingsCommandHandler : IRequestHandler<UpdateSolverSettingsCommand>
 {
-    private readonly IApplicationDbContext db;
-    public UpdateSolverSettingsCommandHandler(IApplicationDbContext db) => this.db = db;
+    private readonly IApplicationDbContext _db;
+    private readonly ICurrentUniversityService _currentUniversity;
+
+    public UpdateSolverSettingsCommandHandler(IApplicationDbContext db, ICurrentUniversityService currentUniversity)
+    {
+        _db = db;
+        _currentUniversity = currentUniversity;
+    }
 
     public async Task Handle(UpdateSolverSettingsCommand request, CancellationToken cancellationToken)
     {
         var w = request.Weights;
-        var s = await db.SolverSettings.FirstOrDefaultAsync(cancellationToken);
+        var s = await _db.SolverSettings.FirstOrDefaultAsync(cancellationToken);
         if (s == null)
         {
-            s = new SolverSettings { Id = Guid.Empty };
-            db.SolverSettings.Add(s);
+            s = new SolverSettings();
+            if (_currentUniversity.HasContext)
+                s.UniversityId = _currentUniversity.UniversityId!.Value;
+            _db.SolverSettings.Add(s);
         }
 
         s.StudentWindow   = w.StudentWindow;
@@ -39,6 +47,6 @@ public class UpdateSolverSettingsCommandHandler : IRequestHandler<UpdateSolverSe
         s.DepartmentMismatchPenalty = w.DepartmentMismatchPenalty;
         s.WalkingPenaltyMax = w.WalkingPenaltyMax;
 
-        await db.SaveChangesAsync(cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
     }
 }

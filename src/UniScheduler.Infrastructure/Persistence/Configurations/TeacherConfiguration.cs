@@ -16,7 +16,13 @@ public class TeacherConfiguration : IEntityTypeConfiguration<Teacher>
         builder.Ignore(t => t.DisplayName);
         builder.Ignore(t => t.ShortName);
 
-        builder.HasIndex(t => t.Email).IsUnique();
+        // Email is unique per university (not globally)
+        builder.HasIndex(t => new { t.UniversityId, t.Email }).IsUnique();
+
+        builder.HasOne(t => t.University)
+            .WithMany(u => u.Teachers)
+            .HasForeignKey(t => t.UniversityId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 

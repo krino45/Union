@@ -13,6 +13,11 @@ public class BuildingConfiguration : IEntityTypeConfiguration<Building>
         builder.Property(b => b.Address).IsRequired();
         builder.Property(b => b.NumberOfFloors).IsRequired().HasDefaultValue(5);
         builder.Property(b => b.NumberOfBasementFloors).IsRequired().HasDefaultValue(0);
+
+        builder.HasOne(b => b.University)
+            .WithMany(u => u.Buildings)
+            .HasForeignKey(b => b.UniversityId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 

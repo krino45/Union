@@ -18,7 +18,6 @@ import { Subject, of, Observable } from 'rxjs';
 import { ApiService } from '../../../../core/services/api.service';
 import { Building, BuildingDistance } from '../../../../core/models';
 
-const CITY_STORAGE_KEY = 'unischeduler_city';
 
 @Component({
   selector: 'app-buildings',
@@ -175,9 +174,7 @@ export class BuildingsComponent implements OnInit {
   city: string = '';
   editingCity = false;
 
-  constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {
-    this.city = localStorage.getItem(CITY_STORAGE_KEY) ?? '';
-  }
+  constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
 
   ngOnInit(): void {
     this.load();
@@ -189,7 +186,6 @@ export class BuildingsComponent implements OnInit {
 
   saveCity(value: string): void {
     this.city = value.trim();
-    localStorage.setItem(CITY_STORAGE_KEY, this.city);
     this.editingCity = false;
   }
 

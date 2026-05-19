@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
+using UniScheduler.Application.Common.Interfaces;
 
 namespace UniScheduler.Infrastructure.Persistence;
 
@@ -20,6 +21,12 @@ public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Applicati
         var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
         optionsBuilder.UseNpgsql(config.GetConnectionString("DefaultConnection"));
 
-        return new ApplicationDbContext(optionsBuilder.Options);
+        return new ApplicationDbContext(optionsBuilder.Options, new NoopUniversityService());
+    }
+
+    private sealed class NoopUniversityService : ICurrentUniversityService
+    {
+        public Guid? UniversityId => null;
+        public bool HasContext => false;
     }
 }

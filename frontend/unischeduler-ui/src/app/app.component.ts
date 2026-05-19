@@ -1,6 +1,6 @@
 import { Component, Inject } from '@angular/core';
 import { DOCUMENT, CommonModule } from '@angular/common';
-import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
@@ -20,10 +20,16 @@ import { AuthService } from './core/services/auth.service';
   ],
   template: `
     <mat-sidenav-container class="app-container">
-      <mat-sidenav #sidenav mode="side" [opened]="auth.isAuthenticated" class="sidenav">
-        <div class="sidenav-header">
+      <mat-sidenav #sidenav mode="side" [opened]="auth.isAuthenticated && !!auth.currentUniversity" class="sidenav">
+        <div class="sidenav-header" [class.clickable]="auth.canSwitchUniversity"
+             (click)="auth.canSwitchUniversity ? switchUniversity() : null"
+             [matTooltip]="auth.canSwitchUniversity ? 'Сменить университет' : ''">
           <mat-icon>school</mat-icon>
-          <span>UniScheduler</span>
+          <div class="header-text">
+            <div class="app-name">UniScheduler</div>
+            <div class="uni-name" *ngIf="auth.currentUniversity">{{ auth.currentUniversity.shortName }}</div>
+          </div>
+          <mat-icon class="switch-icon" *ngIf="auth.canSwitchUniversity">swap_horiz</mat-icon>
         </div>
         <mat-divider></mat-divider>
 
@@ -126,17 +132,22 @@ import { AuthService } from './core/services/auth.service';
 
       <mat-sidenav-content>
         <mat-toolbar color="primary" *ngIf="auth.isAuthenticated">
-          <span>UniScheduler</span>
+          <span class="uni-title">
+            {{ auth.currentUniversity?.universityName || 'UniScheduler' }}
+          </span>
           <span class="spacer"></span>
           <button mat-button routerLink="/admin/floor-plan" routerLinkActive="active-header-link"
-                  *ngIf="auth.isAdmin" class="header-floorplan-btn">
+                  *ngIf="auth.isAdmin && auth.currentUniversity" class="header-floorplan-btn">
             <mat-icon>map</mat-icon>
             Редактор планировок
           </button>
           <button mat-icon-button (click)="toggleDarkMode()" [matTooltip]="isDarkMode ? 'Светлая тема' : 'Тёмная тема'" class="dark-toggle">
             <mat-icon>{{ isDarkMode ? 'light_mode' : 'dark_mode' }}</mat-icon>
           </button>
-          <span class="role-badge">{{ auth.isAdmin ? 'Администратор' : 'Преподаватель' }}</span>
+          <span class="role-badge" *ngIf="auth.isSuperAdmin">Суперадмин</span>
+          <span class="role-badge" *ngIf="!auth.isSuperAdmin && auth.currentUniversity">
+            {{ auth.isAdmin ? 'Администратор' : 'Преподаватель' }}
+          </span>
         </mat-toolbar>
         <div class="content">
           <router-outlet></router-outlet>
@@ -151,11 +162,18 @@ import { AuthService } from './core/services/auth.service';
       display: flex; align-items: center; gap: 8px;
       padding: 16px; font-size: 18px; font-weight: 600;
     }
+    .sidenav-header.clickable { cursor: pointer; transition: background 0.15s; }
+    .sidenav-header.clickable:hover { background: rgba(0,0,0,0.04); }
+    .header-text { flex: 1; min-width: 0; }
+    .app-name { font-size: 16px; font-weight: 700; }
+    .uni-name { font-size: 11px; font-weight: 400; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .switch-icon { font-size: 16px; width: 16px; height: 16px; color: #888; }
     .sidenav-footer { margin-top: auto; padding: 8px; }
     .user-info { display: flex; align-items: center; gap: 8px; padding: 8px; font-size: 14px; }
     .logout-btn { width: 100%; }
     .spacer { flex: 1; }
     .role-badge { font-size: 13px; opacity: 0.85; }
+    .uni-title { font-size: 15px; font-weight: 600; }
     .header-floorplan-btn { color: #fff; margin-right: 12px; }
     .header-floorplan-btn.active-header-link { background: rgba(255,255,255,0.18); }
     .dark-toggle { color: #fff; margin-right: 8px; }
@@ -167,9 +185,18 @@ import { AuthService } from './core/services/auth.service';
 export class AppComponent {
   isDarkMode = false;
 
-  constructor(public auth: AuthService, @Inject(DOCUMENT) private doc: Document) {
+  constructor(
+    public auth: AuthService,
+    private router: Router,
+    @Inject(DOCUMENT) private doc: Document
+  ) {
     this.isDarkMode = localStorage.getItem('darkMode') === 'true';
     if (this.isDarkMode) this.doc.body.classList.add('dark-mode');
+  }
+
+  switchUniversity(): void {
+    this.auth.clearUniversitySelection();
+    this.router.navigate(['/select-university']);
   }
 
   toggleDarkMode(): void {

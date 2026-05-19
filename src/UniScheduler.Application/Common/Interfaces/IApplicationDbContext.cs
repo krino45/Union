@@ -5,6 +5,9 @@ namespace UniScheduler.Application.Common.Interfaces;
 
 public interface IApplicationDbContext
 {
+    DbSet<University> Universities { get; }
+    DbSet<UserUniversityAccess> UserUniversityAccesses { get; }
+    DbSet<FloorPlanDraft> FloorPlanDrafts { get; }
     DbSet<Building> Buildings { get; }
     DbSet<BuildingDistance> BuildingDistances { get; }
     DbSet<FloorPlanNode> FloorPlanNodes { get; }

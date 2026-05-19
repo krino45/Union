@@ -1,15 +1,26 @@
 import { Routes } from '@angular/router';
 import { authGuard, adminGuard } from './core/guards/auth.guard';
+import { universityGuard, superAdminGuard } from './core/guards/university.guard';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'admin/schedules', pathMatch: 'full' },
+  { path: '', redirectTo: 'select-university', pathMatch: 'full' },
   {
     path: 'login',
     loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent)
   },
   {
+    path: 'select-university',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/university-select/university-select.component').then(m => m.UniversitySelectComponent)
+  },
+  {
+    path: 'superadmin',
+    canActivate: [authGuard, superAdminGuard],
+    loadComponent: () => import('./features/superadmin/superadmin.component').then(m => m.SuperAdminComponent)
+  },
+  {
     path: 'admin',
-    canActivate: [authGuard, adminGuard],
+    canActivate: [authGuard, universityGuard, adminGuard],
     children: [
       { path: '', redirectTo: 'schedules', pathMatch: 'full' },
       {
@@ -72,7 +83,7 @@ export const routes: Routes = [
   },
   {
     path: 'teacher',
-    canActivate: [authGuard],
+    canActivate: [authGuard, universityGuard],
     children: [
       { path: '', redirectTo: 'my-schedule', pathMatch: 'full' },
       {

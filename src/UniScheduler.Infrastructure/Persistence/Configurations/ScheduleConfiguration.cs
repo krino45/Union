@@ -20,6 +20,11 @@ public class ScheduleConfiguration : IEntityTypeConfiguration<Schedule>
             .HasForeignKey(s => s.FacultyId)
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(s => s.University)
+            .WithMany()
+            .HasForeignKey(s => s.UniversityId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 
