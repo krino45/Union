@@ -30,6 +30,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<StudyPlanEntry> StudyPlanEntries => Set<StudyPlanEntry>();
     public DbSet<CalendarPlan> CalendarPlans => Set<CalendarPlan>();
     public DbSet<CalendarWeek> CalendarWeeks => Set<CalendarWeek>();
+    public DbSet<SolverSettings> SolverSettings => Set<SolverSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

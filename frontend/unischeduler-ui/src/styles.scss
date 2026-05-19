@@ -19,11 +19,298 @@ html, body {
   border-radius: 4px;
   opacity: 0.9;
 }
-
-.cdk-drag-animating {
+.cdk-drag-animating { transition: transform 200ms cubic-bezier(0, 0, 0.2, 1); }
+.cdk-drop-list-dragging .entry-card:not(.cdk-drag-placeholder) {
   transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
 }
 
-.cdk-drop-list-dragging .entry-card:not(.cdk-drag-placeholder) {
-  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+/* ── Dark mode ─────────────────────────────────────────────────────────────── */
+/*
+  Surface palette (Material Design dark baseline):
+    s0  #1a1a1a  body / sidenav-content
+    s1  #212121  sidenav drawer
+    s2  #272727  cards, expansion panels
+    s3  #2d2d2d  dialogs, select panels, autocomplete
+    s4  #363636  input fills, chips, raised neutral buttons
+*/
+body.dark-mode {
+  background: #1a1a1a;
+  color: rgba(255, 255, 255, 0.87);
+  color-scheme: dark;
+
+  /* Scrollbar */
+  ::-webkit-scrollbar-thumb { background: #555; }
+
+  /* ── Sidenav ─────────────────────────────────────── */
+  --mat-sidenav-content-background-color: #1a1a1a;
+  --mat-sidenav-container-background-color: #212121;
+  --mat-sidenav-container-text-color: rgba(255, 255, 255, 0.87);
+  --mat-sidenav-container-divider-color: rgba(255, 255, 255, 0.12);
+  --mat-sidenav-scrim-color: rgba(0, 0, 0, 0.6);
+
+  /* ── Toolbar (non-colored) ───────────────────────── */
+  --mat-toolbar-container-background-color: #212121;
+  --mat-toolbar-container-text-color: rgba(255, 255, 255, 0.87);
+
+  /* ── Cards ───────────────────────────────────────── */
+  --mdc-elevated-card-container-color: #272727;
+  --mdc-outlined-card-container-color: #272727;
+  --mat-card-title-text-color: rgba(255, 255, 255, 0.87);
+  --mat-card-subtitle-text-color: rgba(255, 255, 255, 0.6);
+
+  /* ── Form fields — filled ────────────────────────── */
+  --mdc-filled-text-field-container-color: #363636;
+  --mdc-filled-text-field-label-text-color: rgba(255, 255, 255, 0.6);
+  --mdc-filled-text-field-input-text-color: rgba(255, 255, 255, 0.87);
+  --mdc-filled-text-field-focus-label-text-color: #90caf9;
+  --mdc-filled-text-field-hover-label-text-color: rgba(255, 255, 255, 0.87);
+  --mdc-filled-text-field-disabled-container-color: #2a2a2a;
+  --mdc-filled-text-field-active-indicator-color: rgba(255, 255, 255, 0.42);
+  --mdc-filled-text-field-hover-active-indicator-color: rgba(255, 255, 255, 0.7);
+  --mdc-filled-text-field-focus-active-indicator-color: #90caf9;
+
+  /* ── Form fields — outlined ──────────────────────── */
+  --mdc-outlined-text-field-label-text-color: rgba(255, 255, 255, 0.6);
+  --mdc-outlined-text-field-input-text-color: rgba(255, 255, 255, 0.87);
+  --mdc-outlined-text-field-outline-color: rgba(255, 255, 255, 0.3);
+  --mdc-outlined-text-field-hover-outline-color: rgba(255, 255, 255, 0.7);
+  --mdc-outlined-text-field-focus-outline-color: #90caf9;
+  --mdc-outlined-text-field-focus-label-text-color: #90caf9;
+  --mdc-outlined-text-field-disabled-outline-color: rgba(255, 255, 255, 0.12);
+  --mdc-outlined-text-field-disabled-label-text-color: rgba(255, 255, 255, 0.38);
+
+  /* ── Select ──────────────────────────────────────── */
+  --mat-select-trigger-text-color: rgba(255, 255, 255, 0.87);
+  --mat-select-panel-background-color: #2d2d2d;
+  --mat-option-label-text-color: rgba(255, 255, 255, 0.87);
+  --mat-option-selected-state-label-text-color: #90caf9;
+  --mat-option-hover-state-layer-color: rgba(255, 255, 255, 0.08);
+  --mat-option-focus-state-layer-color: rgba(255, 255, 255, 0.12);
+  --mat-option-selected-state-layer-color: rgba(100, 181, 246, 0.16);
+  --mat-select-enabled-arrow-color: rgba(255, 255, 255, 0.54);
+  --mat-select-disabled-arrow-color: rgba(255, 255, 255, 0.26);
+
+  /* ── Dialog ──────────────────────────────────────── */
+  --mdc-dialog-container-color: #2d2d2d;
+  --mdc-dialog-subhead-color: rgba(255, 255, 255, 0.87);
+  --mdc-dialog-supporting-text-color: rgba(255, 255, 255, 0.7);
+
+  /* ── List / nav-list ─────────────────────────────── */
+  --mdc-list-list-item-container-color: transparent;
+  --mdc-list-list-item-label-text-color: rgba(255, 255, 255, 0.87);
+  --mdc-list-list-item-supporting-text-color: rgba(255, 255, 255, 0.6);
+  --mdc-list-list-item-leading-icon-color: rgba(255, 255, 255, 0.7);
+  --mdc-list-list-item-trailing-icon-color: rgba(255, 255, 255, 0.7);
+  --mat-list-active-indicator-color: rgba(144, 202, 249, 0.2);
+
+  /* ── Buttons ─────────────────────────────────────── */
+  --mat-text-button-label-text-color: rgba(255, 255, 255, 0.87);
+  --mdc-text-button-label-text-color: rgba(255, 255, 255, 0.87);
+  --mat-text-button-state-layer-color: rgba(255, 255, 255, 0.08);
+  --mat-outlined-button-label-text-color: rgba(255, 255, 255, 0.87);
+  --mat-outlined-button-outline-color: rgba(255, 255, 255, 0.3);
+  --mat-outlined-button-state-layer-color: rgba(255, 255, 255, 0.08);
+  --mat-icon-button-icon-color: rgba(255, 255, 255, 0.87);
+  --mat-icon-button-state-layer-color: rgba(255, 255, 255, 0.1);
+  /* Neutral raised/filled buttons (no color= attr) */
+  --mdc-protected-button-container-color: #363636;
+  --mdc-protected-button-label-text-color: rgba(255, 255, 255, 0.87);
+  --mdc-filled-button-container-color: #363636;
+  --mdc-filled-button-label-text-color: rgba(255, 255, 255, 0.87);
+
+  /* ── Chips ───────────────────────────────────────── */
+  --mdc-chip-label-text-color: rgba(255, 255, 255, 0.87);
+  --mdc-chip-container-color: #363636;
+  --mdc-chip-elevated-container-color: #363636;
+  --mdc-chip-outline-color: rgba(255, 255, 255, 0.25);
+
+  /* ── Table ───────────────────────────────────────── */
+  --mat-table-background-color: #1e1e1e;
+  --mat-table-header-headline-color: rgba(255, 255, 255, 0.87);
+  --mat-table-row-item-label-text-color: rgba(255, 255, 255, 0.87);
+  --mat-table-row-item-outline-color: rgba(255, 255, 255, 0.1);
+  --mat-table-header-row-item-outline-color: rgba(255, 255, 255, 0.1);
+
+  /* ── Paginator ───────────────────────────────────── */
+  --mat-paginator-container-background-color: #1e1e1e;
+  --mat-paginator-container-text-color: rgba(255, 255, 255, 0.87);
+  --mat-paginator-select-trigger-text-color: rgba(255, 255, 255, 0.87);
+
+  /* ── Tabs ────────────────────────────────────────── */
+  --mat-tab-header-inactive-label-text-color: rgba(255, 255, 255, 0.6);
+  --mat-tab-header-active-label-text-color: #90caf9;
+  --mat-tab-header-inactive-focus-label-text-color: rgba(255, 255, 255, 0.87);
+  --mat-tab-header-inactive-hover-label-text-color: rgba(255, 255, 255, 0.87);
+  --mat-tab-header-active-focus-label-text-color: #90caf9;
+  --mat-tab-header-active-hover-label-text-color: #90caf9;
+  --mdc-tab-indicator-active-indicator-color: #90caf9;
+  --mat-tab-header-active-ripple-color: #90caf9;
+
+  /* ── Expansion panel ─────────────────────────────── */
+  --mat-expansion-container-background-color: #272727;
+  --mat-expansion-container-text-color: rgba(255, 255, 255, 0.87);
+  --mat-expansion-header-text-color: rgba(255, 255, 255, 0.87);
+  --mat-expansion-header-description-color: rgba(255, 255, 255, 0.6);
+  --mat-expansion-header-indicator-color: rgba(255, 255, 255, 0.6);
+  --mat-expansion-header-hover-state-layer-color: rgba(255, 255, 255, 0.05);
+
+  /* ── Menu ────────────────────────────────────────── */
+  --mat-menu-container-color: #2d2d2d;
+  --mat-menu-item-label-text-color: rgba(255, 255, 255, 0.87);
+  --mat-menu-item-icon-color: rgba(255, 255, 255, 0.7);
+  --mat-menu-item-hover-state-layer-color: rgba(255, 255, 255, 0.08);
+  --mat-menu-item-focus-state-layer-color: rgba(255, 255, 255, 0.12);
+
+  /* ── Divider ─────────────────────────────────────── */
+  --mat-divider-color: rgba(255, 255, 255, 0.12);
+
+  /* ── Progress ────────────────────────────────────── */
+  --mdc-linear-progress-track-color: rgba(255, 255, 255, 0.12);
+  --mdc-circular-progress-active-indicator-color: #90caf9;
+
+  /* ── Checkbox ────────────────────────────────────── */
+  --mdc-checkbox-unselected-icon-color: rgba(255, 255, 255, 0.54);
+  --mdc-checkbox-unselected-hover-icon-color: rgba(255, 255, 255, 0.87);
+  --mdc-checkbox-unselected-pressed-icon-color: rgba(255, 255, 255, 0.87);
+
+  /* ── Radio ───────────────────────────────────────── */
+  --mdc-radio-unselected-icon-color: rgba(255, 255, 255, 0.54);
+  --mdc-radio-unselected-hover-icon-color: rgba(255, 255, 255, 0.87);
+
+  /* ── Slide toggle ────────────────────────────────── */
+  --mdc-switch-unselected-track-color: rgba(255, 255, 255, 0.28);
+  --mdc-switch-unselected-handle-color: rgba(255, 255, 255, 0.7);
+  --mdc-switch-unselected-hover-track-color: rgba(255, 255, 255, 0.35);
+  --mdc-switch-unselected-hover-handle-color: rgba(255, 255, 255, 0.9);
+  --mdc-switch-unselected-focus-track-color: rgba(255, 255, 255, 0.32);
+
+  /* ── Tooltip ─────────────────────────────────────── */
+  --mdc-plain-tooltip-container-color: #4a4a4a;
+  --mdc-plain-tooltip-supporting-text-color: rgba(255, 255, 255, 0.87);
+
+  /* ── Snackbar ────────────────────────────────────── */
+  --mdc-snackbar-container-color: #424242;
+  --mdc-snackbar-supporting-text-color: rgba(255, 255, 255, 0.87);
+
+  /* ══ Direct element overrides ══════════════════════════════════════════════ */
+
+  /* Containers */
+  .mat-drawer-container, .mat-sidenav-container { background: #1a1a1a; }
+  .mat-mdc-card { box-shadow: 0 1px 6px rgba(0, 0, 0, 0.7) !important; }
+
+  /* mat-icon always follows current text color */
+  .mat-icon { color: inherit; }
+
+  /* Nav list */
+  h3[matSubheader] { color: rgba(255, 255, 255, 0.45) !important; }
+  .mat-mdc-nav-list a.active { background: rgba(144, 202, 249, 0.14) !important; }
+
+  /* Native inputs inside mat-form-field */
+  input.mat-mdc-input-element,
+  textarea.mat-mdc-input-element {
+    color: rgba(255, 255, 255, 0.87) !important;
+    caret-color: #90caf9;
+  }
+  /* Let browser render date/number in dark mode */
+  input[type="date"],
+  input[type="time"],
+  input[type="number"] { color-scheme: dark; }
+
+  /* Table row hover */
+  .mat-mdc-row:hover .mat-mdc-cell { background: rgba(255, 255, 255, 0.04); }
+
+  /* Autocomplete overlay */
+  .mat-mdc-autocomplete-panel { background: #2d2d2d !important; }
+
+  /* ── Status / generation chips ───────────────────── */
+  .status-draft     { background: #3e2200 !important; color: #ffcc80 !important; }
+  .status-published { background: #1b3a1f !important; color: #a5d6a7 !important; }
+  .status-archived  { background: #2a1240 !important; color: #ce93d8 !important; }
+  .gen-completed    { color: #81c784 !important; }
+  .gen-failed       { color: #ef9a9a !important; }
+
+  /* ── Hard-coded light colors in feature components ── */
+
+  /* Generic light-background info banners → dark indigo tint */
+  .city-info, [class*="info-banner"] {
+    background: #1a237e22 !important;
+    color: rgba(255, 255, 255, 0.87) !important;
+  }
+
+  /* Table headers with hard-coded #f5f5f5 */
+  .dist-table th,
+  .entries-table th,
+  .entries-view-table th {
+    background: #2a2a2a !important;
+    color: rgba(255, 255, 255, 0.7) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.12) !important;
+  }
+
+  /* Table rows in custom plain tables */
+  .dist-table td,
+  .entries-table td,
+  .entries-view-table td {
+    color: rgba(255, 255, 255, 0.87) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+  }
+
+  /* Distance input that exceeds threshold */
+  .dist-input.exceeds { background: #4a0000 !important; color: #ef9a9a !important; }
+
+  /* Keyword chips (rooms type-chip, study-plan group-chip) */
+  .type-chip  { background: #1a2a4a !important; color: #90caf9 !important; }
+  .group-chip { background: #1a2a4a !important; color: #90caf9 !important; }
+
+  /* Excel error / warning panels */
+  .error-list { background: #3b1111 !important; }
+  .error-item { color: #ef9a9a !important; }
+  .warning-item { color: #ffcc80 !important; }
+
+  /* Floor plan canvas and tools */
+  .floor-canvas { background: #1e1e1e !important; border-color: #444 !important; }
+  .floor-tab:hover { background: #1a2a4a !important; border-color: #5c7ab8 !important; }
+  .active-tool { background: #1a2a4a !important; border-color: #5c7ab8 !important; }
+  .add-room-form { background: #1a2e1a !important; }
+  kbd { background: #333 !important; border-color: #555 !important; color: rgba(255,255,255,0.8) !important; }
+
+  /* Schedule editor archive banner */
+  .archive-banner {
+    background: #2a2a2a !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    color: rgba(255, 255, 255, 0.7) !important;
+  }
+
+  /* Schedule editor/grid misc */
+  .subtitle { color: rgba(255, 255, 255, 0.6) !important; }
+
+  /* Slot info text (add-entry dialog) */
+  .slot-info { color: rgba(255, 255, 255, 0.6) !important; }
+
+  /* All-types muted label */
+  .all-types, .muted, .no-entries { color: rgba(255, 255, 255, 0.45) !important; }
+
+  /* Wk-num in calendar plan editor */
+  .wk-num { color: rgba(255, 255, 255, 0.45) !important; }
+
+  /* Empty states */
+  .empty-state, .no-bld { color: rgba(255, 255, 255, 0.45) !important; }
+
+  /* Property value text in floor plan panel */
+  .prop-val { color: rgba(255, 255, 255, 0.7) !important; }
+
+  /* Shortcuts panel text */
+  .shortcuts div { color: rgba(255, 255, 255, 0.5) !important; }
+
+  /* Warn / legend colors — keep them but lighter */
+  .legend-red { color: #ef9a9a !important; }
+  .warn       { color: #ef9a9a !important; }
+  .warn-note  { color: #ffcc80 !important; }
+  .edge-hint  { color: #ffcc80 !important; }
+  .draft-badge { color: #ffcc80 !important; }
+  .basement-badge { color: #90caf9 !important; }
+  .add-room-opt   { color: #90caf9 !important; }
+  .hint-icon      { color: #dce775 !important; }
+
+  /* Solver settings dialog section labels */
+  .section-label { color: rgba(255, 255, 255, 0.5) !important; }
 }

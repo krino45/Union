@@ -27,6 +27,7 @@ public interface IApplicationDbContext
     DbSet<StudyPlanEntry> StudyPlanEntries { get; }
     DbSet<CalendarPlan> CalendarPlans { get; }
     DbSet<CalendarWeek> CalendarWeeks { get; }
+    DbSet<SolverSettings> SolverSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

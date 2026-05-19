@@ -35,7 +35,13 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         var existing = await db.ScheduleEntries.Where(e => e.ScheduleId == request.ScheduleId).ToListAsync(cancellationToken);
         db.ScheduleEntries.RemoveRange(existing);
 
-        var (input, scoreCtx) = await BuildInputAsync(schedule, request.SolverTimeoutSeconds, cancellationToken);
+        var settingsEntity = await db.SolverSettings.FirstOrDefaultAsync(cancellationToken);
+        var weights = settingsEntity == null ? new SolverWeights() : new SolverWeights(
+            settingsEntity.StudentWindow, settingsEntity.TeacherWindow, settingsEntity.ActiveDay, settingsEntity.SanPinOverload,
+            settingsEntity.ConsecLecture, settingsEntity.ConsecSeminar, settingsEntity.ConsecPractical, settingsEntity.ConsecLab,
+            settingsEntity.EarlyPair, settingsEntity.LatePair, settingsEntity.ConsecRunScalar);
+
+        var (input, scoreCtx) = await BuildInputAsync(schedule, request.SolverTimeoutSeconds, weights, cancellationToken);
 
         p?.Report($"Поиск расписания ({input.Requirements.Count} занятий)...");
         var output = await scheduler.SolveAsync(input, cancellationToken, p);
@@ -85,7 +91,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         return new GenerateScheduleResult(true, output.Status.ToString(), output.Message, output.Assignments.Count);
     }
 
-    private async Task<(SchedulerInput, ScoreContext)> BuildInputAsync(Schedule schedule, int timeout, CancellationToken ct)
+    private async Task<(SchedulerInput, ScoreContext)> BuildInputAsync(Schedule schedule, int timeout, SolverWeights weights, CancellationToken ct)
     {
         var rooms = await db.Rooms.Include(r => r.Building).ToListAsync(ct);
         var teachers = await db.Teachers.ToListAsync(ct);
@@ -197,7 +203,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             PairsPerDay: pairsPerDay,
             BreakMinutesBetweenPairs: breakMinutes,
             SolverTimeoutSeconds: timeout,
-            RoomDistances: roomDistList
+            RoomDistances: roomDistList,
+            Weights: weights
         );
         return (input, scoreCtx);
     }

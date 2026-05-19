@@ -509,6 +509,49 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.ToTable("ScheduleEntryStudentGroups");
                 });
 
+            modelBuilder.Entity("UniScheduler.Domain.Entities.SolverSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ActiveDay")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ConsecLab")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ConsecLecture")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ConsecRunScalar")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ConsecPractical")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ConsecSeminar")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EarlyPair")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LatePair")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SanPinOverload")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("StudentWindow")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TeacherWindow")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SolverSettings");
+                });
+
             modelBuilder.Entity("UniScheduler.Domain.Entities.StudentGroup", b =>
                 {
                     b.Property<Guid>("Id")

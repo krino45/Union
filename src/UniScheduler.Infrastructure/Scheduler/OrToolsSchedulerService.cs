@@ -17,6 +17,7 @@ public class OrToolsSchedulerService : ISchedulerService
     {
         int numPairs = input.PairsPerDay;
         int[] breakMinutes = BuildBreakArray(input.BreakMinutesBetweenPairs, numPairs);
+        var w = input.Weights ?? new SolverWeights();
 
         var model = new CpModel();
         var reqs = input.Requirements.ToList();
@@ -284,11 +285,11 @@ public class OrToolsSchedulerService : ISchedulerService
                     LinearExpr.Sum(new LinearExpr[] { before, after }) - (LinearExpr)isGroupUsed[gi, d, pm, wi] - 1);
 
                 objVars.Add(windowVar);
-                objCoeffs.Add(100L);
+                objCoeffs.Add(w.StudentWindow);
             }
         }
 
-        // S2: Teacher windows (weight 80)
+        // S2: Teacher windows
         for (int ti = 0; ti < teachers.Count; ti++)
         for (int d = 0; d < NumDays; d++)
         for (int wi = 0; wi < 2; wi++)
@@ -309,11 +310,11 @@ public class OrToolsSchedulerService : ISchedulerService
                     LinearExpr.Sum(new LinearExpr[] { before, after }) - (LinearExpr)isTeacherUsed[ti, d, pm, wi] - 1);
 
                 objVars.Add(windowVar);
-                objCoeffs.Add(70L);
+                objCoeffs.Add(w.TeacherWindow);
             }
         }
 
-        // S3: Penalize each active group-day (weight 60)
+        // S3: Penalize each active group-day
         for (int gi = 0; gi < groups.Count; gi++)
         for (int d = 0; d < NumDays; d++)
         for (int wi = 0; wi < 2; wi++)
@@ -322,10 +323,10 @@ public class OrToolsSchedulerService : ISchedulerService
             var daySlotVars = Enumerable.Range(0, numPairs).Select(p => (IntVar)isGroupUsed[gi, d, p, wi]).ToArray();
             model.AddMaxEquality(dayHasClass, daySlotVars);
             objVars.Add(dayHasClass);
-            objCoeffs.Add(120L);
+            objCoeffs.Add(w.ActiveDay);
         }
 
-        // S4: Walking penalty for adjacent pairs (weight 1–119)
+        // S4: Walking penalty for adjacent pairs
         for (int gi = 0; gi < groups.Count; gi++)
         {
             var grIdxs = groupReqs[groups[gi].Id];
@@ -364,7 +365,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        // S5: SanPIN — penalize daily pairs > 4 per group (weight 300 per excess pair)
+        // S5: SanPIN — penalize daily pairs > 4 per group (weight 500 per excess pair)
         const int sanPinMax = 4;
         for (var gi = 0; gi < groups.Count; gi++)
         for (var d = 0; d < NumDays; d++)
@@ -374,15 +375,19 @@ public class OrToolsSchedulerService : ISchedulerService
             var overload = model.NewIntVar(0, numPairs - sanPinMax, $"spov_{gi}_{d}_{wi}");
             model.Add(overload >= LinearExpr.Sum(dayUsed) - sanPinMax);
             objVars.Add(overload);
-            objCoeffs.Add(300L);
+            objCoeffs.Add(w.SanPinOverload);
         }
 
-        // S6: Penalize consecutive pairs of the same (subject, lessonType) for a group — weight depends on lessonType
+        // S6: Penalize consecutive pairs of the same (subject, lessonType) for a group
+        // S6+scalar: additional penalty for runs of 3+ (harsher scaling with ConsecRunScalar)
         {
             var stGroups = reqs
                 .Select((r, i) => (r, i))
                 .GroupBy(x => (x.r.SubjectId, x.r.LessonType))
                 .ToList();
+
+            // key: (sti, gi, d, p, wi) -> repPen BoolVar for "same type at p AND p+1"
+            var repPenVars = new Dictionary<(int, int, int, int, int), BoolVar>();
 
             for (int sti = 0; sti < stGroups.Count; sti++)
             {
@@ -405,7 +410,7 @@ public class OrToolsSchedulerService : ISchedulerService
                             int varWi = VarWeekIndex(reqs[ri].WeekType);
                             for (int rmi = 0; rmi < rooms.Count; rmi++)
                             {
-                                if (vars.TryGetValue((ri, d, p,        varWi, rmi), out var vp))  atP.Add(vp);
+                                if (vars.TryGetValue((ri, d, p,     varWi, rmi), out var vp))  atP.Add(vp);
                                 if (vars.TryGetValue((ri, d, p + 1, varWi, rmi), out var vp1)) atP1.Add(vp1);
                             }
                         }
@@ -422,10 +427,40 @@ public class OrToolsSchedulerService : ISchedulerService
                         model.Add(LinearExpr.Sum(new BoolVar[] { usedP, usedP1 }) <= 1 + repPen);
 
                         objVars.Add(repPen);
-                        objCoeffs.Add(GetLessonTypePenalty(stg.Key.LessonType));
+                        objCoeffs.Add(GetLessonTypePenalty(stg.Key.LessonType, w));
+                        repPenVars[(sti, gi, d, p, wi)] = repPen;
                     }
                 }
             }
+
+            // if repPen[p] and repPen[p+1], its a run of 3+
+            if (w.ConsecRunScalar > 1)
+            {
+                foreach (var ((sti, gi, d, p, wi), rep1) in repPenVars)
+                {
+                    if (!repPenVars.TryGetValue((sti, gi, d, p + 1, wi), out var rep2)) continue;
+                    var lt = stGroups[sti].Key.LessonType;
+                    var pen3 = model.NewBoolVar($"rep3_{sti}_{gi}_{d}_{p}_{wi}");
+                    model.Add(pen3 <= rep1);
+                    model.Add(pen3 <= rep2);
+                    model.Add(LinearExpr.Sum(new BoolVar[] { rep1, rep2 }) <= 1 + pen3);
+                    objVars.Add(pen3);
+                    objCoeffs.Add(GetLessonTypePenalty(lt, w) * (long)(w.ConsecRunScalar - 1));
+                }
+            }
+        }
+
+        // S7: Prefer pairs 2-3 (0-indexed) — penalize early/late slots per group
+        progress?.Report("Целевая функция S7: предпочтительное время занятий...");
+        for (int gi = 0; gi < groups.Count; gi++)
+        for (int d = 0; d < NumDays; d++)
+        for (int wi = 0; wi < 2; wi++)
+        for (int p = 0; p < numPairs; p++)
+        {
+            long pen = PairPositionPenalty(p, w);
+            if (pen <= 0) continue;
+            objVars.Add(isGroupUsed[gi, d, p, wi]);
+            objCoeffs.Add(pen);
         }
 
         if (objVars.Count > 0)
@@ -435,8 +470,8 @@ public class OrToolsSchedulerService : ISchedulerService
         var solver = new CpSolver();
         solver.StringParameters =
             $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
-            "num_search_workers:4," +
-            "log_search_progress:false";
+            "num_search_workers:8," +
+            "log_search_progress:true";
 
         var status = solver.Solve(model);
 
@@ -573,13 +608,20 @@ public class OrToolsSchedulerService : ISchedulerService
         };
     }
 
-    private static long GetLessonTypePenalty(LessonType lt) =>
-        lt switch
-        {
-            LessonType.Lecture => 70L,
-            LessonType.Practical => 30L,
-            LessonType.Seminar => 40L,
-            LessonType.Lab => 10L,
-            _ => 0L
-        };
+    private static long GetLessonTypePenalty(LessonType lt, SolverWeights w) => lt switch
+    {
+        LessonType.Lecture   => w.ConsecLecture,
+        LessonType.Practical => w.ConsecPractical,
+        LessonType.Seminar   => w.ConsecSeminar,
+        LessonType.Lab       => w.ConsecLab,
+        _ => 0L
+    };
+
+    // Pairs 2-3 (0-indexed) preferred; penalize steps away linearly.
+    private static long PairPositionPenalty(int p, SolverWeights w)
+    {
+        if (p < 2) return w.EarlyPair * (long)(2 - p);
+        if (p > 3) return w.LatePair  * (long)(p - 3);
+        return 0;
+    }
 }

@@ -35,3 +35,17 @@ export interface GenerationJobStatus {
 export interface GenerateScheduleRequest {
   timeoutSeconds: number;
 }
+
+export interface SolverWeights {
+  studentWindow: number;
+  teacherWindow: number;
+  activeDay: number;
+  sanPinOverload: number;
+  consecLecture: number;
+  consecSeminar: number;
+  consecPractical: number;
+  consecLab: number;
+  earlyPair: number;
+  latePair: number;
+  consecRunScalar: number;
+}

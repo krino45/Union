@@ -11,15 +11,15 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { interval, Subscription } from 'rxjs';
 import { switchMap, takeWhile } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
-import { Schedule, GenerationJobStatus, Faculty } from '../../../core/models';
+import { Schedule, GenerationJobStatus, Faculty, SolverWeights } from '../../../core/models';
 import { ScheduleStatus, Term } from '../../../core/models/enums';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -172,12 +172,16 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   }
 
   triggerGeneration(schedule: Schedule): void {
-    this.api.generateSchedule(schedule.id, { timeoutSeconds: 120 }).subscribe({
-      next: () => {
-        this.generationStatus[schedule.id] = { scheduleId: schedule.id, status: 'queued', entriesCreated: 0 };
-        this.startPolling(schedule.id);
-      },
-      error: (e) => this.snackBar.open(e.error?.title || 'Ошибка запуска генерации', 'OK', { duration: 4000 })
+    const ref = this.dialog.open(SolverSettingsDialogComponent, { width: '520px' });
+    ref.afterClosed().subscribe((timeoutSeconds: number | null) => {
+      if (timeoutSeconds == null) return;
+      this.api.generateSchedule(schedule.id, { timeoutSeconds }).subscribe({
+        next: () => {
+          this.generationStatus[schedule.id] = { scheduleId: schedule.id, status: 'queued', entriesCreated: 0 };
+          this.startPolling(schedule.id);
+        },
+        error: (e) => this.snackBar.open(e.error?.title || 'Ошибка запуска генерации', 'OK', { duration: 4000 })
+      });
     });
   }
 
@@ -337,5 +341,162 @@ export class CreateScheduleDialogComponent {
 
   submit(): void {
     if (this.form.valid) this.dialogRef.close(this.form.value);
+  }
+}
+
+@Component({
+  selector: 'app-solver-settings-dialog',
+  standalone: true,
+  imports: [
+    CommonModule, ReactiveFormsModule,
+    MatButtonModule, MatFormFieldModule, MatInputModule, MatDialogModule,
+    MatProgressSpinnerModule
+  ],
+  template: `
+    <h2 mat-dialog-title>Параметры генерации</h2>
+    <mat-dialog-content>
+      <div *ngIf="loading" class="spinner-wrap"><mat-spinner diameter="32"></mat-spinner></div>
+      <form *ngIf="!loading" [formGroup]="form" class="settings-form">
+
+        <p class="section-label">Штрафы за «окна»</p>
+        <div class="row">
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Окно студента (S1)</mat-label>
+            <input matInput type="number" formControlName="studentWindow" min="0">
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Окно преподавателя (S2)</mat-label>
+            <input matInput type="number" formControlName="teacherWindow" min="0">
+          </mat-form-field>
+        </div>
+        <div class="row">
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Активный день группы (S3)</mat-label>
+            <input matInput type="number" formControlName="activeDay" min="0">
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Превышение СанПиН (S5)</mat-label>
+            <input matInput type="number" formControlName="sanPinOverload" min="0">
+          </mat-form-field>
+        </div>
+
+        <p class="section-label">Повторные пары одного типа (S6)</p>
+        <div class="row">
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Лекция</mat-label>
+            <input matInput type="number" formControlName="consecLecture" min="0">
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Семинар</mat-label>
+            <input matInput type="number" formControlName="consecSeminar" min="0">
+          </mat-form-field>
+        </div>
+        <div class="row">
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Практика</mat-label>
+            <input matInput type="number" formControlName="consecPractical" min="0">
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Лабораторная</mat-label>
+            <input matInput type="number" formControlName="consecLab" min="0">
+          </mat-form-field>
+        </div>
+
+        <div class="row">
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Скаляр серии (S6) — множитель за 3+ подряд</mat-label>
+            <input matInput type="number" formControlName="consecRunScalar" min="1">
+          </mat-form-field>
+        </div>
+
+        <p class="section-label">Предпочтительное время занятий (S7) — штраф/шаг от пар 3–4</p>
+        <div class="row">
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Ранние пары (пары 1–2)</mat-label>
+            <input matInput type="number" formControlName="earlyPair" min="0">
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Поздние пары (пары 5+)</mat-label>
+            <input matInput type="number" formControlName="latePair" min="0">
+          </mat-form-field>
+        </div>
+
+        <p class="section-label">Параметры решателя</p>
+        <mat-form-field appearance="outline" class="half-width">
+          <mat-label>Таймаут (сек, 30–60000)</mat-label>
+          <input matInput type="number" formControlName="timeoutSeconds" min="30" max="60000">
+        </mat-form-field>
+
+      </form>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Отмена</button>
+      <button mat-raised-button color="primary" [disabled]="loading || form.invalid" (click)="saveAndRun()">
+        Сохранить и запустить
+      </button>
+    </mat-dialog-actions>
+  `,
+  styles: [`
+    .settings-form { display: flex; flex-direction: column; padding-top: 4px; min-width: 440px; }
+    .row { display: flex; gap: 8px; }
+    .flex1 { flex: 1; }
+    .half-width { width: calc(50% - 4px); }
+    .section-label { margin: 8px 0 4px; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.4px; }
+    .spinner-wrap { display: flex; justify-content: center; padding: 32px; }
+  `]
+})
+export class SolverSettingsDialogComponent implements OnInit {
+  form!: FormGroup;
+  loading = true;
+
+  constructor(
+    private dialogRef: MatDialogRef<SolverSettingsDialogComponent>,
+    private api: ApiService,
+    private fb: FormBuilder
+  ) {}
+
+  ngOnInit(): void {
+    this.api.getSolverSettings().subscribe({
+      next: w => {
+        this.form = this.fb.group({
+          studentWindow:   [w.studentWindow,   [Validators.required, Validators.min(0)]],
+          teacherWindow:   [w.teacherWindow,   [Validators.required, Validators.min(0)]],
+          activeDay:       [w.activeDay,       [Validators.required, Validators.min(0)]],
+          sanPinOverload:  [w.sanPinOverload,  [Validators.required, Validators.min(0)]],
+          consecLecture:   [w.consecLecture,   [Validators.required, Validators.min(0)]],
+          consecSeminar:   [w.consecSeminar,   [Validators.required, Validators.min(0)]],
+          consecPractical: [w.consecPractical, [Validators.required, Validators.min(0)]],
+          consecLab:       [w.consecLab,       [Validators.required, Validators.min(0)]],
+          earlyPair:       [w.earlyPair,       [Validators.required, Validators.min(0)]],
+          latePair:        [w.latePair,        [Validators.required, Validators.min(0)]],
+          consecRunScalar: [w.consecRunScalar, [Validators.required, Validators.min(1)]],
+          timeoutSeconds:  [120,               [Validators.required, Validators.min(10), Validators.max(600)]],
+        });
+        this.loading = false;
+      },
+      error: () => {
+        this.form = this.buildDefaultForm();
+        this.loading = false;
+      }
+    });
+  }
+
+  saveAndRun(): void {
+    if (this.form.invalid) return;
+    this.loading = true;
+    const { timeoutSeconds, ...weights } = this.form.value;
+    this.api.updateSolverSettings(weights).subscribe({
+      next: () => this.dialogRef.close(timeoutSeconds as number),
+      error: () => { this.loading = false; }
+    });
+  }
+
+  private buildDefaultForm(): FormGroup {
+    return this.fb.group({
+      studentWindow: [100], teacherWindow: [80], activeDay: [60], sanPinOverload: [300],
+      consecLecture: [70], consecSeminar: [40], consecPractical: [30], consecLab: [10],
+      earlyPair: [15], latePair: [25], consecRunScalar: [3],
+      timeoutSeconds: [120],
+    });
   }
 }

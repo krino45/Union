@@ -9,7 +9,7 @@ import {
   Teacher, CreateTeacherDto, UpdateTeacherDto, TeacherSubjectAssignment,
   Subject, CreateSubjectDto, UpdateSubjectDto,
   StudentGroup, CreateStudentGroupDto, UpdateStudentGroupDto,
-  Schedule, CreateScheduleDto, GenerationJobStatus, GenerateScheduleRequest,
+  Schedule, CreateScheduleDto, GenerationJobStatus, GenerateScheduleRequest, SolverWeights,
   ScheduleEntry, MoveEntryDto, ConflictInfo, CreateScheduleEntryDto, UpdateScheduleEntryDto,
   TeacherAvailability, CreateTeacherAvailabilityDto, UpdateTeacherAvailabilityDto,
   RescheduleRequest, CreateRescheduleRequestDto, ResolveRescheduleDto,
@@ -175,6 +175,15 @@ export class ApiService {
   getGenerationStatus(id: string): Observable<GenerationJobStatus> {
     return this.http.get<GenerationJobStatus>(`${this.base}/schedules/${id}/generate/status`);
   }
+
+  // ── Solver settings ───────────────────────────────────────────────────────
+  getSolverSettings(): Observable<SolverWeights> {
+    return this.http.get<SolverWeights>(`${this.base}/solver-settings`);
+  }
+  updateSolverSettings(weights: SolverWeights): Observable<void> {
+    return this.http.put<void>(`${this.base}/solver-settings`, weights);
+  }
+
   publishSchedule(id: string): Observable<void> {
     return this.http.post<void>(`${this.base}/schedules/${id}/publish`, {});
   }

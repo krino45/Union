@@ -1,5 +1,5 @@
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, Inject } from '@angular/core';
+import { DOCUMENT, CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSidenavModule } from '@angular/material/sidenav';
@@ -7,6 +7,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from './core/services/auth.service';
 
 @Component({
@@ -15,7 +16,7 @@ import { AuthService } from './core/services/auth.service';
   imports: [
     CommonModule, RouterOutlet, RouterLink, RouterLinkActive,
     MatToolbarModule, MatSidenavModule, MatListModule,
-    MatButtonModule, MatIconModule, MatDividerModule
+    MatButtonModule, MatIconModule, MatDividerModule, MatTooltipModule
   ],
   template: `
     <mat-sidenav-container class="app-container">
@@ -128,6 +129,9 @@ import { AuthService } from './core/services/auth.service';
             <mat-icon>map</mat-icon>
             Редактор планировок
           </button>
+          <button mat-icon-button (click)="toggleDarkMode()" [matTooltip]="isDarkMode ? 'Светлая тема' : 'Тёмная тема'" class="dark-toggle">
+            <mat-icon>{{ isDarkMode ? 'light_mode' : 'dark_mode' }}</mat-icon>
+          </button>
           <span class="role-badge">{{ auth.isAdmin ? 'Администратор' : 'Преподаватель' }}</span>
         </mat-toolbar>
         <div class="content">
@@ -150,11 +154,23 @@ import { AuthService } from './core/services/auth.service';
     .role-badge { font-size: 13px; opacity: 0.85; }
     .header-floorplan-btn { color: #fff; margin-right: 12px; }
     .header-floorplan-btn.active-header-link { background: rgba(255,255,255,0.18); }
+    .dark-toggle { color: #fff; margin-right: 8px; }
     .content { padding: 24px; }
     mat-nav-list a.active { background: rgba(25,118,210,0.12); }
     h3[matSubheader] { color: #888; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
   `]
 })
 export class AppComponent {
-  constructor(public auth: AuthService) {}
+  isDarkMode = false;
+
+  constructor(public auth: AuthService, @Inject(DOCUMENT) private doc: Document) {
+    this.isDarkMode = localStorage.getItem('darkMode') === 'true';
+    if (this.isDarkMode) this.doc.body.classList.add('dark-mode');
+  }
+
+  toggleDarkMode(): void {
+    this.isDarkMode = !this.isDarkMode;
+    this.doc.body.classList.toggle('dark-mode', this.isDarkMode);
+    localStorage.setItem('darkMode', String(this.isDarkMode));
+  }
 }

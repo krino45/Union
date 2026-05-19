@@ -4,6 +4,20 @@ namespace UniScheduler.Application.Common.Models;
 
 //  Input 
 
+public record SolverWeights(
+    int StudentWindow    = 100,
+    int TeacherWindow    = 80,
+    int ActiveDay        = 60,
+    int SanPinOverload   = 300,
+    int ConsecLecture    = 70,
+    int ConsecSeminar    = 40,
+    int ConsecPractical  = 30,
+    int ConsecLab        = 10,
+    int EarlyPair        = 15,
+    int LatePair         = 25,
+    int ConsecRunScalar  = 3
+);
+
 public record SchedulerInput(
     Guid ScheduleId,
     IReadOnlyList<SchedulerRoom> Rooms,
@@ -16,7 +30,8 @@ public record SchedulerInput(
     int PairsPerDay = 7,
     IReadOnlyList<int>? BreakMinutesBetweenPairs = null,
     int SolverTimeoutSeconds = 60,
-    IReadOnlyList<SchedulerRoomDistance>? RoomDistances = null
+    IReadOnlyList<SchedulerRoomDistance>? RoomDistances = null,
+    SolverWeights? Weights = null
 );
 
 public record SchedulerRoom(

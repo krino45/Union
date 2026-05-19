@@ -74,9 +74,9 @@ public class SchedulesController : ControllerBase
         => Ok(await mediator.Send(new UpdateBaseScoreCommand(id), ct));
 
     [HttpPost("{id:guid}/generate")]
-    public IActionResult Generate(Guid id, [FromQuery] int timeoutSeconds = 60)
+    public IActionResult Generate(Guid id, [FromBody] GenerateRequest? body)
     {
-        var jobId = jobQueue.Enqueue(id, timeoutSeconds);
+        var jobId = jobQueue.Enqueue(id, body?.TimeoutSeconds ?? 120);
         return Accepted(new { jobId, scheduleId = id, status = "queued" });
     }
 
@@ -137,3 +137,4 @@ public class SchedulesController : ControllerBase
 }
 
 public record ImportFromJsonBody(bool Replace, List<JsonEntryImport> Entries);
+public record GenerateRequest(int TimeoutSeconds = 120);
