@@ -350,7 +350,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     double walkMins = dist / WalkSpeedMperMin;
                     if (walkMins > allowedTravelMin) continue;
 
-                    long penalty = Math.Max(1L, (long)(walkMins / allowedTravelMin * 120));
+                    long penalty = Math.Max(1L, (long)(walkMins / allowedTravelMin * w.WalkingPenaltyMax));
 
                     foreach (int ri1 in grIdxs)
                     foreach (int ri2 in grIdxs)

@@ -1,24 +1,66 @@
+using UniScheduler.Domain.Entities;
 using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Common.Models;
 
-//  Input 
-
 public record SolverWeights(
-    int StudentWindow           = 100,
-    int TeacherWindow           = 80,
-    int ActiveDay               = 60,
-    int SanPinOverload          = 300,
-    int ConsecLecture           = 70,
-    int ConsecSeminar           = 40,
-    int ConsecPractical         = 30,
-    int ConsecLab               = 10,
-    int EarlyPair               = 15,
-    int LatePair                = 25,
-    int ConsecRunScalar         = 3,
-    int SaturdayPenalty         = 30,
-    int DepartmentMismatchPenalty = 50
-);
+    int StudentWindow = 100,
+    int TeacherWindow = 80,
+    int ActiveDay = 60,
+    int SanPinOverload = 300,
+    int ConsecLecture = 70,
+    int ConsecSeminar = 40,
+    int ConsecPractical = 30,
+    int ConsecLab = 10,
+    int EarlyPair = 15,
+    int LatePair = 25,
+    int ConsecRunScalar = 3,
+    int SaturdayPenalty = 30,
+    int DepartmentMismatchPenalty = 50,
+    int WalkingPenaltyMax = 120
+)
+{
+    public SolverWeights(SolverSettings? solverSettings) : this()
+    {
+        if (solverSettings is null)
+            return;
+        StudentWindow = solverSettings.StudentWindow;
+        TeacherWindow = solverSettings.TeacherWindow;
+        ActiveDay = solverSettings.ActiveDay;
+        SanPinOverload = solverSettings.SanPinOverload;
+        ConsecLecture = solverSettings.ConsecLecture;
+        ConsecSeminar = solverSettings.ConsecSeminar;
+        ConsecPractical = solverSettings.ConsecPractical;
+        ConsecLab = solverSettings.ConsecLab;
+        EarlyPair = solverSettings.EarlyPair;
+        LatePair = solverSettings.LatePair;
+        ConsecRunScalar = solverSettings.ConsecRunScalar;
+        SaturdayPenalty = solverSettings.SaturdayPenalty;
+        DepartmentMismatchPenalty = solverSettings.DepartmentMismatchPenalty;
+        WalkingPenaltyMax = solverSettings.WalkingPenaltyMax;
+    }
+
+    public SolverSettings ToSolverSettings()
+    {
+        return new SolverSettings
+        {
+            StudentWindow = StudentWindow,
+            TeacherWindow = TeacherWindow,
+            ActiveDay = ActiveDay,
+            SanPinOverload = SanPinOverload,
+            ConsecLecture = ConsecLecture,
+            ConsecSeminar = ConsecSeminar,
+            ConsecPractical = ConsecPractical,
+            ConsecLab = ConsecLab,
+            EarlyPair = EarlyPair,
+            LatePair = LatePair,
+            ConsecRunScalar = ConsecRunScalar,
+            SaturdayPenalty = SaturdayPenalty,
+            DepartmentMismatchPenalty = DepartmentMismatchPenalty,
+            WalkingPenaltyMax = WalkingPenaltyMax
+        };
+    }
+};
 
 public record SchedulerInput(
     Guid ScheduleId,

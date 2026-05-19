@@ -40,7 +40,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             settingsEntity.StudentWindow, settingsEntity.TeacherWindow, settingsEntity.ActiveDay, settingsEntity.SanPinOverload,
             settingsEntity.ConsecLecture, settingsEntity.ConsecSeminar, settingsEntity.ConsecPractical, settingsEntity.ConsecLab,
             settingsEntity.EarlyPair, settingsEntity.LatePair, settingsEntity.ConsecRunScalar,
-            settingsEntity.SaturdayPenalty, settingsEntity.DepartmentMismatchPenalty);
+            settingsEntity.SaturdayPenalty, settingsEntity.DepartmentMismatchPenalty, settingsEntity.WalkingPenaltyMax);
 
         var (input, scoreCtx) = await BuildInputAsync(schedule, request.SolverTimeoutSeconds, weights, cancellationToken);
 
@@ -189,14 +189,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .Select(kv => new SchedulerRoomDistance(kv.Key.Item1, kv.Key.Item2, kv.Value))
             .ToList();
 
-        var bldDistMap = new Dictionary<(Guid, Guid), int>();
-        foreach (var d in distances)
-        {
-            bldDistMap[(d.FromBuildingId, d.ToBuildingId)] = d.DistanceMeters;
-            bldDistMap[(d.ToBuildingId, d.FromBuildingId)] = d.DistanceMeters;
-        }
-        var scoreCtx = new ScoreContext(roomDistMap, bldDistMap,
-            rooms.ToDictionary(r => r.Id, r => r.BuildingId), breakMinutes);
+        var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(
+            floorPlanNodes, floorPlanEdges, distances, rooms, pairSlots, subjectsWithDepts, weights);
 
         var input = new SchedulerInput(
             schedule.Id,

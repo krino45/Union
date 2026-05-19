@@ -28,4 +28,7 @@ public class SolverSettings
 
     // S9 — room department / subject department faculty mismatch
     public int DepartmentMismatchPenalty { get; set; } = 50;
+
+    // S4 — walking penalty max coefficient (penalty when walkMins / breakMins ≈ 1.0)
+    public int WalkingPenaltyMax { get; set; } = 120;
 }

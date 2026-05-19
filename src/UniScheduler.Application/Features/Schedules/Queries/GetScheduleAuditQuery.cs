@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using UniScheduler.Application.Common.Exceptions;
 using UniScheduler.Application.Common.Interfaces;
+using UniScheduler.Application.Common.Models;
 using UniScheduler.Application.Features.StudyPlans;
 using UniScheduler.Domain.Entities;
 using UniScheduler.Domain.Enums;
@@ -147,9 +148,16 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         var nodes = await db.FloorPlanNodes.ToListAsync(ct);
         var edges = await db.FloorPlanEdges.ToListAsync(ct);
         var bldDists = await db.BuildingDistances.ToListAsync(ct);
-        var rooms = await db.Rooms.ToListAsync(ct);
+        var rooms = await db.Rooms.Include(r => r.Department).ToListAsync(ct);
         var pairSlots = await db.PairTimeSlots.ToListAsync(ct);
-        var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(nodes, edges, bldDists, rooms, pairSlots);
+
+        var subjectIds = entries.Select(e => e.SubjectId).Distinct().ToList();
+        var subjects = await db.Subjects.Include(s => s.Department)
+            .Where(s => subjectIds.Contains(s.Id)).ToListAsync(ct);
+
+        var settings = await db.SolverSettings.FirstOrDefaultAsync(ct);
+        var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(
+            nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings));
 
         var currentScore = ScheduleScoreCalculator.Compute(entries, scoreCtx);
         return new ScheduleAuditDto(conflicts, warnings, schedule.GenerationNotes, entries.Count, currentScore, schedule.BaseScore);

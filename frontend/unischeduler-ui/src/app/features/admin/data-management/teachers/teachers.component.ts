@@ -12,6 +12,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { forkJoin } from 'rxjs';
 import { ApiService } from '../../../../core/services/api.service';
 import { Teacher, Subject } from '../../../../core/models';
 import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
@@ -83,7 +84,17 @@ export class TeachersComponent implements OnInit {
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
 
   ngOnInit(): void {
-    this.api.getSubjects().subscribe(s => { this.subjects = s; this.load(); });
+    forkJoin({
+      teachers: this.api.getTeachers(),
+      subjects: this.api.getSubjects()
+    }).subscribe({
+      next: ({ teachers, subjects }) => {
+        this.teachers = teachers;
+        this.subjects = subjects;
+        this.loading = false;
+      },
+      error: () => { this.loading = false; }
+    });
   }
 
   load(): void {

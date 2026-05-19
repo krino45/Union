@@ -435,10 +435,17 @@ export class CreateScheduleDialogComponent {
         </div>
 
         <p class="section-label">Параметры решателя</p>
-        <mat-form-field appearance="outline" class="half-width">
-          <mat-label>Таймаут (сек, 30–60000)</mat-label>
-          <input matInput type="number" formControlName="timeoutSeconds" min="30" max="60000">
-        </mat-form-field>
+        <div class="row">
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Макс. штраф за ходьбу (S4)</mat-label>
+            <input matInput type="number" formControlName="walkingPenaltyMax" min="1">
+            <mat-hint>Штраф при walkMins / break ≈ 1.0</mat-hint>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Таймаут (сек, 30–60000)</mat-label>
+            <input matInput type="number" formControlName="timeoutSeconds" min="30" max="60000">
+          </mat-form-field>
+        </div>
 
       </form>
     </mat-dialog-content>
@@ -485,6 +492,7 @@ export class SolverSettingsDialogComponent implements OnInit {
           consecRunScalar:          [w.consecRunScalar,          [Validators.required, Validators.min(1)]],
           saturdayPenalty:          [w.saturdayPenalty,          [Validators.required, Validators.min(0)]],
           departmentMismatchPenalty:[w.departmentMismatchPenalty,[Validators.required, Validators.min(0)]],
+          walkingPenaltyMax:        [w.walkingPenaltyMax,        [Validators.required, Validators.min(1)]],
           timeoutSeconds:           [120,                        [Validators.required, Validators.min(10), Validators.max(600)]],
         });
         this.loading = false;
@@ -511,7 +519,7 @@ export class SolverSettingsDialogComponent implements OnInit {
       studentWindow: [100], teacherWindow: [80], activeDay: [60], sanPinOverload: [300],
       consecLecture: [70], consecSeminar: [40], consecPractical: [30], consecLab: [10],
       earlyPair: [15], latePair: [25], consecRunScalar: [3],
-      saturdayPenalty: [30], departmentMismatchPenalty: [50],
+      saturdayPenalty: [30], departmentMismatchPenalty: [50], walkingPenaltyMax: [120],
       timeoutSeconds: [120],
     });
   }

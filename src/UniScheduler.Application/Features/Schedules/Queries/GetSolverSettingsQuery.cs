@@ -19,6 +19,6 @@ public class GetSolverSettingsQueryHandler : IRequestHandler<GetSolverSettingsQu
             s.StudentWindow, s.TeacherWindow, s.ActiveDay, s.SanPinOverload,
             s.ConsecLecture, s.ConsecSeminar, s.ConsecPractical, s.ConsecLab,
             s.EarlyPair, s.LatePair, s.ConsecRunScalar,
-            s.SaturdayPenalty, s.DepartmentMismatchPenalty);
+            s.SaturdayPenalty, s.DepartmentMismatchPenalty, s.WalkingPenaltyMax);
     }
 }

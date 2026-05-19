@@ -1,5 +1,7 @@
+using UniScheduler.Application.Common.Models;
 using UniScheduler.Domain.Entities;
 using UniScheduler.Domain.Enums;
+#pragma warning disable CS1591
 
 namespace UniScheduler.Application.Features.Schedules;
 
@@ -11,8 +13,10 @@ public record ScoreContext(
     IReadOnlyDictionary<(Guid, Guid), int> RoomDistances,
     IReadOnlyDictionary<(Guid, Guid), int> BuildingDistances,
     IReadOnlyDictionary<Guid, Guid> RoomToBuilding,
-    IReadOnlyList<int> BreakMinutes
-);
+    IReadOnlyList<int> BreakMinutes,
+    IReadOnlyDictionary<Guid, Guid?>? RoomDeptFacultyId = null,
+    IReadOnlyDictionary<Guid, Guid?>? SubjectDeptFacultyId = null,
+    SolverWeights? Penalties = null);
 
 /// <summary>
 /// Replicates the solvers soft-penalty objective function against a given assignment.
@@ -31,8 +35,13 @@ public static class ScheduleScoreCalculator
         IEnumerable<FloorPlanEdge> edges,
         IEnumerable<BuildingDistance> buildingDistances,
         IEnumerable<Room> rooms,
-        IEnumerable<PairTimeSlot> pairSlots)
+        IEnumerable<PairTimeSlot> pairSlots,
+        IEnumerable<Subject>? subjects = null,
+        SolverWeights? penalties = null)
     {
+        penalties ??= new SolverWeights();
+
+        var roomList = rooms.ToList();
         var roomDists = ComputeRoomDistances(nodes, edges);
 
         var bldDists = new Dictionary<(Guid, Guid), int>();
@@ -42,15 +51,30 @@ public static class ScheduleScoreCalculator
             bldDists[(d.ToBuildingId, d.FromBuildingId)] = d.DistanceMeters;
         }
 
-        var roomToBuilding = rooms.ToDictionary(r => r.Id, r => r.BuildingId);
+        var roomToBuilding = roomList.ToDictionary(r => r.Id, r => r.BuildingId);
         var breakMins = ComputeBreakMinutes(pairSlots);
 
-        return new ScoreContext(roomDists, bldDists, roomToBuilding, breakMins);
+        IReadOnlyDictionary<Guid, Guid?>? roomDeptFacultyId = penalties.DepartmentMismatchPenalty > 0
+            ? roomList.ToDictionary(r => r.Id, r => r.Department?.FacultyId)
+            : null;
+
+        IReadOnlyDictionary<Guid, Guid?>? subjectDeptFacultyId = penalties.DepartmentMismatchPenalty > 0 && subjects != null
+            ? subjects.ToDictionary(s => s.Id, s => s.Department?.FacultyId)
+            : null;
+
+        return new ScoreContext(roomDists,
+            bldDists,
+            roomToBuilding,
+            breakMins,
+            roomDeptFacultyId,
+            subjectDeptFacultyId,
+            penalties);
     }
 
-    public static int Compute(IReadOnlyList<ScheduleEntry> entries, ScoreContext? ctx = null)
+    public static int Compute(IReadOnlyList<ScheduleEntry> entries, ScoreContext ctx)
     {
-        int score = 0;
+        var penalties = ctx?.Penalties ?? new SolverWeights();
+        var score = 0;
 
         // Hard conflicts — +1000 per unique conflicted slot
         var cfSeen = new HashSet<string>();
@@ -92,21 +116,46 @@ public static class ScheduleScoreCalculator
             var pairs = slot.Select(e => e.PairNumber).Distinct().OrderBy(p => p).ToList();
 
             // S3: active group-day  (+60)
-            score += 60;
+            score += penalties.ActiveDay;
 
             // S1: student windows  (+100 per gap)
             if (pairs.Count >= 2)
-                score += (pairs[^1] - pairs[0] + 1 - pairs.Count) * 100;
+                score += (pairs[^1] - pairs[0] + 1 - pairs.Count) * penalties.StudentWindow;
 
             // S5: SanPIN daily overload  (+300 per pair over 4)
-            score += Math.Max(0, pairs.Count - 4) * 300;
+            score += Math.Max(0, pairs.Count - 4) * penalties.SanPinOverload;
 
-            // S6: consecutive same (subject, lessonType)  (+70 per consecutive pair)
+            // S8: Saturday penalty per occupied pair-slot on Saturday
+            if (day == RussianDayOfWeek.Saturday && penalties.SaturdayPenalty > 0)
+                score += pairs.Count * penalties.SaturdayPenalty;
+
+            // S6: consecutive same (subject, lessonType); S6+scalar: extra for runs of 3+
             foreach (var grp in slot.GroupBy(e => (e.SubjectId, e.LessonType)))
             {
                 var sp = grp.Select(e => e.PairNumber).Distinct().OrderBy(p => p).ToList();
-                for (int k = 0; k < sp.Count - 1; k++)
-                    if (sp[k + 1] == sp[k] + 1) score += 70;
+                int pen = grp.Key.LessonType switch
+                {
+                    LessonType.Lecture   => penalties.ConsecLecture,
+                    LessonType.Practical => penalties.ConsecPractical,
+                    LessonType.Seminar   => penalties.ConsecSeminar,
+                    LessonType.Lab       => penalties.ConsecLab,
+                    _                    => 0
+                };
+                for (var k = 0; k < sp.Count - 1; k++)
+                {
+                    if (sp[k + 1] != sp[k] + 1) continue;
+                    score += pen;
+                    if (k + 2 < sp.Count && sp[k + 2] == sp[k + 1] + 1 && penalties.ConsecRunScalar > 1)
+                        score += pen * (penalties.ConsecRunScalar - 1);
+                }
+            }
+
+            // S7: EarlyPair/LatePair — prefer pairs 3–4 (1-indexed)
+            foreach (var p in pairs)
+            {
+                int p0 = p - 1;
+                if (p0 < 2) score += penalties.EarlyPair * (2 - p0);
+                else if (p0 > 3) score += penalties.LatePair * (p0 - 3);
             }
 
             // S4: walking penalty for consecutive pairs
@@ -134,7 +183,7 @@ public static class ScheduleScoreCalculator
                         double walkMins = dist / WalkSpeedMperMin;
                         if (walkMins > allowedTravelMin) continue; // hard constraint, not S4
 
-                        long penalty = Math.Max(1L, (long)(walkMins / allowedTravelMin * 120));
+                        long penalty = Math.Max(1L, (long)(walkMins / allowedTravelMin * penalties.WalkingPenaltyMax));
                         score += (int)penalty;
                     }
                 }
@@ -150,7 +199,21 @@ public static class ScheduleScoreCalculator
                 .Where(e => e.DayOfWeek == day && Affects(e.WeekType, wv))
                 .Select(e => e.PairNumber).Distinct().OrderBy(p => p).ToList();
             if (pairs.Count >= 2)
-                score += (pairs[^1] - pairs[0] + 1 - pairs.Count) * 80;
+                score += (pairs[^1] - pairs[0] + 1 - pairs.Count) * penalties.TeacherWindow;
+        }
+
+        // S9: department-faculty mismatch penalty per entry
+        if (penalties.DepartmentMismatchPenalty > 0 &&
+            ctx is { RoomDeptFacultyId: not null, SubjectDeptFacultyId: not null })
+        {
+            foreach (var e in entries)
+            {
+                if (e.RoomId == null) continue;
+                if (!ctx.RoomDeptFacultyId.TryGetValue(e.RoomId.Value, out var roomFac) || !roomFac.HasValue) continue;
+                if (!ctx.SubjectDeptFacultyId.TryGetValue(e.SubjectId, out var subjFac) || !subjFac.HasValue) continue;
+                if (roomFac.Value != subjFac.Value)
+                    score += penalties.DepartmentMismatchPenalty;
+            }
         }
 
         return score;

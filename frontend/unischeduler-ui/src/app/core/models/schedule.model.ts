@@ -50,4 +50,5 @@ export interface SolverWeights {
   consecRunScalar: number;
   saturdayPenalty: number;
   departmentMismatchPenalty: number;
+  walkingPenaltyMax: number;
 }

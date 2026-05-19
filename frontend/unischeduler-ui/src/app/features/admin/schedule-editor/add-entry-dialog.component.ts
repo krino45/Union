@@ -73,7 +73,15 @@ export type AddEntryDialogResult =
         <mat-form-field appearance="outline" class="full">
           <mat-label>Преподаватель</mat-label>
           <mat-select formControlName="teacherId">
-            <mat-option *ngFor="let t of data.teachers" [value]="t.id">{{ t.displayName }}</mat-option>
+            <mat-optgroup label="Назначены" *ngIf="primaryTeachers.length > 0">
+              <mat-option *ngFor="let t of primaryTeachers" [value]="t.id">{{ t.displayName }}</mat-option>
+            </mat-optgroup>
+            <mat-optgroup label="Другой тип занятия" *ngIf="secondaryTeachers.length > 0">
+              <mat-option *ngFor="let t of secondaryTeachers" [value]="t.id">{{ t.displayName }}</mat-option>
+            </mat-optgroup>
+            <mat-optgroup label="Без назначения" *ngIf="otherTeachers.length > 0">
+              <mat-option *ngFor="let t of otherTeachers" [value]="t.id">{{ t.displayName }}</mat-option>
+            </mat-optgroup>
           </mat-select>
         </mat-form-field>
 
@@ -83,6 +91,10 @@ export type AddEntryDialogResult =
             <mat-option *ngFor="let g of data.groups" [value]="g.id">{{ g.name }}</mat-option>
           </mat-select>
         </mat-form-field>
+
+        <div class="blocked-warn" *ngIf="hasBlockedDayWarning">
+          ⚠ Одна или несколько выбранных групп заблокированы в этот день
+        </div>
 
         <mat-checkbox formControlName="isOnline" class="online-check">Онлайн занятие</mat-checkbox>
 
@@ -111,6 +123,7 @@ export type AddEntryDialogResult =
     .row { display: flex; gap: 8px; }
     .flex1 { flex: 1; }
     .online-check { margin: 4px 0 8px; }
+    .blocked-warn { background: #fff3e0; border: 1px solid #ffb300; border-radius: 4px; padding: 8px 12px; font-size: 13px; color: #e65100; margin: 4px 0; }
   `]
 })
 export class AddEntryDialogComponent {
@@ -122,6 +135,38 @@ export class AddEntryDialogComponent {
     if (wt === 'Odd') return 'нечётная';
     if (wt === 'Even') return 'чётная';
     return 'обе недели';
+  }
+
+  get primaryTeachers() {
+    const { subjectId, lessonType } = this.form.value;
+    if (!subjectId || !lessonType) return this.data.teachers;
+    return this.data.teachers.filter(t =>
+      t.subjects?.some(s => s.subjectId === subjectId && s.lessonType === lessonType)
+    );
+  }
+
+  get secondaryTeachers() {
+    const { subjectId, lessonType } = this.form.value;
+    if (!subjectId || !lessonType) return [];
+    const primaryIds = new Set(this.primaryTeachers.map(t => t.id));
+    return this.data.teachers.filter(t =>
+      !primaryIds.has(t.id) && t.subjects?.some(s => s.subjectId === subjectId)
+    );
+  }
+
+  get otherTeachers() {
+    const { subjectId } = this.form.value;
+    if (!subjectId) return [];
+    const primaryIds = new Set(this.primaryTeachers.map(t => t.id));
+    const secondaryIds = new Set(this.secondaryTeachers.map(t => t.id));
+    return this.data.teachers.filter(t => !primaryIds.has(t.id) && !secondaryIds.has(t.id));
+  }
+
+  get hasBlockedDayWarning(): boolean {
+    const selectedIds: string[] = this.form.value.groupIds ?? [];
+    return this.data.groups
+      .filter(g => selectedIds.includes(g.id))
+      .some(g => g.blockedDays?.includes(this.data.day));
   }
 
   constructor(

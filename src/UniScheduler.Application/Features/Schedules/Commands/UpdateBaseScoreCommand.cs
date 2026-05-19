@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using UniScheduler.Application.Common.Exceptions;
 using UniScheduler.Application.Common.Interfaces;
+using UniScheduler.Application.Common.Models;
 using UniScheduler.Domain.Entities;
 
 namespace UniScheduler.Application.Features.Schedules.Commands;
@@ -27,10 +28,16 @@ public class UpdateBaseScoreCommandHandler : IRequestHandler<UpdateBaseScoreComm
         var nodes = await _db.FloorPlanNodes.ToListAsync(cancellationToken);
         var edges = await _db.FloorPlanEdges.ToListAsync(cancellationToken);
         var bldDists = await _db.BuildingDistances.ToListAsync(cancellationToken);
-        var rooms = await _db.Rooms.ToListAsync(cancellationToken);
+        var rooms = await _db.Rooms.Include(r => r.Department).ToListAsync(cancellationToken);
         var pairSlots = await _db.PairTimeSlots.ToListAsync(cancellationToken);
 
-        var ctx = ScheduleScoreCalculator.BuildScoreContext(nodes, edges, bldDists, rooms, pairSlots);
+        var subjectIds = entries.Select(e => e.SubjectId).Distinct().ToList();
+        var subjects = await _db.Subjects.Include(s => s.Department)
+            .Where(s => subjectIds.Contains(s.Id)).ToListAsync(cancellationToken);
+
+        var settings = await _db.SolverSettings.FirstOrDefaultAsync(cancellationToken);
+        var ctx = ScheduleScoreCalculator.BuildScoreContext(
+            nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings));
         var score = ScheduleScoreCalculator.Compute(entries, ctx);
         schedule.BaseScore = score;
         await _db.SaveChangesAsync(cancellationToken);

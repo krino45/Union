@@ -107,11 +107,25 @@ import {
                       <mat-option *ngFor="let s of subjects" [value]="s.id">{{ s.shortName }} — {{ s.name }}</mat-option>
                     </mat-select>
                   </td>
-                  <td><input type="number" min="0" formControlName="lectureHours" class="hrs-input"></td>
-                  <td><input type="number" min="0" formControlName="practicalHours" class="hrs-input"></td>
-                  <td><input type="number" min="0" formControlName="labHours" class="hrs-input"></td>
-                  <td><input type="number" min="0" formControlName="seminarHours" class="hrs-input"></td>
-                  <td><input type="number" min="0" formControlName="thesisHours" class="hrs-input"></td>
+                  <td>
+                    <input type="number" min="0" formControlName="lectureHours" class="hrs-input">
+                    <small class="ppw" *ngIf="selectedStudyWeeks > 0 && eg.get('lectureHours')?.value > 0">{{ eg.get('lectureHours')?.value / 2 / selectedStudyWeeks | number:'1.0-2' }} п/н</small>
+                  </td>
+                  <td>
+                    <input type="number" min="0" formControlName="practicalHours" class="hrs-input">
+                    <small class="ppw" *ngIf="selectedStudyWeeks > 0 && eg.get('practicalHours')?.value > 0">{{ eg.get('practicalHours')?.value / 2 / selectedStudyWeeks | number:'1.0-2' }} п/н</small>
+                  </td>
+                  <td>
+                    <input type="number" min="0" formControlName="labHours" class="hrs-input">
+                    <small class="ppw" *ngIf="selectedStudyWeeks > 0 && eg.get('labHours')?.value > 0">{{ eg.get('labHours')?.value / 2 / selectedStudyWeeks | number:'1.0-2' }} п/н</small>
+                  </td>
+                  <td>
+                    <input type="number" min="0" formControlName="seminarHours" class="hrs-input">
+                    <small class="ppw" *ngIf="selectedStudyWeeks > 0 && eg.get('seminarHours')?.value > 0">{{ eg.get('seminarHours')?.value / 2 / selectedStudyWeeks | number:'1.0-2' }} п/н</small>
+                  </td>
+                  <td>
+                    <input type="number" min="0" formControlName="thesisHours" class="hrs-input">
+                  </td>
                   <td><button mat-icon-button type="button" (click)="removeEntry(i)" color="warn"><mat-icon>delete</mat-icon></button></td>
                 </tr>
               </tbody>
@@ -206,6 +220,7 @@ import {
     .muted { color: #999; font-size: 13px; }
     .empty-state { text-align: center; padding: 48px; color: #999; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
+    .ppw { display: block; color: #1976d2; font-size: 10px; line-height: 1.2; white-space: nowrap; }
   `]
 })
 export class StudyPlansComponent implements OnInit {
@@ -242,6 +257,13 @@ export class StudyPlansComponent implements OnInit {
   }
 
   get entriesArray(): FormArray { return this.form.get('entries') as FormArray; }
+
+  get selectedStudyWeeks(): number {
+    const cpId = this.form?.get('calendarPlanId')?.value;
+    if (!cpId) return 0;
+    const cp = this.calendarPlans.find(p => p.id === cpId);
+    return cp?.weeks.filter(w => w.kind === 'Study').length ?? 0;
+  }
 
   startCreate(): void {
     this.form = this.buildForm();
