@@ -36,6 +36,7 @@ public class ExceptionHandlingMiddleware
         {
             ValidationException ve => (400, "Validation Failed", ve.Message, (object)ve.Errors),
             NotFoundException nfe => (404, "Not Found", nfe.Message, (object?)null),
+            ForbiddenException fe => (403, "Forbidden", fe.Message, (object?)null),
             ConflictException ce => (409, "Schedule Conflict", ce.Message, (object)ce.Conflicts),
             UnauthorizedAccessException uae => (401, "Unauthorized", uae.Message, (object?)null),
             InvalidOperationException ioe => (400, "Bad Request", ioe.Message, (object?)null),

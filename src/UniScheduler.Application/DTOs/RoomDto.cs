@@ -17,5 +17,6 @@ public record RoomDto(
     List<LessonType> AllowedLessonTypes,
     bool IsEnabled,
     Guid? DepartmentId,
-    string? DepartmentName
+    string? DepartmentName,
+    int UtilizationPercent = 0
 );

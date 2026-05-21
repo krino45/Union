@@ -429,13 +429,21 @@ export class ScheduleEditorComponent implements OnInit {
             },
             error: (e) => this.snackBar.open(e.error?.title || 'Конфликт при добавлении', 'OK', { duration: 4000 })
           });
-        } else {
+        } else if (result.mode === 'update') {
           this.api.updateEntry(result.entryId, result.dto).subscribe({
             next: () => {
               this.snackBar.open('Занятие обновлено', 'OK', { duration: 2000 });
               this.refreshAfterMutation();
             },
             error: (e) => this.snackBar.open(e.error?.title || 'Конфликт при изменении', 'OK', { duration: 4000 })
+          });
+        } else if (result.mode === 'split-edit') {
+          this.api.splitEditEntry(result.entryId, result.dto).subscribe({
+            next: () => {
+              this.snackBar.open('Занятие разделено и обновлено', 'OK', { duration: 2500 });
+              this.refreshAfterMutation();
+            },
+            error: (e) => this.snackBar.open(e.error?.title || 'Не удалось разделить занятие', 'OK', { duration: 4000 })
           });
         }
       });

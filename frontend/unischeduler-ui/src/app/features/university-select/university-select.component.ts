@@ -15,7 +15,7 @@ import { UniversityAccess } from '../../core/models';
     <div class="select-container">
       <div class="header">
         <mat-icon class="logo-icon">school</mat-icon>
-        <h1>UniScheduler</h1>
+        <h1>Юниан</h1>
         <p class="subtitle">Выберите университет</p>
       </div>
       <div class="cards">

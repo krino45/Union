@@ -13,6 +13,9 @@ public class GetRoomsQueryHandler : IRequestHandler<GetRoomsQuery, List<RoomDto>
     private readonly IApplicationDbContext db;
     public GetRoomsQueryHandler(IApplicationDbContext db) => this.db = db;
 
+    // 6 working days × 7 pair slots = 42 weekly slots; Both-week pair counts as 2, Odd/Even as 1.
+    private const int TotalWeeklySlots = 42 * 2;
+
     public async Task<List<RoomDto>> Handle(GetRoomsQuery request, CancellationToken cancellationToken)
     {
         var query = db.Rooms.Include(r => r.Building).Include(r => r.Department).AsQueryable();
@@ -24,9 +27,24 @@ public class GetRoomsQueryHandler : IRequestHandler<GetRoomsQuery, List<RoomDto>
         var rooms = await query.OrderBy(r => r.Building.ShortCode).ThenBy(r => r.Floor).ThenBy(r => r.Number)
             .ToListAsync(cancellationToken);
 
+        // Per-room weekly pair count across all Published schedules
+        var loadRaw = await db.ScheduleEntries
+            .Where(e => e.RoomId != null && e.Schedule.Status == ScheduleStatus.Published)
+            .GroupBy(e => new { e.RoomId, e.WeekType })
+            .Select(g => new { g.Key.RoomId, g.Key.WeekType, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        var utilizationByRoom = loadRaw
+            .GroupBy(x => x.RoomId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => Math.Min(100, (int)Math.Round(
+                    g.Sum(x => x.WeekType == WeekType.Both ? x.Count * 2 : x.Count) * 100.0 / TotalWeeklySlots)));
+
         return rooms.Select(r => new RoomDto(r.Id, r.BuildingId, r.Building.ShortCode, r.Number, r.RoomType,
                 r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
-                r.Floor, r.AllowedLessonTypes, r.IsEnabled, r.DepartmentId, r.Department?.Name))
+                r.Floor, r.AllowedLessonTypes, r.IsEnabled, r.DepartmentId, r.Department?.Name,
+                utilizationByRoom.TryGetValue(r.Id, out var u) ? u : 0))
             .ToList();
     }
 }

@@ -1,6 +1,6 @@
 import { Component, OnInit, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormsModule, FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -12,7 +12,11 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatChipsModule } from '@angular/material/chips';
 import { Router } from '@angular/router';
+import { Observable, debounceTime, distinctUntilChanged, switchMap, of, startWith } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { UniversityAccess } from '../../core/models';
@@ -24,7 +28,8 @@ import { UniversityAccess } from '../../core/models';
     CommonModule, ReactiveFormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSnackBarModule, MatTabsModule, MatSelectModule, MatDividerModule
+    MatSnackBarModule, MatTabsModule, MatSelectModule, MatDividerModule,
+    MatTooltipModule
   ],
   template: `
     <div class="superadmin-page">
@@ -56,6 +61,10 @@ import { UniversityAccess } from '../../core/models';
               <th mat-header-cell *matHeaderCellDef>Краткое</th>
               <td mat-cell *matCellDef="let u">{{ u.shortName }}</td>
             </ng-container>
+            <ng-container matColumnDef="city">
+              <th mat-header-cell *matHeaderCellDef>Город</th>
+              <td mat-cell *matCellDef="let u">{{ u.city || '—' }}</td>
+            </ng-container>
             <ng-container matColumnDef="actions">
               <th mat-header-cell *matHeaderCellDef>Действия</th>
               <td mat-cell *matCellDef="let u">
@@ -64,6 +73,9 @@ import { UniversityAccess } from '../../core/models';
                 </button>
                 <button mat-icon-button (click)="openUsersDialog(u)" matTooltip="Управление доступом">
                   <mat-icon>people</mat-icon>
+                </button>
+                <button mat-icon-button (click)="openInvitationsDialog(u)" matTooltip="Приглашения">
+                  <mat-icon>mail</mat-icon>
                 </button>
                 <button mat-icon-button (click)="openEditDialog(u)" matTooltip="Редактировать">
                   <mat-icon>edit</mat-icon>
@@ -95,7 +107,7 @@ import { UniversityAccess } from '../../core/models';
 })
 export class SuperAdminComponent implements OnInit {
   universities: any[] = [];
-  columns = ['name', 'shortName', 'actions'];
+  columns = ['name', 'shortName', 'city', 'actions'];
 
   constructor(
     private api: ApiService,
@@ -112,7 +124,7 @@ export class SuperAdminComponent implements OnInit {
   }
 
   openCreateDialog(): void {
-    const ref = this.dialog.open(UniversityDialogComponent, { data: null, width: '400px' });
+    const ref = this.dialog.open(UniversityDialogComponent, { data: null, width: '420px' });
     ref.afterClosed().subscribe(result => {
       if (!result) return;
       this.api.createUniversity(result).subscribe({
@@ -123,7 +135,7 @@ export class SuperAdminComponent implements OnInit {
   }
 
   openEditDialog(u: any): void {
-    const ref = this.dialog.open(UniversityDialogComponent, { data: u, width: '400px' });
+    const ref = this.dialog.open(UniversityDialogComponent, { data: u, width: '420px' });
     ref.afterClosed().subscribe(result => {
       if (!result) return;
       this.api.updateUniversity(u.id, result).subscribe({
@@ -134,10 +146,26 @@ export class SuperAdminComponent implements OnInit {
   }
 
   openUsersDialog(u: any): void {
-    this.dialog.open(UniversityUsersDialogComponent, { data: u, width: '600px' });
+    this.dialog.open(UniversityUsersDialogComponent, { data: u, width: '640px' });
+  }
+
+  openInvitationsDialog(u: any): void {
+    this.dialog.open(UniversityInvitationsDialogComponent, { data: u, width: '720px' });
   }
 
   enterUniversity(u: any): void {
+    // SuperAdmin auto-grants themselves Admin access before entering so the X-University-Id header
+    // gets through global query filters cleanly.
+    this.api.grantSelfUniversityAccess(u.id).subscribe({
+      next: () => this.proceedToUniversity(u),
+      error: e => {
+        if (e.status === 204 || e.status === 200) this.proceedToUniversity(u);
+        else this.snackBar.open(e.error?.title || 'Не удалось получить доступ', 'OK', { duration: 4000 });
+      }
+    });
+  }
+
+  private proceedToUniversity(u: any): void {
     const access: UniversityAccess = {
       universityId: u.id,
       universityName: u.name,
@@ -180,6 +208,10 @@ export class SuperAdminComponent implements OnInit {
           <input matInput formControlName="shortName">
         </mat-form-field>
         <mat-form-field appearance="outline" class="full">
+          <mat-label>Город</mat-label>
+          <input matInput formControlName="city" placeholder="Москва">
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="full">
           <mat-label>URL логотипа (необязательно)</mat-label>
           <input matInput formControlName="logoUrl">
         </mat-form-field>
@@ -202,11 +234,20 @@ export class UniversityDialogComponent {
     this.form = this.fb.group({
       name: [data?.name ?? '', [Validators.required, Validators.maxLength(300)]],
       shortName: [data?.shortName ?? '', [Validators.required, Validators.maxLength(50)]],
+      city: [data?.city ?? '', [Validators.maxLength(200)]],
       logoUrl: [data?.logoUrl ?? '']
     });
   }
   save(): void {
-    if (this.form.valid) this.ref.close(this.form.value);
+    if (this.form.valid) {
+      const v = this.form.value;
+      this.ref.close({
+        name: v.name,
+        shortName: v.shortName,
+        city: v.city?.trim() || null,
+        logoUrl: v.logoUrl?.trim() || null
+      });
+    }
   }
 }
 
@@ -216,7 +257,7 @@ export class UniversityDialogComponent {
   imports: [
     CommonModule, ReactiveFormsModule, FormsModule, MatDialogModule, MatFormFieldModule,
     MatInputModule, MatButtonModule, MatTableModule, MatIconModule,
-    MatSelectModule, MatSnackBarModule
+    MatSelectModule, MatSnackBarModule, MatAutocompleteModule
   ],
   template: `
     <h2 mat-dialog-title>Доступ: {{ data.name }}</h2>
@@ -239,10 +280,19 @@ export class UniversityDialogComponent {
         <tr mat-header-row *matHeaderRowDef="cols"></tr>
         <tr mat-row *matRowDef="let row; columns: cols;"></tr>
       </table>
+
       <div class="assign-form">
-        <mat-form-field appearance="outline">
-          <mat-label>ID пользователя</mat-label>
-          <input matInput [(ngModel)]="assignUserId">
+        <mat-form-field appearance="outline" class="grow">
+          <mat-label>Поиск пользователя</mat-label>
+          <input matInput
+                 [formControl]="userSearch"
+                 [matAutocomplete]="auto"
+                 placeholder="Логин">
+          <mat-autocomplete #auto="matAutocomplete" [displayWith]="displayUser" (optionSelected)="selectUser($event.option.value)">
+            <mat-option *ngFor="let u of suggestions$ | async" [value]="u">
+              {{ u.username }} <small style="color: #888">({{ u.role }})</small>
+            </mat-option>
+          </mat-autocomplete>
         </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>Роль</mat-label>
@@ -251,7 +301,7 @@ export class UniversityDialogComponent {
             <mat-option value="Teacher">Преподаватель</mat-option>
           </mat-select>
         </mat-form-field>
-        <button mat-raised-button color="primary" (click)="assign()">Добавить</button>
+        <button mat-raised-button color="primary" (click)="assign()" [disabled]="!selectedUserId">Добавить</button>
       </div>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -260,14 +310,17 @@ export class UniversityDialogComponent {
   `,
   styles: [
     '.full-table { width: 100%; min-width: 400px; }',
-    '.assign-form { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }'
+    '.assign-form { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }',
+    '.assign-form .grow { flex: 1; min-width: 200px; }'
   ]
 })
 export class UniversityUsersDialogComponent implements OnInit {
   users: any[] = [];
   cols = ['username', 'role', 'actions'];
-  assignUserId = '';
+  userSearch = new FormControl<any>('');
+  selectedUserId: string | null = null;
   assignRole = 'Teacher';
+  suggestions$: Observable<{ id: string; username: string; role: string }[]> = of([]);
 
   constructor(
     private api: ApiService,
@@ -275,16 +328,39 @@ export class UniversityUsersDialogComponent implements OnInit {
     @Inject(MAT_DIALOG_DATA) public data: any
   ) {}
 
-  ngOnInit(): void { this.load(); }
+  ngOnInit(): void {
+    this.load();
+    this.suggestions$ = this.userSearch.valueChanges.pipe(
+      startWith(''),
+      debounceTime(200),
+      distinctUntilChanged(),
+      switchMap(v => {
+        const q = typeof v === 'string' ? v : v?.username;
+        if (!q || q.length < 1) return of([]);
+        return this.api.getUsers(q);
+      })
+    );
+  }
+
+  displayUser = (u: any): string => (u && typeof u === 'object') ? u.username : (u || '');
+
+  selectUser(u: { id: string; username: string }): void {
+    this.selectedUserId = u.id;
+  }
 
   load(): void {
     this.api.getUniversityUsers(this.data.id).subscribe(u => this.users = u);
   }
 
   assign(): void {
-    if (!this.assignUserId) return;
-    this.api.assignUniversityUser(this.data.id, this.assignUserId, this.assignRole).subscribe({
-      next: () => { this.load(); this.snackBar.open('Доступ предоставлен', 'OK', { duration: 2000 }); },
+    if (!this.selectedUserId) return;
+    this.api.assignUniversityUser(this.data.id, this.selectedUserId, this.assignRole).subscribe({
+      next: () => {
+        this.load();
+        this.userSearch.setValue('');
+        this.selectedUserId = null;
+        this.snackBar.open('Доступ предоставлен', 'OK', { duration: 2000 });
+      },
       error: e => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
     });
   }
@@ -292,6 +368,122 @@ export class UniversityUsersDialogComponent implements OnInit {
   revoke(u: any): void {
     this.api.revokeUniversityUser(this.data.id, u.userId).subscribe({
       next: () => { this.load(); this.snackBar.open('Доступ отозван', 'OK', { duration: 2000 }); },
+      error: e => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
+    });
+  }
+}
+
+@Component({
+  selector: 'app-university-invitations-dialog',
+  standalone: true,
+  imports: [
+    CommonModule, ReactiveFormsModule, FormsModule,
+    MatDialogModule, MatFormFieldModule, MatInputModule, MatButtonModule,
+    MatTableModule, MatIconModule, MatSelectModule, MatSnackBarModule,
+    MatChipsModule, MatTooltipModule
+  ],
+  template: `
+    <h2 mat-dialog-title>Приглашения: {{ data.name }}</h2>
+    <mat-dialog-content>
+      <div class="invite-form">
+        <mat-form-field appearance="outline" class="grow">
+          <mat-label>E-mail</mat-label>
+          <input matInput [(ngModel)]="email" placeholder="user@example.com">
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Роль</mat-label>
+          <mat-select [(ngModel)]="role">
+            <mat-option value="Teacher">Преподаватель</mat-option>
+            <mat-option value="Admin" *ngIf="auth.isSuperAdmin">Администратор</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <button mat-raised-button color="primary" (click)="invite()" [disabled]="!email">
+          <mat-icon>send</mat-icon> Пригласить
+        </button>
+      </div>
+
+      <table mat-table [dataSource]="invitations" class="full-table">
+        <ng-container matColumnDef="email">
+          <th mat-header-cell *matHeaderCellDef>E-mail</th>
+          <td mat-cell *matCellDef="let i">{{ i.email }}</td>
+        </ng-container>
+        <ng-container matColumnDef="role">
+          <th mat-header-cell *matHeaderCellDef>Роль</th>
+          <td mat-cell *matCellDef="let i">{{ i.universityRole }}</td>
+        </ng-container>
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>Статус</th>
+          <td mat-cell *matCellDef="let i">
+            <mat-chip *ngIf="i.isConsumed" color="primary" highlighted>Принято</mat-chip>
+            <mat-chip *ngIf="!i.isConsumed && isExpired(i)" color="warn" highlighted>Истекло</mat-chip>
+            <mat-chip *ngIf="!i.isConsumed && !isExpired(i)">Ожидает</mat-chip>
+          </td>
+        </ng-container>
+        <ng-container matColumnDef="expires">
+          <th mat-header-cell *matHeaderCellDef>Действует до</th>
+          <td mat-cell *matCellDef="let i">{{ i.expiresAt | date: 'dd.MM.yyyy HH:mm' }}</td>
+        </ng-container>
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let i">
+            <button mat-icon-button color="warn" *ngIf="!i.isConsumed"
+                    (click)="cancel(i)" matTooltip="Отменить">
+              <mat-icon>cancel</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="cols"></tr>
+        <tr mat-row *matRowDef="let row; columns: cols;"></tr>
+      </table>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Закрыть</button>
+    </mat-dialog-actions>
+  `,
+  styles: [
+    '.full-table { width: 100%; min-width: 560px; }',
+    '.invite-form { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }',
+    '.invite-form .grow { flex: 1; min-width: 220px; }'
+  ]
+})
+export class UniversityInvitationsDialogComponent implements OnInit {
+  invitations: any[] = [];
+  cols = ['email', 'role', 'status', 'expires', 'actions'];
+  email = '';
+  role: 'Admin' | 'Teacher' = 'Teacher';
+
+  constructor(
+    private api: ApiService,
+    public auth: AuthService,
+    private snackBar: MatSnackBar,
+    @Inject(MAT_DIALOG_DATA) public data: any
+  ) {}
+
+  ngOnInit(): void { this.load(); }
+
+  load(): void {
+    this.api.listInvitations(this.data.id).subscribe(list => this.invitations = list);
+  }
+
+  isExpired(i: any): boolean {
+    return new Date(i.expiresAt) < new Date();
+  }
+
+  invite(): void {
+    if (!this.email) return;
+    this.api.createInvitation(this.data.id, this.email, this.role).subscribe({
+      next: () => {
+        this.email = '';
+        this.load();
+        this.snackBar.open('Приглашение отправлено (ссылка в консоли сервера)', 'OK', { duration: 4000 });
+      },
+      error: e => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
+    });
+  }
+
+  cancel(i: any): void {
+    this.api.cancelInvitation(i.id).subscribe({
+      next: () => { this.load(); this.snackBar.open('Приглашение отменено', 'OK', { duration: 2000 }); },
       error: e => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
     });
   }

@@ -14,6 +14,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { forkJoin } from 'rxjs';
 import { ApiService } from '../../../../core/services/api.service';
+import { AuthService } from '../../../../core/services/auth.service';
 import { Teacher, Subject } from '../../../../core/models';
 import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
 
@@ -49,6 +50,14 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
           <th mat-header-cell *matHeaderCellDef>Дисциплин</th>
           <td mat-cell *matCellDef="let t">{{ t.subjects?.length || 0 }}</td>
         </ng-container>
+        <ng-container matColumnDef="load">
+          <th mat-header-cell *matHeaderCellDef>Нагрузка</th>
+          <td mat-cell *matCellDef="let t">
+            <span [matTooltip]="loadTooltip(t.loadHoursPerWeek)" class="load-cell">
+              {{ t.loadHoursPerWeek ?? 0 }} ч/нед
+            </span>
+          </td>
+        </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let t">
@@ -57,6 +66,12 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
             </button>
             <button mat-icon-button (click)="openSubjectsDialog(t)" matTooltip="Дисциплины">
               <mat-icon>book</mat-icon>
+            </button>
+            <button mat-icon-button (click)="openAvailabilityDialog(t)" matTooltip="Занятость">
+              <mat-icon>event_busy</mat-icon>
+            </button>
+            <button mat-icon-button (click)="openInviteDialog(t)" matTooltip="Пригласить">
+              <mat-icon>mail</mat-icon>
             </button>
             <button mat-icon-button color="warn" (click)="delete(t)" matTooltip="Удалить">
               <mat-icon>delete</mat-icon>
@@ -73,13 +88,32 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     h1 { margin: 0; }
     .full-width { width: 100%; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
+    .load-cell { font-weight: 500; }
   `]
 })
 export class TeachersComponent implements OnInit {
   teachers: Teacher[] = [];
   subjects: Subject[] = [];
   loading = true;
-  columns = ['name', 'email', 'subjects', 'actions'];
+  columns = ['name', 'email', 'subjects', 'load', 'actions'];
+
+  loadTooltip(hours: number | undefined): string {
+    const h = hours ?? 0;
+    if (h === 0) return 'Нет занятий в опубликованных расписаниях';
+    return `${h} академических часов в неделю (опубликованные расписания)`;
+  }
+
+  openAvailabilityDialog(teacher: Teacher): void {
+    this.dialog.open(TeacherAvailabilityViewDialogComponent, {
+      data: teacher, width: '640px'
+    });
+  }
+
+  openInviteDialog(teacher: Teacher): void {
+    this.dialog.open(InviteTeacherDialogComponent, {
+      data: teacher, width: '440px'
+    });
+  }
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
 
@@ -253,5 +287,157 @@ export class TeacherSubjectsDialogComponent {
 
   submit(): void {
     this.dialogRef.close(this.rows.filter(r => r.subjectId));
+  }
+}
+
+@Component({
+  selector: 'app-teacher-availability-view-dialog',
+  standalone: true,
+  imports: [CommonModule, MatButtonModule, MatDialogModule, MatIconModule, MatTooltipModule],
+  template: `
+    <h2 mat-dialog-title>Занятость: {{ data.displayName }}</h2>
+    <mat-dialog-content>
+      <p class="hint">
+        <mat-icon>info</mat-icon>
+        Просмотр заявок преподавателя о недоступности. Редактирование доступно преподавателю в личном кабинете.
+      </p>
+      <div *ngIf="!loading && slots.length === 0" class="empty">
+        Нет заявок о недоступности.
+      </div>
+      <table class="grid" *ngIf="!loading && slots.length > 0">
+        <thead>
+          <tr>
+            <th></th>
+            <th *ngFor="let d of days">{{ d.label }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let p of pairs">
+            <th>{{ p }} пара</th>
+            <td *ngFor="let d of days"
+                [class.blocked]="hasSlot(d.value, p)"
+                [matTooltip]="slotTooltip(d.value, p)">
+              <span *ngIf="hasSlot(d.value, p)">✕</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div *ngIf="loading" class="loading">Загрузка…</div>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Закрыть</button>
+    </mat-dialog-actions>
+  `,
+  styles: [`
+    .hint { display: flex; align-items: center; gap: 6px; color: #666; font-size: 13px; margin: 0 0 12px; }
+    .hint mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .empty { padding: 24px; text-align: center; color: #999; }
+    .grid { width: 100%; border-collapse: collapse; }
+    .grid th, .grid td { border: 1px solid #e0e0e0; padding: 8px 12px; text-align: center; min-width: 64px; }
+    .grid thead th { background: #fafafa; font-weight: 600; }
+    .grid .blocked { background: #ffebee; color: #b71c1c; font-weight: 700; cursor: help; }
+    :host-context(body.dark-mode) .grid th, :host-context(body.dark-mode) .grid td { border-color: #444; }
+    :host-context(body.dark-mode) .grid thead th { background: #2a2a2a; }
+    :host-context(body.dark-mode) .grid .blocked { background: #4a1818; color: #ef9a9a; }
+    .loading { padding: 24px; text-align: center; color: #999; }
+  `]
+})
+export class TeacherAvailabilityViewDialogComponent implements OnInit {
+  slots: any[] = [];
+  loading = true;
+  days = [
+    { value: 'Monday', label: 'Пн' },
+    { value: 'Tuesday', label: 'Вт' },
+    { value: 'Wednesday', label: 'Ср' },
+    { value: 'Thursday', label: 'Чт' },
+    { value: 'Friday', label: 'Пт' },
+    { value: 'Saturday', label: 'Сб' }
+  ];
+  pairs = [1, 2, 3, 4, 5, 6, 7];
+
+  constructor(
+    private api: ApiService,
+    @Inject(MAT_DIALOG_DATA) public data: Teacher
+  ) {}
+
+  ngOnInit(): void {
+    this.api.getAvailability(this.data.id).subscribe({
+      next: s => { this.slots = s; this.loading = false; },
+      error: () => { this.loading = false; }
+    });
+  }
+
+  hasSlot(day: string, pair: number): boolean {
+    return this.slots.some(s => s.dayOfWeek === day && s.pairNumber === pair);
+  }
+
+  slotTooltip(day: string, pair: number): string {
+    const matches = this.slots.filter(s => s.dayOfWeek === day && s.pairNumber === pair);
+    return matches.map(m => `${m.weekType === 'Both' ? 'Кажд. нед.' : m.weekType}${m.reason ? ': ' + m.reason : ''}`).join('; ');
+  }
+}
+
+@Component({
+  selector: 'app-invite-teacher-dialog',
+  standalone: true,
+  imports: [CommonModule, FormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatDialogModule, MatIconModule],
+  template: `
+    <h2 mat-dialog-title>Пригласить преподавателя</h2>
+    <mat-dialog-content>
+      <p class="teacher-info">
+        <mat-icon>person</mat-icon> {{ data.displayName }}
+      </p>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>E-mail</mat-label>
+        <input matInput type="email" [(ngModel)]="email" required>
+        <mat-hint>Письмо со ссылкой будет отправлено на этот адрес</mat-hint>
+      </mat-form-field>
+      <p class="note">
+        После принятия приглашения аккаунт будет привязан к этому преподавателю.
+        Если у пользователя уже есть аккаунт, он сможет принять приглашение, не создавая новый.
+      </p>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Отмена</button>
+      <button mat-raised-button color="primary" [disabled]="!email || sending" (click)="send()">
+        <mat-icon>send</mat-icon> Отправить
+      </button>
+    </mat-dialog-actions>
+  `,
+  styles: [`
+    .teacher-info { display: flex; align-items: center; gap: 6px; font-weight: 500; color: #555; margin: 0 0 12px; }
+    .full-width { width: 100%; }
+    .note { font-size: 12px; color: #888; margin: 4px 0 0; }
+  `]
+})
+export class InviteTeacherDialogComponent {
+  email: string;
+  sending = false;
+
+  constructor(
+    private api: ApiService,
+    private auth: AuthService,
+    private snackBar: MatSnackBar,
+    private dialogRef: MatDialogRef<InviteTeacherDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: Teacher
+  ) {
+    this.email = data.email ?? '';
+  }
+
+  send(): void {
+    const uniId = this.auth.currentUniversity?.universityId;
+    if (!uniId || !this.email) return;
+    this.sending = true;
+    this.api.createInvitation(uniId, this.email, 'Teacher', this.data.id).subscribe({
+      next: () => {
+        this.sending = false;
+        this.snackBar.open('Приглашение отправлено (ссылка в консоли сервера)', 'OK', { duration: 4000 });
+        this.dialogRef.close(true);
+      },
+      error: e => {
+        this.sending = false;
+        this.snackBar.open(e.error?.title || 'Не удалось отправить приглашение', 'OK', { duration: 4000 });
+      }
+    });
   }
 }

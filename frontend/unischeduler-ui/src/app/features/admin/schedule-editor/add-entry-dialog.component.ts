@@ -1,4 +1,4 @@
-import { Component, Inject } from '@angular/core';
+import { Component, Inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
@@ -6,9 +6,15 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatRadioModule } from '@angular/material/radio';
+import { MatIconModule } from '@angular/material/icon';
+import { MatChipsModule } from '@angular/material/chips';
+import { debounceTime } from 'rxjs/operators';
 import { Subject, Teacher, StudentGroup, Room, ScheduleEntry, CreateScheduleEntryDto, UpdateScheduleEntryDto } from '../../../core/models';
 import { RussianDayOfWeek, WeekType, LessonType } from '../../../core/models/enums';
+import { ValidationIssue, SplitEditBody, ValidateEditBody } from '../../../core/models';
 import { DayOfWeekPipe } from '../../../shared/pipes/day-of-week.pipe';
+import { ApiService } from '../../../core/services/api.service';
 
 export interface AddEntryDialogData {
   scheduleId: string;
@@ -24,15 +30,16 @@ export interface AddEntryDialogData {
 
 export type AddEntryDialogResult =
   | { mode: 'create'; dto: CreateScheduleEntryDto }
-  | { mode: 'update'; entryId: string; dto: UpdateScheduleEntryDto };
+  | { mode: 'update'; entryId: string; dto: UpdateScheduleEntryDto }
+  | { mode: 'split-edit'; entryId: string; dto: SplitEditBody };
 
 @Component({
   selector: 'app-add-entry-dialog',
   standalone: true,
   imports: [
     CommonModule, ReactiveFormsModule,
-    MatDialogModule, MatButtonModule,
-    MatFormFieldModule, MatSelectModule, MatCheckboxModule,
+    MatDialogModule, MatButtonModule, MatIconModule,
+    MatFormFieldModule, MatSelectModule, MatCheckboxModule, MatRadioModule, MatChipsModule,
     DayOfWeekPipe
   ],
   template: `
@@ -68,6 +75,20 @@ export type AddEntryDialogResult =
               <mat-option value="Even">Чётная</mat-option>
             </mat-select>
           </mat-form-field>
+        </div>
+
+        <!-- Both-week split selector — only shown when editing a Both-week lesson -->
+        <div class="apply-to" *ngIf="canSplit">
+          <div class="apply-lbl">Применить изменения к:</div>
+          <mat-radio-group formControlName="applyTo">
+            <mat-radio-button value="Both">обеим неделям</mat-radio-button>
+            <mat-radio-button value="Odd">только нечётной</mat-radio-button>
+            <mat-radio-button value="Even">только чётной</mat-radio-button>
+          </mat-radio-group>
+          <div class="apply-hint" *ngIf="form.value.applyTo !== 'Both'">
+            <mat-icon>call_split</mat-icon>
+            Занятие будет разделено на две записи. Другая половина останется без изменений.
+          </div>
         </div>
 
         <mat-form-field appearance="outline" class="full">
@@ -107,6 +128,14 @@ export type AddEntryDialogResult =
             </mat-option>
           </mat-select>
         </mat-form-field>
+
+        <!-- Validation warnings — live from backend -->
+        <div class="issues" *ngIf="issues.length > 0">
+          <div *ngFor="let i of issues" class="issue" [class.error]="i.severity === 'error'" [class.warn]="i.severity === 'warning'" [class.info]="i.severity === 'info'">
+            <mat-icon>{{ i.severity === 'error' ? 'error' : i.severity === 'warning' ? 'warning' : 'info' }}</mat-icon>
+            <span>{{ i.message }}</span>
+          </div>
+        </div>
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -118,17 +147,30 @@ export type AddEntryDialogResult =
   `,
   styles: [`
     .slot-info { font-size: 14px; color: #666; margin-bottom: 16px; }
-    .form { display: flex; flex-direction: column; gap: 4px; min-width: 400px; }
+    .form { display: flex; flex-direction: column; gap: 4px; min-width: 420px; }
     .full { width: 100%; }
     .row { display: flex; gap: 8px; }
     .flex1 { flex: 1; }
     .online-check { margin: 4px 0 8px; }
     .blocked-warn { background: #fff3e0; border: 1px solid #ffb300; border-radius: 4px; padding: 8px 12px; font-size: 13px; color: #e65100; margin: 4px 0; }
+    .apply-to { background: #f3e5f5; border: 1px solid #ba68c8; border-radius: 4px; padding: 8px 12px; margin: 4px 0 12px; }
+    .apply-lbl { font-size: 12px; color: #555; margin-bottom: 6px; }
+    mat-radio-button { margin-right: 12px; }
+    .apply-hint { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #6a1b9a; margin-top: 6px; }
+    .apply-hint mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .issues { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
+    .issue { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 6px 10px; border-radius: 4px; }
+    .issue.error { background: #ffebee; color: #b71c1c; }
+    .issue.warn  { background: #fff3e0; color: #e65100; }
+    .issue.info  { background: #e3f2fd; color: #1565c0; }
+    .issue mat-icon { font-size: 18px; width: 18px; height: 18px; }
   `]
 })
-export class AddEntryDialogComponent {
+export class AddEntryDialogComponent implements OnInit {
   form: FormGroup;
   isEdit: boolean;
+  canSplit: boolean;
+  issues: ValidationIssue[] = [];
 
   get weekLabel(): string {
     const wt = this.form.value.weekType ?? this.data.weekType;
@@ -171,15 +213,18 @@ export class AddEntryDialogComponent {
 
   constructor(
     private fb: FormBuilder,
+    private api: ApiService,
     public dialogRef: MatDialogRef<AddEntryDialogComponent>,
     @Inject(MAT_DIALOG_DATA) public data: AddEntryDialogData
   ) {
     const e = data.existingEntry;
     this.isEdit = !!e;
+    this.canSplit = !!e && e.weekType === 'Both';
     this.form = this.fb.group({
       subjectId:  [e?.subjectId  ?? '',        Validators.required],
       lessonType: [e?.lessonType ?? 'Lecture', Validators.required],
       weekType:   [e?.weekType   ?? data.weekType, Validators.required],
+      applyTo:    [this.canSplit ? 'Both' : (e?.weekType ?? data.weekType)],
       teacherId:  [e?.teacherId  ?? '',        Validators.required],
       groupIds:   [e?.studentGroups?.map(g => g.id) ?? [], Validators.required],
       isOnline:   [e?.isOnline   ?? false],
@@ -187,10 +232,55 @@ export class AddEntryDialogComponent {
     });
   }
 
+  ngOnInit(): void {
+    // Live-validate on form changes (debounced)
+    this.form.valueChanges.pipe(debounceTime(400)).subscribe(() => this.validate());
+    this.validate();
+  }
+
+  private validate(): void {
+    if (this.form.invalid) { this.issues = []; return; }
+    const v = this.form.value;
+    const body: ValidateEditBody = {
+      entryId: this.data.existingEntry?.id ?? null,
+      subjectId: v.subjectId,
+      teacherId: v.teacherId,
+      roomId: v.isOnline ? null : (v.roomId ?? null),
+      groupIds: v.groupIds,
+      dayOfWeek: this.data.day,
+      pairNumber: this.data.pair,
+      weekType: v.weekType,
+      lessonType: v.lessonType,
+      isOnline: v.isOnline
+    };
+    this.api.validateScheduleEdit(this.data.scheduleId, body).subscribe({
+      next: list => this.issues = list,
+      error: () => this.issues = []
+    });
+  }
+
   submit(): void {
     if (this.form.invalid) return;
     const v = this.form.value;
     const roomId = v.isOnline ? undefined : (v.roomId ?? undefined);
+
+    // Both-week split-edit path
+    if (this.isEdit && this.canSplit && v.applyTo !== 'Both') {
+      const dto: SplitEditBody = {
+        targetWeek: v.applyTo as 'Odd' | 'Even',
+        subjectId: v.subjectId,
+        teacherId: v.teacherId,
+        roomId: roomId ?? null,
+        groupIds: v.groupIds,
+        dayOfWeek: this.data.day as unknown as string,
+        pairNumber: this.data.pair,
+        lessonType: v.lessonType,
+        isOnline: v.isOnline
+      };
+      const result: AddEntryDialogResult = { mode: 'split-edit', entryId: this.data.existingEntry!.id, dto };
+      this.dialogRef.close(result);
+      return;
+    }
 
     if (this.isEdit) {
       const dto: UpdateScheduleEntryDto = {

@@ -24,5 +24,6 @@ public class CurrentUserService : ICurrentUserService
 
     public string? Role => _httpContextAccessor.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value;
 
-    public bool IsAdmin => Role == "Admin";
+    public bool IsAdmin => Role == "Admin" || Role == "SuperAdmin";
+    public bool IsSuperAdmin => Role == "SuperAdmin";
 }

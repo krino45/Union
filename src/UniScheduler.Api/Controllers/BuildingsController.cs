@@ -61,28 +61,80 @@ public class BuildingsController : ControllerBase
         return NoContent();
     }
 
-    [HttpGet("{id:guid}/floorplan/draft")]
-    public async Task<ActionResult<FloorPlanDraftDto>> GetFloorPlanDraft(Guid id, CancellationToken ct)
+    [HttpGet("{buildingId:guid}/floorplans")]
+    public async Task<ActionResult<List<FloorPlanSummaryDto>>> ListFloorPlans(Guid buildingId, CancellationToken ct)
+        => Ok(await _mediator.Send(new GetFloorPlansQuery(buildingId), ct));
+
+    [HttpPost("{buildingId:guid}/floorplans/from-draft")]
+    public async Task<ActionResult> PublishDraftAsFloorPlan(Guid buildingId, [FromBody] PublishDraftRequest req, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetFloorPlanDraftQuery(id), ct);
-        if (result == null) return NotFound();
-        return Ok(result);
+        var id = await _mediator.Send(new PublishFloorPlanDraftCommand(req.DraftId, req.Name), ct);
+        return Ok(new { id });
     }
 
-    [HttpPut("{id:guid}/floorplan/draft")]
-    public async Task<IActionResult> SaveFloorPlanDraft(Guid id, [FromBody] SaveFloorPlanDraftRequest req, CancellationToken ct)
+    [HttpPatch("{buildingId:guid}/floorplans/{floorPlanId:guid}/activate")]
+    public async Task<IActionResult> ActivateFloorPlan(Guid buildingId, Guid floorPlanId, CancellationToken ct)
     {
-        await _mediator.Send(new SaveFloorPlanDraftCommand(id, req.DraftJson), ct);
+        await _mediator.Send(new ActivateFloorPlanCommand(floorPlanId), ct);
         return NoContent();
     }
 
-    [HttpDelete("{id:guid}/floorplan/draft")]
-    public async Task<IActionResult> DeleteFloorPlanDraft(Guid id, CancellationToken ct)
+    [HttpDelete("{buildingId:guid}/floorplans/{floorPlanId:guid}")]
+    public async Task<IActionResult> DeleteFloorPlan(Guid buildingId, Guid floorPlanId, CancellationToken ct)
     {
-        await _mediator.Send(new DeleteFloorPlanDraftCommand(id), ct);
+        await _mediator.Send(new DeleteFloorPlanCommand(floorPlanId), ct);
+        return NoContent();
+    }
+
+    // ─── Floor plan drafts (multi-user, named, owner-private by default) ──────────────────
+
+    [HttpGet("{buildingId:guid}/floorplan/drafts")]
+    public async Task<ActionResult<List<FloorPlanDraftSummaryDto>>> ListFloorPlanDrafts(Guid buildingId, CancellationToken ct)
+        => Ok(await _mediator.Send(new GetFloorPlanDraftsQuery(buildingId), ct));
+
+    [HttpPost("{buildingId:guid}/floorplan/drafts")]
+    public async Task<ActionResult<Guid>> CreateFloorPlanDraft(Guid buildingId, [FromBody] CreateFloorPlanDraftRequest req, CancellationToken ct)
+    {
+        var id = await _mediator.Send(new CreateFloorPlanDraftCommand(buildingId, req.Name, req.DraftJson ?? string.Empty), ct);
+        return Ok(new { id });
+    }
+
+    [HttpGet("{buildingId:guid}/floorplan/drafts/{draftId:guid}")]
+    public async Task<ActionResult<FloorPlanDraftDto>> GetFloorPlanDraft(Guid buildingId, Guid draftId, CancellationToken ct)
+        => Ok(await _mediator.Send(new GetFloorPlanDraftQuery(draftId), ct));
+
+    [HttpPut("{buildingId:guid}/floorplan/drafts/{draftId:guid}")]
+    public async Task<IActionResult> UpdateFloorPlanDraft(Guid buildingId, Guid draftId, [FromBody] UpdateFloorPlanDraftRequest req, CancellationToken ct)
+    {
+        await _mediator.Send(new UpdateFloorPlanDraftCommand(draftId, req.DraftJson), ct);
+        return NoContent();
+    }
+
+    [HttpPatch("{buildingId:guid}/floorplan/drafts/{draftId:guid}/access")]
+    public async Task<IActionResult> SetFloorPlanDraftAccess(Guid buildingId, Guid draftId, [FromBody] SetDraftAccessRequest req, CancellationToken ct)
+    {
+        await _mediator.Send(new SetFloorPlanDraftAccessCommand(draftId, req.IsOpenToAdmins), ct);
+        return NoContent();
+    }
+
+    [HttpPatch("{buildingId:guid}/floorplan/drafts/{draftId:guid}/name")]
+    public async Task<IActionResult> RenameFloorPlanDraft(Guid buildingId, Guid draftId, [FromBody] RenameDraftRequest req, CancellationToken ct)
+    {
+        await _mediator.Send(new RenameFloorPlanDraftCommand(draftId, req.Name), ct);
+        return NoContent();
+    }
+
+    [HttpDelete("{buildingId:guid}/floorplan/drafts/{draftId:guid}")]
+    public async Task<IActionResult> DeleteFloorPlanDraft(Guid buildingId, Guid draftId, CancellationToken ct)
+    {
+        await _mediator.Send(new DeleteFloorPlanDraftCommand(draftId), ct);
         return NoContent();
     }
 }
 
 public record UpdateBuildingRequest(string ShortCode, string Address, int NumberOfFloors = 5, int NumberOfBasementFloors = 0);
-public record SaveFloorPlanDraftRequest(string DraftJson);
+public record PublishDraftRequest(Guid DraftId, string Name);
+public record CreateFloorPlanDraftRequest(string Name, string? DraftJson);
+public record UpdateFloorPlanDraftRequest(string DraftJson);
+public record SetDraftAccessRequest(bool IsOpenToAdmins);
+public record RenameDraftRequest(string Name);

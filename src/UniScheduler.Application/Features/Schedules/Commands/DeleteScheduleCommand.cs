@@ -12,7 +12,9 @@ public record DeleteScheduleCommand(Guid ScheduleId) : IRequest;
 public class DeleteScheduleCommandHandler : IRequestHandler<DeleteScheduleCommand>
 {
     private readonly IApplicationDbContext _db;
-    public DeleteScheduleCommandHandler(IApplicationDbContext db) => _db = db;
+    private readonly ICurrentUserService _user;
+    public DeleteScheduleCommandHandler(IApplicationDbContext db, ICurrentUserService user)
+    { _db = db; _user = user; }
 
     public async Task Handle(DeleteScheduleCommand request, CancellationToken cancellationToken)
     {
@@ -21,6 +23,9 @@ public class DeleteScheduleCommandHandler : IRequestHandler<DeleteScheduleComman
 
         if (schedule.Status == ScheduleStatus.Published)
             throw new InvalidOperationException("Cannot delete a published schedule. Archive it first.");
+
+        if (schedule.Status == ScheduleStatus.Draft)
+            ScheduleAccessGuard.EnsureOwnerOnly(schedule, _user, "удалить черновик");
 
         _db.Schedules.Remove(schedule);
         await _db.SaveChangesAsync(cancellationToken);

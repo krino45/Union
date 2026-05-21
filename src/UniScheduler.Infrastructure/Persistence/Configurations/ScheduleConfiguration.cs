@@ -14,6 +14,8 @@ public class ScheduleConfiguration : IEntityTypeConfiguration<Schedule>
         builder.Property(s => s.StartDate).IsRequired();
         builder.Property(s => s.EndDate).IsRequired();
         builder.Property(s => s.Status).IsRequired();
+        builder.Property(s => s.Name).HasMaxLength(200);
+        builder.Property(s => s.IsOpenToAdmins).HasDefaultValue(false);
 
         builder.HasOne(s => s.Faculty)
             .WithMany()
@@ -25,6 +27,12 @@ public class ScheduleConfiguration : IEntityTypeConfiguration<Schedule>
             .WithMany()
             .HasForeignKey(s => s.UniversityId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(s => s.Owner)
+            .WithMany()
+            .HasForeignKey(s => s.OwnerUserId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
 

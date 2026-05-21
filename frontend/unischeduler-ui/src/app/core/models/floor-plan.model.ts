@@ -51,3 +51,28 @@ export interface SaveFloorPlanEdgeRequest {
   toNodeId: string;
   distanceMeters: number;
 }
+
+export interface FloorPlanDraftSummary {
+  id: string;
+  buildingId: string;
+  name: string;
+  isOpenToAdmins: boolean;
+  lastModified: string;
+  ownerUserId: string;
+  ownerUsername: string;
+  isMine: boolean;
+}
+
+export interface FloorPlanDraft extends FloorPlanDraftSummary {
+  draftJson: string;
+}
+
+export interface FloorPlanSummary {
+  id: string;
+  buildingId: string;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+  createdByUserId: string | null;
+  createdByUsername: string | null;
+}

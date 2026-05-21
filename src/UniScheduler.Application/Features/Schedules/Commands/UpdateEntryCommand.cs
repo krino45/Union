@@ -19,11 +19,13 @@ public class UpdateEntryCommandHandler : IRequestHandler<UpdateEntryCommand, Sch
 {
     private readonly IApplicationDbContext _db;
     private readonly IConflictDetector _conflict;
+    private readonly ICurrentUserService _user;
 
-    public UpdateEntryCommandHandler(IApplicationDbContext db, IConflictDetector conflict)
+    public UpdateEntryCommandHandler(IApplicationDbContext db, IConflictDetector conflict, ICurrentUserService user)
     {
         _db = db;
         _conflict = conflict;
+        _user = user;
     }
 
     public async Task<ScheduleEntryDto> Handle(UpdateEntryCommand r, CancellationToken cancellationToken)
@@ -37,8 +39,11 @@ public class UpdateEntryCommandHandler : IRequestHandler<UpdateEntryCommand, Sch
             ?? throw new NotFoundException(nameof(ScheduleEntry), r.EntryId);
 
         var schedule = await _db.Schedules.FindAsync(new object[] { entry.ScheduleId }, cancellationToken);
-        if (schedule?.Status == ScheduleStatus.Archived)
+        if (schedule == null)
+            throw new NotFoundException(nameof(Schedule), entry.ScheduleId);
+        if (schedule.Status == ScheduleStatus.Archived)
             throw new InvalidOperationException("Cannot modify an archived schedule.");
+        ScheduleAccessGuard.EnsureCanEdit(schedule, _user);
 
         var allOtherEntries = await _db.ScheduleEntries
             .Include(e => e.StudentGroups)
@@ -69,8 +74,11 @@ public class UpdateEntryCommandHandler : IRequestHandler<UpdateEntryCommand, Sch
         foreach (var add in newGroupIds.Where(id => !existingGroupIds.Contains(id)))
             _db.ScheduleEntryStudentGroups.Add(new ScheduleEntryStudentGroup { ScheduleEntryId = r.EntryId, StudentGroupId = add });
 
-        if (schedule?.Status == ScheduleStatus.Published)
+        if (schedule.Status == ScheduleStatus.Published)
+        {
             schedule.Status = ScheduleStatus.Draft;
+            ScheduleAccessGuard.TransferOwnershipOnDemote(schedule, _user);
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 

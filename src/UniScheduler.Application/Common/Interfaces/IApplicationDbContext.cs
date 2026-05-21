@@ -8,6 +8,8 @@ public interface IApplicationDbContext
     DbSet<University> Universities { get; }
     DbSet<UserUniversityAccess> UserUniversityAccesses { get; }
     DbSet<FloorPlanDraft> FloorPlanDrafts { get; }
+    DbSet<FloorPlan> FloorPlans { get; }
+    DbSet<Invitation> Invitations { get; }
     DbSet<Building> Buildings { get; }
     DbSet<BuildingDistance> BuildingDistances { get; }
     DbSet<FloorPlanNode> FloorPlanNodes { get; }

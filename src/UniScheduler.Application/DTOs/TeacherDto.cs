@@ -9,7 +9,8 @@ public record TeacherDto(
     string MiddleName,
     string DisplayName,
     string Email,
-    List<TeacherSubjectDto> Subjects
+    List<TeacherSubjectDto> Subjects,
+    int LoadHoursPerWeek = 0
 );
 
 public record TeacherSubjectDto(Guid SubjectId, string SubjectName, LessonType LessonType, RoomType? PreferredRoomType);

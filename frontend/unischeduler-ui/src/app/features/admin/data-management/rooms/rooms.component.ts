@@ -98,6 +98,15 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
             </mat-chip>
           </td>
         </ng-container>
+        <ng-container matColumnDef="utilization">
+          <th mat-header-cell *matHeaderCellDef>Загруженность</th>
+          <td mat-cell *matCellDef="let r">
+            <mat-chip [class]="'util-chip util-' + utilizationBand(r.utilizationPercent)"
+                      [matTooltip]="utilizationTooltip(r.utilizationPercent)">
+              {{ r.utilizationPercent || 0 }}%
+            </mat-chip>
+          </td>
+        </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let r">
@@ -127,6 +136,17 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     .chip-enabled { background: #e8f5e9; color: #1b5e20; font-size: 11px; }
     .chip-disabled { background: #fce4ec; color: #880e4f; font-size: 11px; }
     .row-disabled td { opacity: 0.5; }
+
+    /* Utilization chip — value-graded green→amber→red, paired light/dark */
+    .util-chip { font-size: 11px; font-weight: 600; }
+    .util-empty   { background: #f5f5f5; color: #9e9e9e; }
+    .util-low     { background: #e8f5e9; color: #1b5e20; }
+    .util-medium  { background: #fff3e0; color: #e65100; }
+    .util-high    { background: #ffebee; color: #b71c1c; }
+    :host-context(body.dark-mode) .util-empty  { background: #2a2a2a; color: #777; }
+    :host-context(body.dark-mode) .util-low    { background: #1b3a1d; color: #a5d6a7; }
+    :host-context(body.dark-mode) .util-medium { background: #4a2c10; color: #ffb74d; }
+    :host-context(body.dark-mode) .util-high   { background: #4a1818; color: #ef9a9a; }
   `]
 })
 export class RoomsComponent implements OnInit {
@@ -134,7 +154,21 @@ export class RoomsComponent implements OnInit {
   buildings: Building[] = [];
   departments: Department[] = [];
   loading = true;
-  columns = ['number', 'building', 'location', 'type', 'capacity', 'features', 'department', 'enabled', 'allowedTypes', 'actions'];
+  columns = ['number', 'building', 'location', 'type', 'capacity', 'features', 'department', 'enabled', 'utilization', 'allowedTypes', 'actions'];
+
+  utilizationBand(pct: number | undefined): 'empty' | 'low' | 'medium' | 'high' {
+    const p = pct ?? 0;
+    if (p <= 0) return 'empty';
+    if (p < 30) return 'low';
+    if (p < 70) return 'medium';
+    return 'high';
+  }
+
+  utilizationTooltip(pct: number | undefined): string {
+    const p = pct ?? 0;
+    if (p <= 0) return 'Нет занятий в опубликованных расписаниях';
+    return `${p}% от 42 пар/нед (опубликованные расписания)`;
+  }
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
 

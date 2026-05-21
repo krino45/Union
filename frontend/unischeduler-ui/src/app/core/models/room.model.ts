@@ -16,6 +16,7 @@ export interface Room {
   isEnabled: boolean;
   departmentId?: string | null;
   departmentName?: string | null;
+  utilizationPercent?: number;
 }
 
 export interface CreateRoomDto {

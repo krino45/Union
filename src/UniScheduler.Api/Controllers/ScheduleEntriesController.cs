@@ -42,6 +42,13 @@ public class ScheduleEntriesController : ControllerBase
             req.SubjectId, req.TeacherId, req.RoomId, req.GroupIds,
             req.DayOfWeek, req.PairNumber, req.WeekType, req.LessonType, req.IsOnline), ct));
 
+    /// <summary>Edits one half of a Both-week lesson, splitting it into Odd + Even rows if needed.</summary>
+    [HttpPost("{id:guid}/split-edit")]
+    public async Task<ActionResult<ScheduleEntryDto>> SplitEdit(Guid id, [FromBody] SplitEditRequest req, CancellationToken ct)
+        => Ok(await _mediator.Send(new SplitAndEditEntryCommand(id,
+            req.TargetWeek, req.SubjectId, req.TeacherId, req.RoomId, req.GroupIds,
+            req.DayOfWeek, req.PairNumber, req.LessonType, req.IsOnline), ct));
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
@@ -82,4 +89,11 @@ public record UpdateRequest(
     Guid SubjectId, Guid TeacherId, Guid? RoomId,
     List<Guid> GroupIds,
     RussianDayOfWeek DayOfWeek, int PairNumber, WeekType WeekType,
+    LessonType LessonType, bool IsOnline);
+
+public record SplitEditRequest(
+    WeekType TargetWeek,
+    Guid SubjectId, Guid TeacherId, Guid? RoomId,
+    List<Guid> GroupIds,
+    RussianDayOfWeek DayOfWeek, int PairNumber,
     LessonType LessonType, bool IsOnline);

@@ -7,6 +7,7 @@ public class University : Entity
     public string Name { get; set; } = string.Empty;
     public string ShortName { get; set; } = string.Empty;
     public string? LogoUrl { get; set; }
+    public string? City { get; set; }
 
     public ICollection<Faculty> Faculties { get; set; } = new List<Faculty>();
     public ICollection<Building> Buildings { get; set; } = new List<Building>();

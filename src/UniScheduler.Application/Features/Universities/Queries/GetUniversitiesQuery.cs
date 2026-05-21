@@ -5,7 +5,7 @@ using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.Universities.Queries;
 
-public record UniversityDto(Guid Id, string Name, string ShortName, string? LogoUrl);
+public record UniversityDto(Guid Id, string Name, string ShortName, string? LogoUrl, string? City);
 public record UniversityUserDto(Guid UserId, string Username, string SystemRole, UniversityRole UniversityRole);
 
 public record GetUniversitiesQuery : IRequest<List<UniversityDto>>;
@@ -19,7 +19,7 @@ public class GetUniversitiesQueryHandler : IRequestHandler<GetUniversitiesQuery,
     public async Task<List<UniversityDto>> Handle(GetUniversitiesQuery request, CancellationToken cancellationToken)
         => await _db.Universities
             .OrderBy(u => u.Name)
-            .Select(u => new UniversityDto(u.Id, u.Name, u.ShortName, u.LogoUrl))
+            .Select(u => new UniversityDto(u.Id, u.Name, u.ShortName, u.LogoUrl, u.City))
             .ToListAsync(cancellationToken);
 }
 

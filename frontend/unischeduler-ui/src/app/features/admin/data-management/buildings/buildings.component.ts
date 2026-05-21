@@ -95,7 +95,6 @@ import { Building, BuildingDistance } from '../../../../core/models';
     <div class="distances-section">
       <div class="section-header">
         <h2>Расстояния между корпусами (метры)</h2>
-        <button mat-button (click)="refreshDistances()"><mat-icon>refresh</mat-icon></button>
       </div>
       <mat-card>
         <div class="distance-grid" *ngIf="buildings.length > 1">

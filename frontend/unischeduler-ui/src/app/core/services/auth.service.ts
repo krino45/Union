@@ -59,6 +59,18 @@ export class AuthService {
     );
   }
 
+  registerFromInvitation(token: string, username: string, password: string): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/register-from-invitation`, { token, username, password }).pipe(
+      tap(response => this.storeUser(response))
+    );
+  }
+
+  acceptInvitation(token: string): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/accept-invitation`, { token }).pipe(
+      tap(response => this.storeUser(response, true))
+    );
+  }
+
   renewToken(): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/renew`, {}).pipe(
       tap(response => this.storeUser(response, true))

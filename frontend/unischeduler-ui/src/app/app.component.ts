@@ -26,7 +26,7 @@ import { AuthService } from './core/services/auth.service';
              [matTooltip]="auth.canSwitchUniversity ? 'Сменить университет' : ''">
           <mat-icon>school</mat-icon>
           <div class="header-text">
-            <div class="app-name">UniScheduler</div>
+            <div class="app-name">Юниан</div>
             <div class="uni-name" *ngIf="auth.currentUniversity">{{ auth.currentUniversity.shortName }}</div>
           </div>
           <mat-icon class="switch-icon" *ngIf="auth.canSwitchUniversity">swap_horiz</mat-icon>
@@ -133,7 +133,7 @@ import { AuthService } from './core/services/auth.service';
       <mat-sidenav-content>
         <mat-toolbar color="primary" *ngIf="auth.isAuthenticated">
           <span class="uni-title">
-            {{ auth.currentUniversity?.universityName || 'UniScheduler' }}
+            {{ auth.currentUniversity?.universityName || 'Юниан' }}
           </span>
           <span class="spacer"></span>
           <button mat-button routerLink="/admin/floor-plan" routerLinkActive="active-header-link"

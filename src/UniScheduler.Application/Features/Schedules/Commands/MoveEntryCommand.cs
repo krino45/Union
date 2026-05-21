@@ -19,11 +19,13 @@ public class MoveEntryCommandHandler : IRequestHandler<MoveEntryCommand, Schedul
 {
     private readonly IApplicationDbContext _db;
     private readonly IConflictDetector _conflict;
+    private readonly ICurrentUserService _user;
 
-    public MoveEntryCommandHandler(IApplicationDbContext db, IConflictDetector conflict)
+    public MoveEntryCommandHandler(IApplicationDbContext db, IConflictDetector conflict, ICurrentUserService user)
     {
         _db = db;
         _conflict = conflict;
+        _user = user;
     }
 
     public async Task<ScheduleEntryDto> Handle(MoveEntryCommand request, CancellationToken cancellationToken)
@@ -57,10 +59,16 @@ public class MoveEntryCommandHandler : IRequestHandler<MoveEntryCommand, Schedul
         entry.RoomId = request.NewRoomId;
 
         var schedule = await _db.Schedules.FindAsync(new object[] { entry.ScheduleId }, cancellationToken);
-        if (schedule?.Status == ScheduleStatus.Archived)
+        if (schedule == null)
+            throw new NotFoundException(nameof(Schedule), entry.ScheduleId);
+        if (schedule.Status == ScheduleStatus.Archived)
             throw new InvalidOperationException("Cannot modify an archived schedule.");
-        if (schedule?.Status == ScheduleStatus.Published)
+        ScheduleAccessGuard.EnsureCanEdit(schedule, _user);
+        if (schedule.Status == ScheduleStatus.Published)
+        {
             schedule.Status = ScheduleStatus.Draft;
+            ScheduleAccessGuard.TransferOwnershipOnDemote(schedule, _user);
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 

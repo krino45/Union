@@ -9,6 +9,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent)
   },
   {
+    path: 'register',
+    loadComponent: () => import('./features/auth/register/register.component').then(m => m.RegisterComponent)
+  },
+  {
     path: 'select-university',
     canActivate: [authGuard],
     loadComponent: () => import('./features/university-select/university-select.component').then(m => m.UniversitySelectComponent)

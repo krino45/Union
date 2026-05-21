@@ -55,6 +55,20 @@ public class SchedulesController : ControllerBase
         return NoContent();
     }
 
+    [HttpPatch("{id:guid}/access")]
+    public async Task<IActionResult> SetAccess(Guid id, [FromBody] SetScheduleAccessRequest req, CancellationToken ct)
+    {
+        await mediator.Send(new SetScheduleAccessCommand(id, req.IsOpenToAdmins), ct);
+        return NoContent();
+    }
+
+    [HttpPatch("{id:guid}/name")]
+    public async Task<IActionResult> Rename(Guid id, [FromBody] RenameScheduleRequest req, CancellationToken ct)
+    {
+        await mediator.Send(new RenameScheduleCommand(id, req.Name), ct);
+        return NoContent();
+    }
+
     [HttpPost("{id:guid}/archive")]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
     {
@@ -72,6 +86,14 @@ public class SchedulesController : ControllerBase
     [HttpPost("{id:guid}/update-score")]
     public async Task<ActionResult<int>> UpdateScore(Guid id, CancellationToken ct)
         => Ok(await mediator.Send(new UpdateBaseScoreCommand(id), ct));
+
+    [HttpPost("{id:guid}/validate-edit")]
+    public async Task<ActionResult<List<ValidationIssue>>> ValidateEdit(Guid id, [FromBody] ValidateEditBody body, CancellationToken ct)
+    {
+        var q = new ValidateEditQuery(id, body.EntryId, body.SubjectId, body.TeacherId, body.RoomId,
+            body.GroupIds, body.DayOfWeek, body.PairNumber, body.WeekType, body.LessonType, body.IsOnline);
+        return Ok(await mediator.Send(q, ct));
+    }
 
     [HttpPost("{id:guid}/generate")]
     public IActionResult Generate(Guid id, [FromBody] GenerateRequest? body)
@@ -138,3 +160,16 @@ public class SchedulesController : ControllerBase
 
 public record ImportFromJsonBody(bool Replace, List<JsonEntryImport> Entries);
 public record GenerateRequest(int TimeoutSeconds = 120);
+public record SetScheduleAccessRequest(bool IsOpenToAdmins);
+public record RenameScheduleRequest(string Name);
+public record ValidateEditBody(
+    Guid? EntryId,
+    Guid SubjectId,
+    Guid TeacherId,
+    Guid? RoomId,
+    List<Guid> GroupIds,
+    RussianDayOfWeek DayOfWeek,
+    int PairNumber,
+    WeekType WeekType,
+    LessonType LessonType,
+    bool IsOnline);

@@ -15,7 +15,10 @@ import {
   TeacherAvailability, CreateTeacherAvailabilityDto, UpdateTeacherAvailabilityDto,
   RescheduleRequest, CreateRescheduleRequestDto, ResolveRescheduleDto,
   StudyPlan, CalendarPlan, UpsertStudyPlanDto, UpsertCalendarPlanDto, PlanProgressItem,
-  FloorPlan, SaveFloorPlanRequest
+  FloorPlan, SaveFloorPlanRequest,
+  FloorPlanDraftSummary, FloorPlanDraft, FloorPlanSummary,
+  ValidationIssue, ValidateEditBody, SplitEditBody, InvitationDto,
+  InvitationInfo
 } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -55,24 +58,51 @@ export class ApiService {
   saveFloorPlan(buildingId: string, req: SaveFloorPlanRequest): Observable<void> {
     return this.http.put<void>(`${this.base}/buildings/${buildingId}/floorplan`, req);
   }
-  getFloorPlanDraft(buildingId: string): Observable<{ draftJson: string; lastModified: string } | null> {
-    return this.http.get<{ draftJson: string; lastModified: string }>(`${this.base}/buildings/${buildingId}/floorplan/draft`);
+  // Floor plan drafts (multi-user, named, owner-private)
+  listFloorPlanDrafts(buildingId: string): Observable<FloorPlanDraftSummary[]> {
+    return this.http.get<FloorPlanDraftSummary[]>(`${this.base}/buildings/${buildingId}/floorplan/drafts`);
   }
-  saveFloorPlanDraft(buildingId: string, draftJson: string): Observable<void> {
-    return this.http.put<void>(`${this.base}/buildings/${buildingId}/floorplan/draft`, { draftJson });
+  createFloorPlanDraft(buildingId: string, name: string, draftJson?: string): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>(`${this.base}/buildings/${buildingId}/floorplan/drafts`, { name, draftJson });
   }
-  deleteFloorPlanDraft(buildingId: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/buildings/${buildingId}/floorplan/draft`);
+  getFloorPlanDraft(buildingId: string, draftId: string): Observable<FloorPlanDraft> {
+    return this.http.get<FloorPlanDraft>(`${this.base}/buildings/${buildingId}/floorplan/drafts/${draftId}`);
+  }
+  saveFloorPlanDraft(buildingId: string, draftId: string, draftJson: string): Observable<void> {
+    return this.http.put<void>(`${this.base}/buildings/${buildingId}/floorplan/drafts/${draftId}`, { draftJson });
+  }
+  setFloorPlanDraftAccess(buildingId: string, draftId: string, isOpenToAdmins: boolean): Observable<void> {
+    return this.http.patch<void>(`${this.base}/buildings/${buildingId}/floorplan/drafts/${draftId}/access`, { isOpenToAdmins });
+  }
+  renameFloorPlanDraft(buildingId: string, draftId: string, name: string): Observable<void> {
+    return this.http.patch<void>(`${this.base}/buildings/${buildingId}/floorplan/drafts/${draftId}/name`, { name });
+  }
+  deleteFloorPlanDraft(buildingId: string, draftId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/buildings/${buildingId}/floorplan/drafts/${draftId}`);
+  }
+
+  // Floor plan versions (published per-building, one active at a time)
+  listFloorPlans(buildingId: string): Observable<FloorPlanSummary[]> {
+    return this.http.get<FloorPlanSummary[]>(`${this.base}/buildings/${buildingId}/floorplans`);
+  }
+  publishFloorPlanFromDraft(buildingId: string, draftId: string, name: string): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>(`${this.base}/buildings/${buildingId}/floorplans/from-draft`, { draftId, name });
+  }
+  activateFloorPlan(buildingId: string, floorPlanId: string): Observable<void> {
+    return this.http.patch<void>(`${this.base}/buildings/${buildingId}/floorplans/${floorPlanId}/activate`, {});
+  }
+  deleteFloorPlanVersion(buildingId: string, floorPlanId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/buildings/${buildingId}/floorplans/${floorPlanId}`);
   }
 
   //  Universities (SuperAdmin)
-  getUniversities(): Observable<{ id: string; name: string; shortName: string; logoUrl?: string }[]> {
+  getUniversities(): Observable<{ id: string; name: string; shortName: string; logoUrl?: string; city?: string }[]> {
     return this.http.get<any[]>(`${this.base}/universities`);
   }
-  createUniversity(dto: { name: string; shortName: string; logoUrl?: string }): Observable<any> {
+  createUniversity(dto: { name: string; shortName: string; logoUrl?: string; city?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/universities`, dto);
   }
-  updateUniversity(id: string, dto: { name: string; shortName: string; logoUrl?: string }): Observable<void> {
+  updateUniversity(id: string, dto: { name: string; shortName: string; logoUrl?: string; city?: string }): Observable<void> {
     return this.http.put<void>(`${this.base}/universities/${id}`, dto);
   }
   deleteUniversity(id: string): Observable<void> {
@@ -87,8 +117,33 @@ export class ApiService {
   revokeUniversityUser(universityId: string, userId: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/universities/${universityId}/users/${userId}`);
   }
-  getUsers(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/users`);
+  grantSelfUniversityAccess(universityId: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/universities/${universityId}/grant-self`, {});
+  }
+  getUsers(q?: string): Observable<{ id: string; username: string; role: string }[]> {
+    let params = new HttpParams();
+    if (q) params = params.set('q', q);
+    return this.http.get<any[]>(`${this.base}/users`, { params });
+  }
+
+  // Invitations (admin/superadmin)
+  listInvitations(universityId: string): Observable<InvitationDto[]> {
+    return this.http.get<InvitationDto[]>(`${this.base}/universities/${universityId}/invitations`);
+  }
+  createInvitation(universityId: string, email: string, universityRole: 'Admin' | 'Teacher', teacherId?: string): Observable<{ invitationId: string; email: string; expiresAt: string }> {
+    return this.http.post<any>(`${this.base}/universities/${universityId}/invitations`, { email, universityRole, teacherId });
+  }
+  cancelInvitation(invitationId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/universities/invitations/${invitationId}`);
+  }
+  registerFromInvitation(token: string, username: string, password: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/auth/register-from-invitation`, { token, username, password });
+  }
+  acceptInvitation(token: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/auth/accept-invitation`, { token });
+  }
+  getInvitationInfo(token: string): Observable<InvitationInfo> {
+    return this.http.get<InvitationInfo>(`${this.base}/auth/invitation/${encodeURIComponent(token)}`);
   }
 
   //  Departments
@@ -238,6 +293,18 @@ export class ApiService {
 
   publishSchedule(id: string): Observable<void> {
     return this.http.post<void>(`${this.base}/schedules/${id}/publish`, {});
+  }
+  setScheduleAccess(id: string, isOpenToAdmins: boolean): Observable<void> {
+    return this.http.patch<void>(`${this.base}/schedules/${id}/access`, { isOpenToAdmins });
+  }
+  renameSchedule(id: string, name: string): Observable<void> {
+    return this.http.patch<void>(`${this.base}/schedules/${id}/name`, { name });
+  }
+  validateScheduleEdit(id: string, body: ValidateEditBody): Observable<ValidationIssue[]> {
+    return this.http.post<ValidationIssue[]>(`${this.base}/schedules/${id}/validate-edit`, body);
+  }
+  splitEditEntry(id: string, body: SplitEditBody): Observable<ScheduleEntry> {
+    return this.http.post<ScheduleEntry>(`${this.base}/schedule-entries/${id}/split-edit`, body);
   }
   archiveSchedule(id: string): Observable<void> {
     return this.http.post<void>(`${this.base}/schedules/${id}/archive`, {});

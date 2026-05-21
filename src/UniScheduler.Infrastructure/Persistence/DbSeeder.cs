@@ -6,8 +6,7 @@ namespace UniScheduler.Infrastructure.Persistence;
 
 public static class DbSeeder
 {
-    // Fixed GUID for the default university so backfill migrations can reference it deterministically.
-    public static readonly Guid DefaultUniversityId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+    private static readonly Guid DefaultUniversityId = Guid.Parse("00000000-0000-0000-0000-000000000001");
 
     public static async Task SeedAsync(ApplicationDbContext db)
     {

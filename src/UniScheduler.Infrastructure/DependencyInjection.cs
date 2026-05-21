@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Infrastructure.Auth;
+using UniScheduler.Infrastructure.Email;
 using UniScheduler.Infrastructure.Excel;
 using UniScheduler.Infrastructure.Persistence;
 using UniScheduler.Infrastructure.Scheduler;
@@ -30,6 +31,7 @@ public static class DependencyInjection
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<ICurrentUniversityService, CurrentUniversityService>();
+        services.AddScoped<IEmailSender, ConsoleEmailSender>();
 
         return services;
     }

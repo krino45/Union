@@ -62,7 +62,7 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "UniScheduler API", Version = "v1", Description = "University Scheduler" });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Юниан API", Version = "v1", Description = "Юниан — University Scheduler" });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -80,6 +80,10 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
+
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 var app = builder.Build();
 
@@ -100,7 +104,7 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "UniScheduler v1"));
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Юниан v1"));
 }
 
 app.UseCors("AllowAngular");

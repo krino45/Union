@@ -16,4 +16,5 @@ public class Building : Entity
     public ICollection<BuildingDistance> DistancesTo { get; set; } = new List<BuildingDistance>();
     public ICollection<FloorPlanNode> FloorPlanNodes { get; set; } = new List<FloorPlanNode>();
     public ICollection<FloorPlanEdge> FloorPlanEdges { get; set; } = new List<FloorPlanEdge>();
+    public ICollection<FloorPlan> FloorPlans { get; set; } = new List<FloorPlan>();
 }

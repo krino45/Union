@@ -13,7 +13,12 @@ public record ScheduleDto(
     bool AllowCrossFacultyLessons,
     ScheduleStatus Status,
     DateTime? GeneratedAt,
-    string? GenerationNotes
+    string? GenerationNotes,
+    string? Name = null,
+    Guid? OwnerUserId = null,
+    string? OwnerUsername = null,
+    bool IsOpenToAdmins = false,
+    bool IsMine = false
 );
 
 public record ScheduleEntryDto(

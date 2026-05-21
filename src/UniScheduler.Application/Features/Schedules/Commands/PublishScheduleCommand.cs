@@ -12,12 +12,17 @@ public record PublishScheduleCommand(Guid ScheduleId) : IRequest;
 public class PublishScheduleCommandHandler : IRequestHandler<PublishScheduleCommand>
 {
     private readonly IApplicationDbContext _db;
-    public PublishScheduleCommandHandler(IApplicationDbContext db) => _db = db;
+    private readonly ICurrentUserService _user;
+    public PublishScheduleCommandHandler(IApplicationDbContext db, ICurrentUserService user)
+    { _db = db; _user = user; }
 
     public async Task Handle(PublishScheduleCommand request, CancellationToken cancellationToken)
     {
         var schedule = await _db.Schedules.FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken)
             ?? throw new NotFoundException(nameof(Schedule), request.ScheduleId);
+
+        ScheduleAccessGuard.EnsureOwnerOnly(schedule, _user, "опубликовать расписание");
+
         schedule.Status = ScheduleStatus.Published;
         await _db.SaveChangesAsync(cancellationToken);
     }

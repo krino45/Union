@@ -12,13 +12,16 @@ public record CreateScheduleCommand(
     DateOnly StartDate,
     DateOnly EndDate,
     Guid? FacultyId,
-    bool AllowCrossFacultyLessons) : IRequest<ScheduleDto>;
+    bool AllowCrossFacultyLessons,
+    string? Name = null) : IRequest<ScheduleDto>;
 
 public class CreateScheduleCommandHandler : IRequestHandler<CreateScheduleCommand, ScheduleDto>
 {
     private readonly IApplicationDbContext db;
+    private readonly ICurrentUserService user;
 
-    public CreateScheduleCommandHandler(IApplicationDbContext db) => this.db = db;
+    public CreateScheduleCommandHandler(IApplicationDbContext db, ICurrentUserService user)
+    { this.db = db; this.user = user; }
 
     public async Task<ScheduleDto> Handle(CreateScheduleCommand r, CancellationToken cancellationToken)
     {
@@ -30,7 +33,10 @@ public class CreateScheduleCommandHandler : IRequestHandler<CreateScheduleComman
             EndDate = r.EndDate,
             FacultyId = r.FacultyId,
             AllowCrossFacultyLessons = r.AllowCrossFacultyLessons,
-            Status = ScheduleStatus.Draft
+            Status = ScheduleStatus.Draft,
+            OwnerUserId = user.UserId,
+            Name = string.IsNullOrWhiteSpace(r.Name) ? null : r.Name.Trim(),
+            IsOpenToAdmins = false
         };
         db.Schedules.Add(schedule);
         await db.SaveChangesAsync(cancellationToken);
@@ -45,6 +51,7 @@ public class CreateScheduleCommandHandler : IRequestHandler<CreateScheduleComman
         return new ScheduleDto(schedule.Id, schedule.AcademicYear, schedule.Term,
             schedule.StartDate, schedule.EndDate,
             schedule.FacultyId, facultyName, schedule.AllowCrossFacultyLessons,
-            schedule.Status, null, null);
+            schedule.Status, null, null,
+            schedule.Name, schedule.OwnerUserId, null, schedule.IsOpenToAdmins, true);
     }
 }

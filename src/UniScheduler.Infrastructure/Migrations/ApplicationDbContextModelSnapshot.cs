@@ -214,6 +214,46 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.ToTable("Faculties");
                 });
 
+            modelBuilder.Entity("UniScheduler.Domain.Entities.FloorPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BuildingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FloorPlanJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuildingId")
+                        .IsUnique()
+                        .HasFilter("\"IsActive\" = TRUE");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.ToTable("FloorPlans");
+                });
+
             modelBuilder.Entity("UniScheduler.Domain.Entities.FloorPlanDraft", b =>
                 {
                     b.Property<Guid>("Id")
@@ -227,13 +267,27 @@ namespace UniScheduler.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsOpenToAdmins")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<DateTime>("LastModified")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("BuildingId")
-                        .IsUnique();
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("BuildingId", "OwnerUserId");
 
                     b.ToTable("FloorPlanDrafts");
                 });
@@ -322,6 +376,69 @@ namespace UniScheduler.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("GroupBlockedDays");
+                });
+
+            modelBuilder.Entity("UniScheduler.Domain.Entities.Invitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ConsumedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("InvitedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OtpHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("SystemRole")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<Guid?>("TeacherId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UniversityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("UniversityRole")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConsumedByUserId");
+
+                    b.HasIndex("Email");
+
+                    b.HasIndex("InvitedByUserId");
+
+                    b.HasIndex("OtpHash")
+                        .IsUnique();
+
+                    b.HasIndex("TeacherId");
+
+                    b.HasIndex("UniversityId");
+
+                    b.ToTable("Invitations");
                 });
 
             modelBuilder.Entity("UniScheduler.Domain.Entities.PairTimeSlot", b =>
@@ -483,6 +600,18 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Property<string>("GenerationNotes")
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsOpenToAdmins")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 
@@ -498,6 +627,8 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("FacultyId");
+
+                    b.HasIndex("OwnerUserId");
 
                     b.HasIndex("UniversityId");
 
@@ -887,6 +1018,10 @@ namespace UniScheduler.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("City")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("LogoUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -1011,6 +1146,24 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Navigation("University");
                 });
 
+            modelBuilder.Entity("UniScheduler.Domain.Entities.FloorPlan", b =>
+                {
+                    b.HasOne("UniScheduler.Domain.Entities.Building", "Building")
+                        .WithMany("FloorPlans")
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UniScheduler.Domain.Entities.AppUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Building");
+
+                    b.Navigation("CreatedByUser");
+                });
+
             modelBuilder.Entity("UniScheduler.Domain.Entities.FloorPlanDraft", b =>
                 {
                     b.HasOne("UniScheduler.Domain.Entities.Building", "Building")
@@ -1019,7 +1172,15 @@ namespace UniScheduler.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("UniScheduler.Domain.Entities.AppUser", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.Navigation("Building");
+
+                    b.Navigation("Owner");
                 });
 
             modelBuilder.Entity("UniScheduler.Domain.Entities.FloorPlanEdge", b =>
@@ -1078,6 +1239,39 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Navigation("Group");
                 });
 
+            modelBuilder.Entity("UniScheduler.Domain.Entities.Invitation", b =>
+                {
+                    b.HasOne("UniScheduler.Domain.Entities.AppUser", "ConsumedBy")
+                        .WithMany()
+                        .HasForeignKey("ConsumedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("UniScheduler.Domain.Entities.AppUser", "InvitedBy")
+                        .WithMany()
+                        .HasForeignKey("InvitedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UniScheduler.Domain.Entities.Teacher", "Teacher")
+                        .WithMany()
+                        .HasForeignKey("TeacherId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("UniScheduler.Domain.Entities.University", "University")
+                        .WithMany()
+                        .HasForeignKey("UniversityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ConsumedBy");
+
+                    b.Navigation("InvitedBy");
+
+                    b.Navigation("Teacher");
+
+                    b.Navigation("University");
+                });
+
             modelBuilder.Entity("UniScheduler.Domain.Entities.PairTimeSlot", b =>
                 {
                     b.HasOne("UniScheduler.Domain.Entities.University", "University")
@@ -1133,6 +1327,11 @@ namespace UniScheduler.Infrastructure.Migrations
                         .HasForeignKey("FacultyId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("UniScheduler.Domain.Entities.AppUser", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("UniScheduler.Domain.Entities.University", "University")
                         .WithMany()
                         .HasForeignKey("UniversityId")
@@ -1140,6 +1339,8 @@ namespace UniScheduler.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Faculty");
+
+                    b.Navigation("Owner");
 
                     b.Navigation("University");
                 });
@@ -1357,6 +1558,8 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Navigation("FloorPlanEdges");
 
                     b.Navigation("FloorPlanNodes");
+
+                    b.Navigation("FloorPlans");
 
                     b.Navigation("Rooms");
                 });

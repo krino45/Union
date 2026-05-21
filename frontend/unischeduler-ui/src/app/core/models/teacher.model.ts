@@ -6,6 +6,7 @@ export interface Teacher {
   displayName: string;
   email: string;
   subjects?: TeacherSubjectDto[];
+  loadHoursPerWeek?: number;
 }
 
 export interface TeacherSubjectDto {

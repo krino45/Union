@@ -14,6 +14,6 @@ public class UsersController : ControllerBase
     public UsersController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet]
-    public async Task<ActionResult<List<UserDto>>> GetAll(CancellationToken ct)
-        => Ok(await _mediator.Send(new GetUsersQuery(), ct));
+    public async Task<ActionResult<List<UserDto>>> GetAll([FromQuery] string? q, CancellationToken ct)
+        => Ok(await _mediator.Send(new GetUsersQuery(q), ct));
 }

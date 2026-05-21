@@ -13,7 +13,9 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '../../../core/services/api.service';
+import { FloorPlanDraftsDialogComponent } from './floor-plan-drafts-dialog.component';
 import {
   Building, Room, CreateRoomDto,
   FloorPlanNode, FloorPlanEdge, FloorPlanNodeType,
@@ -48,7 +50,7 @@ const NODE_ICONS: Record<string, string> = {
     CommonModule, FormsModule,
     MatButtonModule, MatIconModule, MatSelectModule,
     MatFormFieldModule, MatInputModule, MatSnackBarModule, MatTooltipModule,
-    MatProgressSpinnerModule, MatDividerModule,
+    MatProgressSpinnerModule, MatDividerModule, MatDialogModule,
   ],
   template: `
 <div class="editor-page">
@@ -105,7 +107,11 @@ const NODE_ICONS: Record<string, string> = {
         <mat-icon>arrow_forward</mat-icon> нажмите второй узел
       </span>
       <span class="spacer"></span>
-      <button mat-button (click)="reload()" [disabled]="loading" matTooltip="Сбросить черновик, перезагрузить">
+      <button mat-stroked-button (click)="openDraftsDialog()" [disabled]="!selectedBuildingId"
+              matTooltip="Версии и черновики">
+        <mat-icon>history</mat-icon> Версии
+      </button>
+      <button mat-button (click)="reload()" [disabled]="loading" matTooltip="Сбросить мой черновик, перезагрузить активную версию">
         <mat-icon>refresh</mat-icon>
       </button>
       <button mat-raised-button color="primary" (click)="save()" [disabled]="saving || !selectedBuildingId">
@@ -526,7 +532,41 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     return 'default';
   }
 
-  constructor(private api: ApiService, private snackBar: MatSnackBar, private ngZone: NgZone) {}
+  constructor(private api: ApiService, private snackBar: MatSnackBar, private ngZone: NgZone, private dialog: MatDialog) {}
+
+  openDraftsDialog(): void {
+    if (!this.selectedBuilding) return;
+    const ref = this.dialog.open(FloorPlanDraftsDialogComponent, {
+      data: { buildingId: this.selectedBuilding.id, buildingShortCode: this.selectedBuilding.shortCode },
+      width: '760px'
+    });
+    ref.afterClosed().subscribe(result => {
+      if (!result) return;
+      if (result.action === 'open-draft' && result.draftId && this.selectedBuilding) {
+        // Load the chosen draft into the canvas
+        this.api.getFloorPlanDraft(this.selectedBuilding.id, result.draftId).subscribe({
+          next: d => {
+            try {
+              const parsed = JSON.parse(d.draftJson);
+              this.nodes = (parsed.nodes ?? []).map((n: any) => ({ ...n, selected: false }));
+              this.edges = parsed.edges ?? [];
+              this.scale = parsed.scale ?? this.scale;
+              this.currentDraftId = d.id;
+              this.dirty = true;
+              this.snackBar.open(`Загружен черновик «${d.name}»`, '', { duration: 2000 });
+            } catch {
+              this.snackBar.open('Не удалось разобрать черновик', 'OK', { duration: 4000 });
+            }
+          },
+          error: e => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
+        });
+      } else if (result.action === 'load-active' && this.selectedBuildingId) {
+        // After publish or activate — reload the canonical floor plan
+        this.currentDraftId = null;
+        this.loadFloorPlan(this.selectedBuildingId);
+      }
+    });
+  }
 
   ngOnInit(): void {
     this.api.getBuildings().subscribe(bs => { this.buildings = bs; });
@@ -605,12 +645,23 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     });
   }
 
+  private currentDraftId: string | null = null;
+
   private checkDraft(id: string): void {
-    this.api.getFloorPlanDraft(id).subscribe({
-      next: draft => {
-        if (draft) {
-          this.snackBar.open('Обнаружен несохранённый черновик', 'Восстановить', { duration: 8000 })
-            .onAction().subscribe(() => this.restoreDraft(id, draft.draftJson));
+    this.api.listFloorPlanDrafts(id).subscribe({
+      next: drafts => {
+        const mine = drafts.find(d => d.isMine);
+        if (mine) {
+          this.currentDraftId = mine.id;
+          this.api.getFloorPlanDraft(id, mine.id).subscribe({
+            next: full => {
+              if (full?.draftJson) {
+                this.snackBar.open('Обнаружен несохранённый черновик', 'Восстановить', { duration: 8000 })
+                  .onAction().subscribe(() => this.restoreDraft(id, full.draftJson));
+              }
+            },
+            error: () => {}
+          });
         }
       },
       error: () => {}
@@ -619,8 +670,10 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
 
   reload(): void {
     if (!this.selectedBuildingId) return;
-    // Delete the draft and reload saved state
-    this.api.deleteFloorPlanDraft(this.selectedBuildingId).subscribe({ error: () => {} });
+    if (this.currentDraftId) {
+      this.api.deleteFloorPlanDraft(this.selectedBuildingId, this.currentDraftId).subscribe({ error: () => {} });
+      this.currentDraftId = null;
+    }
     this.loadFloorPlan(this.selectedBuildingId);
   }
 
@@ -634,9 +687,19 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   private saveDraft(): void {
-    if (!this.selectedBuildingId) return;
+    const buildingId = this.selectedBuildingId;
+    if (!buildingId) return;
     const draftJson = JSON.stringify({ nodes: this.nodes, edges: this.edges, scale: this.scale });
-    this.api.saveFloorPlanDraft(this.selectedBuildingId, draftJson).subscribe({ error: () => {} });
+
+    if (this.currentDraftId) {
+      this.api.saveFloorPlanDraft(buildingId, this.currentDraftId, draftJson).subscribe({ error: () => {} });
+      return;
+    }
+    // No draft yet — create one. Name uses date so repeated work doesn't keep stacking.
+    this.api.createFloorPlanDraft(buildingId, `Черновик ${new Date().toLocaleDateString('ru-RU')}`, draftJson).subscribe({
+      next: r => { this.currentDraftId = r.id; },
+      error: () => {}
+    });
   }
 
   // ── Floors / view ─────────────────────────────────────────────────────────────

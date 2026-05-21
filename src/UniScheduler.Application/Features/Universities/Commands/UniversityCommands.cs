@@ -8,11 +8,12 @@ using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.Universities.Commands;
 
-public record CreateUniversityCommand(string Name, string ShortName, string? LogoUrl) : IRequest<UniversityDto>;
-public record UpdateUniversityCommand(Guid Id, string Name, string ShortName, string? LogoUrl) : IRequest;
+public record CreateUniversityCommand(string Name, string ShortName, string? LogoUrl, string? City) : IRequest<UniversityDto>;
+public record UpdateUniversityCommand(Guid Id, string Name, string ShortName, string? LogoUrl, string? City) : IRequest;
 public record DeleteUniversityCommand(Guid Id) : IRequest;
 public record AssignUniversityUserCommand(Guid UniversityId, Guid UserId, UniversityRole Role) : IRequest;
 public record RevokeUniversityUserCommand(Guid UniversityId, Guid UserId) : IRequest;
+public record GrantSelfUniversityAccessCommand(Guid UniversityId) : IRequest;
 
 public class CreateUniversityCommandHandler : IRequestHandler<CreateUniversityCommand, UniversityDto>
 {
@@ -25,11 +26,12 @@ public class CreateUniversityCommandHandler : IRequestHandler<CreateUniversityCo
         {
             Name = request.Name,
             ShortName = request.ShortName,
-            LogoUrl = request.LogoUrl
+            LogoUrl = request.LogoUrl,
+            City = request.City
         };
         _db.Universities.Add(university);
         await _db.SaveChangesAsync(cancellationToken);
-        return new UniversityDto(university.Id, university.Name, university.ShortName, university.LogoUrl);
+        return new UniversityDto(university.Id, university.Name, university.ShortName, university.LogoUrl, university.City);
     }
 }
 
@@ -45,6 +47,34 @@ public class UpdateUniversityCommandHandler : IRequestHandler<UpdateUniversityCo
         university.Name = request.Name;
         university.ShortName = request.ShortName;
         university.LogoUrl = request.LogoUrl;
+        university.City = request.City;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+}
+
+public class GrantSelfUniversityAccessCommandHandler : IRequestHandler<GrantSelfUniversityAccessCommand>
+{
+    private readonly IApplicationDbContext _db;
+    private readonly ICurrentUserService _user;
+    public GrantSelfUniversityAccessCommandHandler(IApplicationDbContext db, ICurrentUserService user)
+    { _db = db; _user = user; }
+
+    public async Task Handle(GrantSelfUniversityAccessCommand request, CancellationToken cancellationToken)
+    {
+        var userId = _user.UserId ?? throw new ForbiddenException("Требуется аутентификация.");
+        if (!_user.IsSuperAdmin)
+            throw new ForbiddenException("Только суперадминистратор может самостоятельно получить доступ.");
+
+        var existing = await _db.UserUniversityAccesses
+            .FirstOrDefaultAsync(a => a.UserId == userId && a.UniversityId == request.UniversityId, cancellationToken);
+        if (existing != null) return;
+
+        _db.UserUniversityAccesses.Add(new UserUniversityAccess
+        {
+            UserId = userId,
+            UniversityId = request.UniversityId,
+            Role = UniversityRole.Admin
+        });
         await _db.SaveChangesAsync(cancellationToken);
     }
 }

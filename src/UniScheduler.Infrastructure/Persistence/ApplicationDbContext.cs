@@ -18,6 +18,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<University> Universities => Set<University>();
     public DbSet<UserUniversityAccess> UserUniversityAccesses => Set<UserUniversityAccess>();
     public DbSet<FloorPlanDraft> FloorPlanDrafts => Set<FloorPlanDraft>();
+    public DbSet<FloorPlan> FloorPlans => Set<FloorPlan>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<Building> Buildings => Set<Building>();
     public DbSet<BuildingDistance> BuildingDistances => Set<BuildingDistance>();
     public DbSet<FloorPlanNode> FloorPlanNodes => Set<FloorPlanNode>();

@@ -18,18 +18,23 @@ public class CreateEntryCommandHandler : IRequestHandler<CreateEntryCommand, Sch
 {
     private readonly IApplicationDbContext _db;
     private readonly IConflictDetector _conflict;
+    private readonly ICurrentUserService _user;
 
-    public CreateEntryCommandHandler(IApplicationDbContext db, IConflictDetector conflict)
+    public CreateEntryCommandHandler(IApplicationDbContext db, IConflictDetector conflict, ICurrentUserService user)
     {
         _db = db;
         _conflict = conflict;
+        _user = user;
     }
 
     public async Task<ScheduleEntryDto> Handle(CreateEntryCommand r, CancellationToken cancellationToken)
     {
         var schedule = await _db.Schedules.FindAsync(new object[] { r.ScheduleId }, cancellationToken);
-        if (schedule?.Status == ScheduleStatus.Archived)
+        if (schedule == null)
+            throw new NotFoundException(nameof(Schedule), r.ScheduleId);
+        if (schedule.Status == ScheduleStatus.Archived)
             throw new InvalidOperationException("Cannot modify an archived schedule.");
+        ScheduleAccessGuard.EnsureCanEdit(schedule, _user);
 
         var allEntries = await _db.ScheduleEntries
             .Include(e => e.StudentGroups)
@@ -51,8 +56,11 @@ public class CreateEntryCommandHandler : IRequestHandler<CreateEntryCommand, Sch
         foreach (var gid in r.GroupIds)
             _db.ScheduleEntryStudentGroups.Add(new ScheduleEntryStudentGroup { ScheduleEntry = entry, StudentGroupId = gid });
 
-        if (schedule?.Status == ScheduleStatus.Published)
+        if (schedule.Status == ScheduleStatus.Published)
+        {
             schedule.Status = ScheduleStatus.Draft;
+            ScheduleAccessGuard.TransferOwnershipOnDemote(schedule, _user);
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 

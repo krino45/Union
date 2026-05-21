@@ -19,5 +19,11 @@ public class Schedule : Entity
     public string? GenerationNotes { get; set; }
     public int? BaseScore { get; set; }
 
+    // Draft metadata (used while Status = Draft)
+    public Guid? OwnerUserId { get; set; }
+    public string? Name { get; set; }
+    public bool IsOpenToAdmins { get; set; }
+    public AppUser? Owner { get; set; }
+
     public ICollection<ScheduleEntry> Entries { get; set; } = new List<ScheduleEntry>();
 }
