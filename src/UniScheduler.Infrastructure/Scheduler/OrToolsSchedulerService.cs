@@ -503,10 +503,13 @@ public class OrToolsSchedulerService : ISchedulerService
             model.Minimize(LinearExpr.WeightedSum(objVars.ToArray(), objCoeffs.ToArray()));
 
         progress?.Report($"Запуск решателя (таймаут {input.SolverTimeoutSeconds}с, {objVars.Count} слагаемых в целевой функции)...");
+        var workers = int.TryParse(Environment.GetEnvironmentVariable("SOLVER_NUM_WORKERS"), out var nw) && nw > 0
+            ? nw
+            : 2;
         var solver = new CpSolver();
         solver.StringParameters =
             $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
-            "num_search_workers:8," +
+            $"num_search_workers:{workers}," +
             "log_search_progress:false";
 
         var status = solver.Solve(model);
