@@ -53,7 +53,10 @@ const CURRENT_YEAR = new Date().getFullYear();
     <mat-card *ngFor="let s of visibleSchedules" class="schedule-card">
       <mat-card-header>
         <mat-card-title>
-          {{ s.academicYear }}/{{ s.academicYear + 1 }} — {{ termLabel(s.term) }} семестр
+          <span class="schedule-name">{{ s.name || (s.academicYear + '/' + (s.academicYear + 1) + ' — ' + termLabel(s.term) + ' семестр') }}</span>
+          <button mat-icon-button *ngIf="s.isMine && s.status === 'Draft'" (click)="renameSchedule(s)" matTooltip="Переименовать">
+            <mat-icon class="rename-icon">drive_file_rename_outline</mat-icon>
+          </button>
           <span *ngIf="s.facultyName" class="faculty-tag"> | {{ s.facultyName }}</span>
         </mat-card-title>
         <mat-card-subtitle>
@@ -61,6 +64,9 @@ const CURRENT_YEAR = new Date().getFullYear();
           <span *ngIf="s.allowCrossFacultyLessons"> · межфакультетные разрешены</span>
         </mat-card-subtitle>
         <span class="spacer"></span>
+        <mat-chip *ngIf="s.status === 'Draft' && !s.isMine && s.ownerUsername" class="owner-chip" matTooltip="Владелец черновика">
+          <mat-icon>person</mat-icon> {{ s.ownerUsername }}
+        </mat-chip>
         <mat-chip [class]="'status-' + s.status.toLowerCase()">{{ statusLabel(s.status) }}</mat-chip>
       </mat-card-header>
       <mat-card-content>
@@ -79,10 +85,10 @@ const CURRENT_YEAR = new Date().getFullYear();
         <button mat-button color="primary" [routerLink]="['/admin/schedules', s.id, 'editor']">
           <mat-icon>edit_calendar</mat-icon> Редактор
         </button>
-        <button mat-button (click)="triggerGeneration(s)" [disabled]="isGenerating(s.id) || s.status === 'Archived'">
+        <button mat-button (click)="triggerGeneration(s)" [disabled]="isGenerating(s.id) || s.status === 'Archived' || (!s.isMine && s.status === 'Draft')">
           <mat-icon>auto_fix_high</mat-icon> Генерировать
         </button>
-        <button mat-button *ngIf="s.status === 'Draft'" (click)="publishSchedule(s)" [disabled]="isGenerating(s.id)">
+        <button mat-button *ngIf="s.status === 'Draft' && s.isMine" (click)="publishSchedule(s)" [disabled]="isGenerating(s.id)">
           <mat-icon>publish</mat-icon> Опубликовать
         </button>
         <button mat-button *ngIf="s.status === 'Published'" (click)="archiveSchedule(s)">
@@ -91,7 +97,16 @@ const CURRENT_YEAR = new Date().getFullYear();
         <button mat-button *ngIf="s.status === 'Archived'" (click)="unarchiveSchedule(s)">
           <mat-icon>unarchive</mat-icon> Разархивировать
         </button>
-        <button mat-button color="warn" (click)="deleteSchedule(s)" [disabled]="s.status === 'Published'">
+        <span class="spacer"></span>
+        <mat-slide-toggle *ngIf="s.status === 'Draft' && s.isMine"
+                          [checked]="!!s.isOpenToAdmins"
+                          (change)="toggleAccess(s, $event.checked)"
+                          matTooltip="Разрешить другим админам редактировать"
+                          class="access-toggle">
+          {{ s.isOpenToAdmins ? 'открыт' : 'закрыт' }}
+        </mat-slide-toggle>
+        <button mat-button color="warn" *ngIf="s.isMine || s.status !== 'Draft'"
+                (click)="deleteSchedule(s)" [disabled]="s.status === 'Published'">
           <mat-icon>delete</mat-icon>
         </button>
       </mat-card-actions>
@@ -122,6 +137,13 @@ const CURRENT_YEAR = new Date().getFullYear();
     .empty-state { text-align: center; padding: 48px; color: #888; }
     mat-card-actions button { margin-right: 4px; }
     .loading-wrap { display: flex; justify-content: center; padding: 48px; }
+    .schedule-name { font-weight: 500; }
+    .rename-icon { font-size: 16px; width: 16px; height: 16px; opacity: 0.6; vertical-align: middle; }
+    .owner-chip { background: #ede7f6; color: #4527a0; margin-right: 8px; font-size: 11px; }
+    .owner-chip mat-icon { font-size: 14px; width: 14px; height: 14px; margin-right: 2px; }
+    .access-toggle { font-size: 12px; margin-right: 8px; }
+    mat-card-actions { display: flex; align-items: center; }
+    mat-card-actions .spacer { flex: 1; }
   `]
 })
 export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
@@ -230,11 +252,33 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   }
 
   deleteSchedule(schedule: Schedule): void {
-    const label = `${schedule.academicYear}/${schedule.academicYear + 1} ${this.termLabel(schedule.term)}`;
+    const label = schedule.name || `${schedule.academicYear}/${schedule.academicYear + 1} ${this.termLabel(schedule.term)}`;
     if (!confirm(`Удалить расписание "${label}"?`)) return;
     this.api.deleteSchedule(schedule.id).subscribe({
       next: () => { this.snackBar.open('Расписание удалено', 'OK', { duration: 3000 }); this.loadSchedules(); },
       error: (e) => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
+    });
+  }
+
+  renameSchedule(schedule: Schedule): void {
+    const next = prompt('Новое название черновика', schedule.name || '');
+    if (!next || next.trim() === '' || next === schedule.name) return;
+    this.api.renameSchedule(schedule.id, next.trim()).subscribe({
+      next: () => { this.snackBar.open('Переименовано', 'OK', { duration: 2000 }); this.loadSchedules(); },
+      error: (e) => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
+    });
+  }
+
+  toggleAccess(schedule: Schedule, isOpen: boolean): void {
+    this.api.setScheduleAccess(schedule.id, isOpen).subscribe({
+      next: () => {
+        schedule.isOpenToAdmins = isOpen;
+        this.snackBar.open(isOpen ? 'Открыт для админов' : 'Закрыт', 'OK', { duration: 2000 });
+      },
+      error: (e) => {
+        schedule.isOpenToAdmins = !isOpen;
+        this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 });
+      }
     });
   }
 

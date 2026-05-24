@@ -28,6 +28,8 @@ public record ImportFromJsonCommand(
 
 public record ImportFromJsonResult(int Committed, List<string> Errors);
 
+// Imports a real-university schedule from the export JSON. Anything that doesn't
+// exist yet (teacher, building, room, etc.) is auto-created as a placeholder
 public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonCommand, ImportFromJsonResult>
 {
     private readonly IApplicationDbContext _db;
@@ -35,12 +37,20 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
 
     public async Task<ImportFromJsonResult> Handle(ImportFromJsonCommand req, CancellationToken ct)
     {
-        var errors = new List<string>();
+        var notes = new List<string>();
 
-        var subjects = await _db.Subjects.ToListAsync(ct);
-        var teachers = await _db.Teachers.ToListAsync(ct);
-        var groups   = (await _db.StudentGroups.Include(g => g.Faculty).ToListAsync(ct)).ToList();
-        var rooms    = await _db.Rooms.Include(r => r.Building).ToListAsync(ct);
+        var schedule = await _db.Schedules.FirstOrDefaultAsync(s => s.Id == req.ScheduleId, ct);
+        if (schedule == null)
+            return new ImportFromJsonResult(0, new List<string> { "Расписание не найдено." });
+
+        var subjects   = await _db.Subjects.ToListAsync(ct);
+        var teachers   = await _db.Teachers.ToListAsync(ct);
+        var faculties  = await _db.Faculties.ToListAsync(ct);
+        var buildings  = await _db.Buildings.ToListAsync(ct);
+        var rooms      = (await _db.Rooms.Include(r => r.Building).ToListAsync(ct))
+                         .Where(r => r.Building != null).ToList();
+        var groups     = (await _db.StudentGroups.Include(g => g.Faculty).ToListAsync(ct))
+                         .Where(g => g.Faculty != null).ToList();
 
         if (req.Replace)
         {
@@ -49,83 +59,164 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
             _db.ScheduleEntries.RemoveRange(existing);
         }
 
-        // Collect all group names referenced in this import
-        var allGroupNames = req.Entries.SelectMany(e => e.GroupNames).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // Counters for the summary line.
+        int newSubjects = 0, newTeachers = 0, newBuildings = 0, newRooms = 0, newGroups = 0, newFaculties = 0;
 
-        // Auto-create missing groups only in replace mode
-        if (req.Replace)
+        // A faculty is required to create a group; reuse the schedule's faculty, else the first one,
+        // else mint a placeholder.
+        Faculty? PlaceholderFaculty()
         {
-            var defaultFaculty = await _db.Faculties.FirstOrDefaultAsync(ct);
-            foreach (var gname in allGroupNames)
+            var fac = schedule.FacultyId.HasValue
+                ? faculties.FirstOrDefault(f => f.Id == schedule.FacultyId.Value)
+                : faculties.FirstOrDefault();
+            if (fac != null) return fac;
+
+            fac = new Faculty { Name = "Импорт", ShortCode = "IMP" };
+            _db.Faculties.Add(fac);
+            faculties.Add(fac);
+            newFaculties++;
+            return fac;
+        }
+
+        Subject ResolveSubject(string name)
+        {
+            var found = subjects.FirstOrDefault(s =>
+                s.ShortName.Equals(name, StringComparison.OrdinalIgnoreCase) ||
+                s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (found != null) return found;
+
+            found = new Subject
             {
-                var existing = groups.FirstOrDefault(g => g.Name.Equals(gname, StringComparison.OrdinalIgnoreCase));
-                if (existing != null) continue;
-                if (defaultFaculty == null)
-                {
-                    errors.Add($"Группа \"{gname}\" не найдена и не может быть создана: нет факультетов в базе.");
-                    continue;
-                }
-                var newGroup = new StudentGroup
-                {
-                    Name = gname, Year = 1, Specialty = "Импорт",
-                    StudentCount = 0, FacultyId = defaultFaculty.Id
-                };
-                _db.StudentGroups.Add(newGroup);
-                groups.Add(newGroup); // update in-memory list for resolution below
-                errors.Add($"Группа \"{gname}\" создана автоматически (placeholder) — уточните данные.");
-            }
-            await _db.SaveChangesAsync(ct); // flush new groups so IDs are set
+                Name = name,
+                ShortName = name,
+                AcademicYear = schedule.AcademicYear,
+                Term = schedule.Term
+            };
+            _db.Subjects.Add(found);
+            subjects.Add(found);
+            newSubjects++;
+            return found;
+        }
+
+        Teacher ResolveTeacher(string lastName, string firstName)
+        {
+            var found = teachers.FirstOrDefault(t =>
+                t.LastName.Equals(lastName, StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrEmpty(firstName) || t.FirstName.StartsWith(firstName, StringComparison.OrdinalIgnoreCase)));
+            if (found != null) return found;
+
+            found = new Teacher { LastName = lastName, FirstName = firstName, MiddleName = "", Email = "" };
+            _db.Teachers.Add(found);
+            teachers.Add(found);
+            newTeachers++;
+            return found;
+        }
+
+        Building ResolveBuilding(string shortCode)
+        {
+            var found = buildings.FirstOrDefault(b =>
+                b.ShortCode.Equals(shortCode, StringComparison.OrdinalIgnoreCase));
+            if (found != null) return found;
+
+            found = new Building { ShortCode = shortCode, Address = "—", NumberOfFloors = 5 };
+            _db.Buildings.Add(found);
+            buildings.Add(found);
+            newBuildings++;
+            return found;
+        }
+
+        Room ResolveRoom(string number, Building building)
+        {
+            var found = rooms.FirstOrDefault(r =>
+                r.Number.Equals(number, StringComparison.OrdinalIgnoreCase) &&
+                ((building.Id != Guid.Empty && r.BuildingId == building.Id) || ReferenceEquals(r.Building, building)));
+            if (found != null) return found;
+
+            found = new Room { Building = building, Number = number, Capacity = 0, RoomType = RoomType.RegularCabinet, Floor = 1 };
+            _db.Rooms.Add(found);
+            rooms.Add(found);
+            newRooms++;
+            return found;
+        }
+
+        StudentGroup ResolveGroup(string name)
+        {
+            var found = groups.FirstOrDefault(g => g.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (found != null) return found;
+
+            var fac = PlaceholderFaculty()!;
+            found = new StudentGroup { Name = name, Year = 1, Specialty = "Импорт", StudentCount = 0, Faculty = fac };
+            _db.StudentGroups.Add(found);
+            groups.Add(found);
+            newGroups++;
+            return found;
         }
 
         int committed = 0;
         foreach (var (item, idx) in req.Entries.Select((x, i) => (x, i + 1)))
         {
-            var subject = subjects.FirstOrDefault(s =>
-                s.ShortName.Equals(item.SubjectShortName, StringComparison.OrdinalIgnoreCase) ||
-                s.Name.Equals(item.SubjectShortName, StringComparison.OrdinalIgnoreCase));
-            if (subject == null) { errors.Add($"[{idx}] Предмет не найден: \"{item.SubjectShortName}\""); continue; }
+            if (string.IsNullOrWhiteSpace(item.SubjectShortName))
+            { notes.Add($"[{idx}] Пропущено: не указан предмет."); continue; }
+            if (string.IsNullOrWhiteSpace(item.TeacherLastName))
+            { notes.Add($"[{idx}] Пропущено: не указан преподаватель."); continue; }
 
-            var teacher = teachers.FirstOrDefault(t =>
-                t.LastName.Equals(item.TeacherLastName, StringComparison.OrdinalIgnoreCase) &&
-                t.FirstName.StartsWith(item.TeacherFirstName, StringComparison.OrdinalIgnoreCase));
-            if (teacher == null) { errors.Add($"[{idx}] Преподаватель не найден: \"{item.TeacherLastName} {item.TeacherFirstName}\""); continue; }
+            var subject = ResolveSubject(item.SubjectShortName.Trim());
+            var teacher = ResolveTeacher(item.TeacherLastName.Trim(), (item.TeacherFirstName ?? "").Trim());
 
-            var resolvedGroups = new List<StudentGroup>();
-            bool groupFail = false;
-            foreach (var gname in item.GroupNames)
-            {
-                var g = groups.FirstOrDefault(x => x.Name.Equals(gname, StringComparison.OrdinalIgnoreCase));
-                if (g == null) { errors.Add($"[{idx}] Группа не найдена: \"{gname}\""); groupFail = true; }
-                else resolvedGroups.Add(g);
-            }
-            if (groupFail) continue;
+            var resolvedGroups = item.GroupNames
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Select(g => ResolveGroup(g.Trim()))
+                .ToList();
 
             Room? room = null;
             if (!item.IsOnline && !string.IsNullOrWhiteSpace(item.RoomNumber))
             {
-                room = rooms.FirstOrDefault(r =>
-                    r.Number == item.RoomNumber &&
-                    (item.BuildingShortCode == null || (r.Building?.ShortCode ?? "") == item.BuildingShortCode));
-                if (room == null)
-                    errors.Add($"[{idx}] Аудитория \"{item.BuildingShortCode}-{item.RoomNumber}\" не найдена — занятие добавлено без аудитории");
+                if (!string.IsNullOrWhiteSpace(item.BuildingShortCode))
+                {
+                    var building = ResolveBuilding(item.BuildingShortCode.Trim());
+                    room = ResolveRoom(item.RoomNumber.Trim(), building);
+                }
+                else
+                {
+                    // No building code: only reuse an existing room with that number, never invent one
+                    // (we wouldn't know which building it belongs to).
+                    room = rooms.FirstOrDefault(r => r.Number.Equals(item.RoomNumber.Trim(), StringComparison.OrdinalIgnoreCase));
+                    if (room == null)
+                        notes.Add($"[{idx}] Аудитория \"{item.RoomNumber}\" без кода корпуса — занятие добавлено без аудитории.");
+                }
             }
 
             var entry = new ScheduleEntry
             {
-                ScheduleId = req.ScheduleId, SubjectId = subject.Id, TeacherId = teacher.Id,
-                RoomId = room?.Id, DayOfWeek = item.DayOfWeek, PairNumber = item.PairNumber,
-                WeekType = item.WeekType, LessonType = item.LessonType, IsOnline = item.IsOnline
+                ScheduleId = req.ScheduleId,
+                Subject = subject,
+                Teacher = teacher,
+                Room = room,
+                DayOfWeek = item.DayOfWeek,
+                PairNumber = item.PairNumber,
+                WeekType = item.WeekType,
+                LessonType = item.LessonType,
+                IsOnline = item.IsOnline
             };
             _db.ScheduleEntries.Add(entry);
             foreach (var g in resolvedGroups)
-                _db.ScheduleEntryStudentGroups.Add(new ScheduleEntryStudentGroup { ScheduleEntry = entry, StudentGroupId = g.Id });
+                _db.ScheduleEntryStudentGroups.Add(new ScheduleEntryStudentGroup { ScheduleEntry = entry, StudentGroup = g });
             committed++;
         }
 
-        var schedule = await _db.Schedules.FindAsync(new object[] { req.ScheduleId }, ct);
-        if (schedule != null) schedule.Status = ScheduleStatus.Draft;
-
+        schedule.Status = ScheduleStatus.Draft;
         await _db.SaveChangesAsync(ct);
-        return new ImportFromJsonResult(committed, errors);
+
+        var created = new List<string>();
+        if (newSubjects  > 0) created.Add($"предметов: {newSubjects}");
+        if (newTeachers  > 0) created.Add($"преподавателей: {newTeachers}");
+        if (newBuildings > 0) created.Add($"корпусов: {newBuildings}");
+        if (newRooms     > 0) created.Add($"аудиторий: {newRooms}");
+        if (newGroups    > 0) created.Add($"групп: {newGroups}");
+        if (newFaculties > 0) created.Add($"факультетов: {newFaculties}");
+        if (created.Count > 0)
+            notes.Insert(0, "Автоматически создано — " + string.Join(", ", created) + ". Проверьте и дополните данные.");
+
+        return new ImportFromJsonResult(committed, notes);
     }
 }

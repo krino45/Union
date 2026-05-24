@@ -512,9 +512,9 @@ export class ScheduleEditorComponent implements OnInit {
         const replace = confirm('Заменить все текущие занятия? Нажмите ОК для замены, Отмена — для добавления.');
         this.api.importJson(this.schedule!.id, entries, replace).subscribe({
           next: (r) => {
-            const msg = `Импортировано: ${r.committed}` + (r.errors.length ? `; ошибок: ${r.errors.length}` : '');
+            const msg = `Импортировано занятий: ${r.committed}` + (r.errors.length ? `; примечаний: ${r.errors.length} (см. консоль)` : '');
             this.snackBar.open(msg, 'OK', { duration: r.errors.length ? 6000 : 3000 });
-            if (r.errors.length) console.warn('Import errors:', r.errors);
+            if (r.errors.length) console.warn('Import notes:', r.errors);
             this.refreshAfterMutation();
           },
           error: (e) => this.snackBar.open(e.error?.title || 'Ошибка импорта', 'OK', { duration: 4000 })

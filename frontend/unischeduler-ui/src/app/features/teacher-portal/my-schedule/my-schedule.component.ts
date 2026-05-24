@@ -61,7 +61,7 @@ export class MyScheduleComponent implements OnInit {
 
   ngOnInit(): void {
     this.api.getSchedules().subscribe(data => {
-      this.schedules = data.filter(s => s.status === 'Published' || s.status === 'Draft');
+      this.schedules = data.filter(s => s.status === 'Published');
       if (this.schedules.length > 0) {
         this.selectedScheduleId = this.schedules[0].id;
         this.loadEntries();

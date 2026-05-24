@@ -65,7 +65,8 @@ const NODE_ICONS: Record<string, string> = {
       </mat-form-field>
       <mat-form-field appearance="outline" class="scale-field">
         <mat-label>Масштаб (м/100px)</mat-label>
-        <input matInput name="scale" type="number" [(ngModel)]="scale" min="0.1" step="0.5">
+        <input matInput name="scale" type="number" [(ngModel)]="scale" min="0.1" step="0.5"
+               (ngModelChange)="onScaleChange()">
       </mat-form-field>
     </div>
   </div>
@@ -945,8 +946,40 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     if (this.dragging) {
       const snapped = this.applySnap(this.dragging, x - this.dragOffset.x, y - this.dragOffset.y);
       this.dragging.x = snapped.x; this.dragging.y = snapped.y;
+      this.recomputeEdgesFor(this.dragging.id);
       this.dirty = true; this.dragMoved = true;
     }
+  }
+
+  // Recompute distanceMeters for every edge that touches `nodeId`, using current scale.
+  private recomputeEdgesFor(nodeId: string): void {
+    const node = this.nodeById(nodeId);
+    if (!node) return;
+    for (const edge of this.edges) {
+      if (edge.fromNodeId !== nodeId && edge.toNodeId !== nodeId) continue;
+      const otherId = edge.fromNodeId === nodeId ? edge.toNodeId : edge.fromNodeId;
+      const other = this.nodeById(otherId);
+      if (!other) continue;
+      const dx = node.x - other.x, dy = node.y - other.y;
+      edge.distanceMeters = Math.max(1, Math.round(Math.sqrt(dx*dx + dy*dy) * this.scale / 100));
+    }
+  }
+
+  // Recompute all edge lengths (used when scale changes).
+  recomputeAllEdges(): void {
+    for (const edge of this.edges) {
+      const a = this.nodeById(edge.fromNodeId);
+      const b = this.nodeById(edge.toNodeId);
+      if (!a || !b) continue;
+      const dx = a.x - b.x, dy = a.y - b.y;
+      edge.distanceMeters = Math.max(1, Math.round(Math.sqrt(dx*dx + dy*dy) * this.scale / 100));
+    }
+    this.markDirty();
+  }
+
+  onScaleChange(): void {
+    if (!this.scale || this.scale <= 0) return;
+    this.recomputeAllEdges();
   }
 
   onMouseUp(_event: MouseEvent): void {

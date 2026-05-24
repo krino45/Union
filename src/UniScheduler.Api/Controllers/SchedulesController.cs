@@ -159,6 +159,9 @@ public class SchedulesController : ControllerBase
         {
             WriteIndented = true,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            // Write enums (day/week/lesson type) as readable strings so the file is self-documenting
+            // and easy to hand-author for a real-university import. Import accepts strings or numbers.
+            Converters = { new JsonStringEnumConverter() },
             Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
         };
         var json = JsonSerializer.Serialize(new { scheduleId = id, entries = items }, opts);
