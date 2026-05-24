@@ -46,6 +46,7 @@ public class UpdateSolverSettingsCommandHandler : IRequestHandler<UpdateSolverSe
         s.SaturdayPenalty = w.SaturdayPenalty;
         s.DepartmentMismatchPenalty = w.DepartmentMismatchPenalty;
         s.WalkingPenaltyMax = w.WalkingPenaltyMax;
+        s.StairFloorMeters = w.StairFloorMeters;
 
         await _db.SaveChangesAsync(cancellationToken);
     }

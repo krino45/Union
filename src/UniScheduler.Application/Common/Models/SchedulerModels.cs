@@ -18,7 +18,8 @@ public record SolverWeights(
     int ConsecRunScalar = 3,
     int SaturdayPenalty = 30,
     int DepartmentMismatchPenalty = 50,
-    int WalkingPenaltyMax = 120)
+    int WalkingPenaltyMax = 120,
+    int StairFloorMeters = 20)
 {
     #region  Constructors
 
@@ -45,6 +46,7 @@ public record SolverWeights(
         SaturdayPenalty = solverSettings.SaturdayPenalty;
         DepartmentMismatchPenalty = solverSettings.DepartmentMismatchPenalty;
         WalkingPenaltyMax = solverSettings.WalkingPenaltyMax;
+        StairFloorMeters = solverSettings.StairFloorMeters;
     }
 
     public SolverSettings ToSolverSettings()
@@ -65,7 +67,8 @@ public record SolverWeights(
             ConsecRunScalar = ConsecRunScalar,
             SaturdayPenalty = SaturdayPenalty,
             DepartmentMismatchPenalty = DepartmentMismatchPenalty,
-            WalkingPenaltyMax = WalkingPenaltyMax
+            WalkingPenaltyMax = WalkingPenaltyMax,
+            StairFloorMeters = StairFloorMeters
         };
     }
 

@@ -490,6 +490,13 @@ export class CreateScheduleDialogComponent {
             <mat-hint>Штраф при walkMins / break ≈ 1.0</mat-hint>
           </mat-form-field>
           <mat-form-field appearance="outline" class="flex1">
+            <mat-label>Метров на этаж (лестница)</mat-label>
+            <input matInput type="number" formControlName="stairFloorMeters" min="0">
+            <mat-hint>Эквивалент ходьбы за подъём на 1 этаж</mat-hint>
+          </mat-form-field>
+        </div>
+        <div class="row">
+          <mat-form-field appearance="outline" class="flex1">
             <mat-label>Таймаут (сек, 30–60000)</mat-label>
             <input matInput type="number" formControlName="timeoutSeconds" min="30" max="60000">
           </mat-form-field>
@@ -542,6 +549,7 @@ export class SolverSettingsDialogComponent implements OnInit {
           saturdayPenalty:          [w.saturdayPenalty,          [Validators.required, Validators.min(0)]],
           departmentMismatchPenalty:[w.departmentMismatchPenalty,[Validators.required, Validators.min(0)]],
           walkingPenaltyMax:        [w.walkingPenaltyMax,        [Validators.required, Validators.min(1)]],
+          stairFloorMeters:         [w.stairFloorMeters ?? 20,   [Validators.required, Validators.min(0)]],
           timeoutSeconds:           [120,                        [Validators.required, Validators.min(10), Validators.max(600)]],
         });
         this.loading = false;
@@ -569,6 +577,7 @@ export class SolverSettingsDialogComponent implements OnInit {
       consecLecture: [70], consecSeminar: [40], consecPractical: [30], consecLab: [10],
       earlyPair: [15], middlePair: [0], latePair: [25], consecRunScalar: [3],
       saturdayPenalty: [30], departmentMismatchPenalty: [50], walkingPenaltyMax: [120],
+      stairFloorMeters: [20],
       timeoutSeconds: [120],
     });
   }

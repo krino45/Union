@@ -111,4 +111,5 @@ export interface SolverWeights {
   saturdayPenalty: number;
   departmentMismatchPenalty: number;
   walkingPenaltyMax: number;
+  stairFloorMeters: number;
 }

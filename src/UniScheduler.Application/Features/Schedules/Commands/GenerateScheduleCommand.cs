@@ -40,7 +40,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             settingsEntity.StudentWindow, settingsEntity.TeacherWindow, settingsEntity.ActiveDay, settingsEntity.SanPinOverload,
             settingsEntity.ConsecLecture, settingsEntity.ConsecSeminar, settingsEntity.ConsecPractical, settingsEntity.ConsecLab,
             settingsEntity.EarlyPair, settingsEntity.MiddlePair, settingsEntity.LatePair, settingsEntity.ConsecRunScalar,
-            settingsEntity.SaturdayPenalty, settingsEntity.DepartmentMismatchPenalty, settingsEntity.WalkingPenaltyMax);
+            settingsEntity.SaturdayPenalty, settingsEntity.DepartmentMismatchPenalty, settingsEntity.WalkingPenaltyMax,
+            settingsEntity.StairFloorMeters);
 
         var (input, scoreCtx) = await BuildInputAsync(schedule, request.SolverTimeoutSeconds, weights, cancellationToken);
 
@@ -184,7 +185,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             }
         }
 
-        var roomDistMap = ScheduleScoreCalculator.ComputeRoomDistances(floorPlanNodes, floorPlanEdges);
+        var roomDistMap = ScheduleScoreCalculator.ComputeRoomDistances(floorPlanNodes, floorPlanEdges, weights.StairFloorMeters);
         var roomDistList = roomDistMap
             .Select(kv => new SchedulerRoomDistance(kv.Key.Item1, kv.Key.Item2, kv.Value))
             .ToList();

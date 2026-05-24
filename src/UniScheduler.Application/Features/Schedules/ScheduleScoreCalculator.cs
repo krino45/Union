@@ -42,7 +42,7 @@ public static class ScheduleScoreCalculator
         penalties ??= new SolverWeights();
 
         var roomList = rooms.ToList();
-        var roomDists = ComputeRoomDistances(nodes, edges);
+        var roomDists = ComputeRoomDistances(nodes, edges, penalties.StairFloorMeters);
 
         var bldDists = new Dictionary<(Guid, Guid), int>();
         foreach (var d in buildingDistances)
@@ -232,19 +232,24 @@ public static class ScheduleScoreCalculator
 
     // Runs Dijkstra on the floor plan graph; returns room-to-room distances.
     internal static IReadOnlyDictionary<(Guid, Guid), int> ComputeRoomDistances(
-        IEnumerable<FloorPlanNode> nodes, IEnumerable<FloorPlanEdge> edges)
+        IEnumerable<FloorPlanNode> nodes, IEnumerable<FloorPlanEdge> edges, int stairFloorMeters = 20)
     {
         var nodeList = nodes.ToList();
         if (nodeList.Count == 0) return new Dictionary<(Guid, Guid), int>();
 
+        var floorById = nodeList.ToDictionary(n => n.Id, n => n.Floor);
         var adj = nodeList.ToDictionary(n => n.Id, _ => new List<(Guid, int)>());
         foreach (var e in edges)
         {
-            if (adj.ContainsKey(e.FromNodeId) && adj.ContainsKey(e.ToNodeId))
-            {
-                adj[e.FromNodeId].Add((e.ToNodeId, e.DistanceMeters));
-                adj[e.ToNodeId].Add((e.FromNodeId, e.DistanceMeters));
-            }
+            if (!adj.ContainsKey(e.FromNodeId) || !adj.ContainsKey(e.ToNodeId)) continue;
+
+            // Stacked staircase/elevator nodes share x/y, so a cross-floor edge's stored length is
+            // ~0. Replace it with a fixed per-floor cost so climbing actually carries a penalty.
+            int floorDiff = Math.Abs(floorById[e.FromNodeId] - floorById[e.ToNodeId]);
+            int weight = floorDiff > 0 ? floorDiff * stairFloorMeters : e.DistanceMeters;
+
+            adj[e.FromNodeId].Add((e.ToNodeId, weight));
+            adj[e.ToNodeId].Add((e.FromNodeId, weight));
         }
 
         var roomNodes = nodeList

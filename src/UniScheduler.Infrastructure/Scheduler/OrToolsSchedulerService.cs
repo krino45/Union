@@ -631,6 +631,10 @@ public class OrToolsSchedulerService : ISchedulerService
         int total = groups.Where(g => req.GroupIds.Contains(g.Id)).Sum(g => g.StudentCount);
         if (room.Capacity < total) return false;
 
+        // An explicit AllowedLessonTypes is the admin's deliberate opt-in and overrides the
+        // RoomType heuristic below (we already returned false above if it excluded this type).
+        if (room.AllowedLessonTypes is { Count: > 0 }) return true;
+
         return (req.LessonType, room.RoomType) switch
         {
             (LessonType.Lecture, RoomType.LectureHall) => true,

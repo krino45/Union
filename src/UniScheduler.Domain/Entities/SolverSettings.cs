@@ -35,5 +35,8 @@ public class SolverSettings : Entity
     // S4 — walking penalty max
     public int WalkingPenaltyMax { get; set; } = 120;
 
+    // S4 — fixed walking-distance equivalent (metres) per floor climbed via stairs/elevators
+    public int StairFloorMeters { get; set; } = 20;
+
     public University University { get; set; } = null!;
 }
