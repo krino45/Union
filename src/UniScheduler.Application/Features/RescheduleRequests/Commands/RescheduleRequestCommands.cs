@@ -11,9 +11,10 @@ namespace UniScheduler.Application.Features.RescheduleRequests.Commands;
 
 public record CreateRescheduleRequestCommand(
     Guid TeacherId, Guid OriginalEntryId, string Reason,
-    RussianDayOfWeek? ProposedDayOfWeek, int? ProposedPairNumber, WeekType? ProposedWeekType) : IRequest<RescheduleRequestDto>;
+    RussianDayOfWeek? ProposedDayOfWeek, int? ProposedPairNumber, WeekType? ProposedWeekType,
+    Guid? ProposedRoomId, bool ProposedIsOnline) : IRequest<RescheduleRequestDto>;
 
-public record ApproveRescheduleRequestCommand(Guid RequestId, RussianDayOfWeek NewDay, int NewPair, WeekType NewWeekType, Guid? NewRoomId, string? Note) : IRequest;
+public record ApproveRescheduleRequestCommand(Guid RequestId, RussianDayOfWeek NewDay, int NewPair, WeekType NewWeekType, Guid? NewRoomId, bool NewIsOnline, string? Note) : IRequest;
 
 public record RejectRescheduleRequestCommand(Guid RequestId, string Note) : IRequest;
 
@@ -32,12 +33,14 @@ public class CreateRescheduleRequestCommandHandler : IRequestHandler<CreateResch
             RequestedByTeacherId = r.TeacherId, OriginalEntryId = r.OriginalEntryId,
             Reason = r.Reason, ProposedDayOfWeek = r.ProposedDayOfWeek,
             ProposedPairNumber = r.ProposedPairNumber, ProposedWeekType = r.ProposedWeekType,
+            ProposedRoomId = r.ProposedIsOnline ? null : r.ProposedRoomId, ProposedIsOnline = r.ProposedIsOnline,
             Status = RescheduleStatus.Pending, CreatedAt = DateTime.UtcNow
         };
         _db.RescheduleRequests.Add(req);
         await _db.SaveChangesAsync(ct);
         return new RescheduleRequestDto(req.Id, req.RequestedByTeacherId, teacher.LastName + " " + teacher.FirstName,
-            req.OriginalEntryId, req.ProposedDayOfWeek, req.ProposedPairNumber, req.ProposedWeekType,
+            req.OriginalEntryId, null, req.ProposedDayOfWeek, req.ProposedPairNumber, req.ProposedWeekType,
+            req.ProposedRoomId, null, req.ProposedIsOnline,
             req.Reason, req.Status, req.AdminNote, req.CreatedAt, req.ResolvedAt);
     }
 }
@@ -59,7 +62,7 @@ public class ApproveRescheduleRequestCommandHandler : IRequestHandler<ApproveRes
             ?? throw new NotFoundException(nameof(RescheduleRequest), r.RequestId);
 
         // Perform the actual move
-        await _mediator.Send(new MoveEntryCommand(req.OriginalEntryId, r.NewDay, r.NewPair, r.NewWeekType, r.NewRoomId), ct);
+        await _mediator.Send(new MoveEntryCommand(req.OriginalEntryId, r.NewDay, r.NewPair, r.NewWeekType, r.NewRoomId, r.NewIsOnline), ct);
 
         req.Status = RescheduleStatus.Approved;
         req.AdminNote = r.Note;

@@ -13,7 +13,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../../core/services/api.service';
 import { RescheduleRequest } from '../../../core/models';
-import { RescheduleStatus } from '../../../core/models/enums';
+import { RescheduleStatus, WeekType } from '../../../core/models/enums';
 import { DayOfWeekPipe } from '../../../shared/pipes/day-of-week.pipe';
 import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
 
@@ -36,7 +36,7 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
       <table mat-table [dataSource]="requests" class="full-width">
         <ng-container matColumnDef="teacher">
           <th mat-header-cell *matHeaderCellDef>Преподаватель</th>
-          <td mat-cell *matCellDef="let r">{{ r.requestedByTeacherName }}</td>
+          <td mat-cell *matCellDef="let r">{{ r.teacherName }}</td>
         </ng-container>
         <ng-container matColumnDef="entry">
           <th mat-header-cell *matHeaderCellDef>Занятие</th>
@@ -45,9 +45,11 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
         <ng-container matColumnDef="proposed">
           <th mat-header-cell *matHeaderCellDef>Предлагает</th>
           <td mat-cell *matCellDef="let r">
-            <span *ngIf="r.proposedDay">{{ r.proposedDay | dayOfWeek: 'short' }}, пара {{ r.proposedPair }}</span>
+            <span *ngIf="r.proposedDayOfWeek">{{ r.proposedDayOfWeek | dayOfWeek: 'short' }}, пара {{ r.proposedPairNumber }}</span>
             <span *ngIf="r.proposedWeekType"> ({{ r.proposedWeekType | weekType }})</span>
-            <span *ngIf="!r.proposedDay">Любое свободное</span>
+            <span *ngIf="!r.proposedDayOfWeek">Любое свободное</span>
+            <span *ngIf="r.proposedIsOnline" class="online-tag"> · онлайн</span>
+            <span *ngIf="r.proposedRoomName" class="room-tag"> · {{ r.proposedRoomName }}</span>
           </td>
         </ng-container>
         <ng-container matColumnDef="reason">
@@ -93,6 +95,8 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
     .status-approved { background: #e8f5e9; color: #1b5e20; }
     .status-rejected { background: #ffebee; color: #b71c1c; }
     .note-icon { color: #888; }
+    .online-tag { color: #1565c0; font-weight: 600; }
+    .room-tag { color: #555; }
   `]
 })
 export class RescheduleRequestsComponent implements OnInit {
@@ -108,13 +112,25 @@ export class RescheduleRequestsComponent implements OnInit {
   }
 
   resolve(request: RescheduleRequest, approve: boolean): void {
+    // Approval applies the teacher's proposed slot via a schedule move, so it needs a concrete day + pair.
+    if (approve && (!request.proposedDayOfWeek || request.proposedPairNumber == null)) {
+      this.snackBar.open('Преподаватель не указал конкретный слот — перенесите занятие вручную через редактор расписания.', 'OK', { duration: 6000 });
+      return;
+    }
     const ref = this.dialog.open(ResolveDialogComponent, {
       data: { approve, request }, width: '380px'
     });
     ref.afterClosed().subscribe(note => {
       if (note === undefined) return;
       const obs = approve
-        ? this.api.approveRescheduleRequest(request.id, { adminNote: note })
+        ? this.api.approveRescheduleRequest(request.id, {
+            newDay: request.proposedDayOfWeek,
+            newPair: request.proposedPairNumber,
+            newWeekType: request.proposedWeekType ?? WeekType.Both,
+            newRoomId: request.proposedRoomId,
+            newIsOnline: request.proposedIsOnline,
+            adminNote: note
+          })
         : this.api.rejectRescheduleRequest(request.id, { adminNote: note });
       obs.subscribe({
         next: () => {

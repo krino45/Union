@@ -32,6 +32,12 @@ public class RescheduleRequestConfiguration : IEntityTypeConfiguration<Reschedul
             .WithMany()
             .HasForeignKey(r => r.OriginalEntryId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(r => r.ProposedRoom)
+            .WithMany()
+            .HasForeignKey(r => r.ProposedRoomId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 

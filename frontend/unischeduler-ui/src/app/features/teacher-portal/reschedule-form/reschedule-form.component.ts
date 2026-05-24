@@ -10,9 +10,10 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { ApiService } from '../../../core/services/api.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { ScheduleEntry, Schedule, RescheduleRequest } from '../../../core/models';
+import { ScheduleEntry, Schedule, RescheduleRequest, Room } from '../../../core/models';
 import { RussianDayOfWeek, WeekType, RescheduleStatus } from '../../../core/models/enums';
 import { DayOfWeekPipe } from '../../../shared/pipes/day-of-week.pipe';
 import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
@@ -24,7 +25,7 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
     CommonModule, ReactiveFormsModule,
     MatCardModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule,
-    MatTableModule, MatChipsModule, MatSnackBarModule,
+    MatTableModule, MatChipsModule, MatSnackBarModule, MatCheckboxModule,
     DayOfWeekPipe, WeekTypePipe
   ],
   template: `
@@ -61,7 +62,7 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
             <div class="row">
               <mat-form-field appearance="outline" class="flex1">
                 <mat-label>День</mat-label>
-                <mat-select formControlName="proposedDay">
+                <mat-select formControlName="proposedDayOfWeek" (selectionChange)="onSlotChange()">
                   <mat-option [value]="null">Любой</mat-option>
                   <mat-option value="Monday">Понедельник</mat-option>
                   <mat-option value="Tuesday">Вторник</mat-option>
@@ -73,14 +74,14 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
               </mat-form-field>
               <mat-form-field appearance="outline" class="flex1">
                 <mat-label>Пара</mat-label>
-                <mat-select formControlName="proposedPair">
+                <mat-select formControlName="proposedPairNumber" (selectionChange)="onSlotChange()">
                   <mat-option [value]="null">Любая</mat-option>
                   <mat-option *ngFor="let p of [1,2,3,4,5,6,7]" [value]="p">{{ p }}</mat-option>
                 </mat-select>
               </mat-form-field>
               <mat-form-field appearance="outline" class="flex1">
                 <mat-label>Тип недели</mat-label>
-                <mat-select formControlName="proposedWeekType">
+                <mat-select formControlName="proposedWeekType" (selectionChange)="onSlotChange()">
                   <mat-option [value]="null">Любой</mat-option>
                   <mat-option value="Both">Обе</mat-option>
                   <mat-option value="Odd">Нечётная</mat-option>
@@ -88,6 +89,22 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
                 </mat-select>
               </mat-form-field>
             </div>
+
+            <mat-checkbox formControlName="proposedIsOnline" (change)="onOnlineChange()">
+              Перевести в онлайн (без аудитории)
+            </mat-checkbox>
+
+            <mat-form-field appearance="outline" class="full-width" *ngIf="!form.value.proposedIsOnline && slotChosen">
+              <mat-label>Аудитория (свободные на этот слот)</mat-label>
+              <mat-select formControlName="proposedRoomId">
+                <mat-option [value]="null">Не выбрана (решит администратор)</mat-option>
+                <mat-option *ngFor="let r of availableRooms" [value]="r.id">
+                  {{ r.buildingShortCode }}-{{ r.number }}
+                </mat-option>
+              </mat-select>
+              <mat-hint *ngIf="loadingRooms">Загрузка...</mat-hint>
+              <mat-hint *ngIf="!loadingRooms && availableRooms.length === 0">Нет свободных аудиторий</mat-hint>
+            </mat-form-field>
 
             <button mat-raised-button color="primary" type="submit" [disabled]="form.invalid">
               <mat-icon>send</mat-icon> Отправить запрос
@@ -144,6 +161,13 @@ export class RescheduleFormComponent implements OnInit {
   schedules: Schedule[] = [];
   myEntries: ScheduleEntry[] = [];
   myRequests: RescheduleRequest[] = [];
+  availableRooms: Room[] = [];
+  loadingRooms = false;
+
+  // A room can only be suggested once a concrete day + pair are picked, since availability is slot-specific.
+  get slotChosen(): boolean {
+    return !!this.form.value.proposedDayOfWeek && this.form.value.proposedPairNumber != null;
+  }
 
   constructor(
     private fb: FormBuilder,
@@ -155,10 +179,36 @@ export class RescheduleFormComponent implements OnInit {
       scheduleId: ['', Validators.required],
       originalEntryId: ['', Validators.required],
       reason: ['', Validators.required],
-      proposedDay: [null],
-      proposedPair: [null],
-      proposedWeekType: [null]
+      proposedDayOfWeek: [null],
+      proposedPairNumber: [null],
+      proposedWeekType: [null],
+      proposedRoomId: [null],
+      proposedIsOnline: [false]
     });
+  }
+
+  onSlotChange(): void {
+    this.form.patchValue({ proposedRoomId: null });
+    this.availableRooms = [];
+    if (this.form.value.proposedIsOnline || !this.slotChosen) return;
+    this.loadingRooms = true;
+    this.api.getAvailableRooms({
+      scheduleId: this.form.value.scheduleId,
+      dayOfWeek: this.form.value.proposedDayOfWeek,
+      pairNumber: this.form.value.proposedPairNumber,
+      weekType: this.form.value.proposedWeekType ?? WeekType.Both
+    }).subscribe({
+      next: rooms => { this.availableRooms = rooms; this.loadingRooms = false; },
+      error: () => { this.availableRooms = []; this.loadingRooms = false; }
+    });
+  }
+
+  onOnlineChange(): void {
+    if (this.form.value.proposedIsOnline) {
+      this.form.patchValue({ proposedRoomId: null });
+    } else {
+      this.onSlotChange();
+    }
   }
 
   ngOnInit(): void {
@@ -181,17 +231,33 @@ export class RescheduleFormComponent implements OnInit {
 
   submit(): void {
     if (this.form.invalid) return;
-    const { scheduleId, ...dto } = this.form.value;
-    // Remove null optional fields
-    if (!dto.proposedDay) delete dto.proposedDay;
-    if (!dto.proposedPair) delete dto.proposedPair;
-    if (!dto.proposedWeekType) delete dto.proposedWeekType;
+    const teacherId = this.auth.currentUser?.teacherId;
+    if (!teacherId) {
+      this.snackBar.open('Профиль преподавателя не найден', 'OK', { duration: 4000 });
+      return;
+    }
+    const v = this.form.value;
+    const dto = {
+      teacherId,
+      originalEntryId: v.originalEntryId,
+      reason: v.reason,
+      proposedIsOnline: !!v.proposedIsOnline,
+      ...(v.proposedDayOfWeek ? { proposedDayOfWeek: v.proposedDayOfWeek } : {}),
+      ...(v.proposedPairNumber != null ? { proposedPairNumber: v.proposedPairNumber } : {}),
+      ...(v.proposedWeekType ? { proposedWeekType: v.proposedWeekType } : {}),
+      ...(!v.proposedIsOnline && v.proposedRoomId ? { proposedRoomId: v.proposedRoomId } : {})
+    };
 
     this.api.createRescheduleRequest(dto).subscribe({
       next: () => {
         this.snackBar.open('Запрос отправлен', 'OK', { duration: 3000 });
         this.api.getRescheduleRequests().subscribe(r => this.myRequests = r);
-        this.form.patchValue({ originalEntryId: '', reason: '', proposedDay: null, proposedPair: null, proposedWeekType: null });
+        this.form.patchValue({
+          originalEntryId: '', reason: '',
+          proposedDayOfWeek: null, proposedPairNumber: null, proposedWeekType: null,
+          proposedRoomId: null, proposedIsOnline: false
+        });
+        this.availableRooms = [];
       },
       error: (e) => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
     });

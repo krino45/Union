@@ -20,6 +20,7 @@ import {
   ValidationIssue, ValidateEditBody, SplitEditBody, InvitationDto,
   InvitationInfo
 } from '../models';
+import { RussianDayOfWeek, WeekType } from '../models/enums';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -372,6 +373,15 @@ export class ApiService {
   //  Reschedule Requests
   getRescheduleRequests(): Observable<RescheduleRequest[]> {
     return this.http.get<RescheduleRequest[]>(`${this.base}/reschedule-requests`);
+  }
+  getAvailableRooms(query: { scheduleId: string; dayOfWeek: RussianDayOfWeek; pairNumber: number; weekType: WeekType; excludeEntryId?: string }): Observable<Room[]> {
+    let params = new HttpParams()
+      .set('scheduleId', query.scheduleId)
+      .set('dayOfWeek', query.dayOfWeek)
+      .set('pairNumber', query.pairNumber.toString())
+      .set('weekType', query.weekType);
+    if (query.excludeEntryId) params = params.set('excludeEntryId', query.excludeEntryId);
+    return this.http.get<Room[]>(`${this.base}/reschedule-requests/available-rooms`, { params });
   }
   createRescheduleRequest(dto: CreateRescheduleRequestDto): Observable<RescheduleRequest> {
     return this.http.post<RescheduleRequest>(`${this.base}/reschedule-requests`, dto);

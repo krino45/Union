@@ -3,12 +3,15 @@ import { RescheduleStatus, WeekType, RussianDayOfWeek } from './enums';
 export interface RescheduleRequest {
   id: string;
   requestedByTeacherId: string;
-  requestedByTeacherName: string;
+  teacherName: string;
   originalEntryId: string;
   originalEntryDescription?: string;
-  proposedDay?: RussianDayOfWeek;
-  proposedPair?: number;
+  proposedDayOfWeek?: RussianDayOfWeek;
+  proposedPairNumber?: number;
   proposedWeekType?: WeekType;
+  proposedRoomId?: string;
+  proposedRoomName?: string;
+  proposedIsOnline: boolean;
   reason: string;
   status: RescheduleStatus;
   adminNote?: string;
@@ -17,13 +20,21 @@ export interface RescheduleRequest {
 }
 
 export interface CreateRescheduleRequestDto {
+  teacherId: string;
   originalEntryId: string;
-  proposedDay?: RussianDayOfWeek;
-  proposedPair?: number;
+  proposedDayOfWeek?: RussianDayOfWeek;
+  proposedPairNumber?: number;
   proposedWeekType?: WeekType;
+  proposedRoomId?: string;
+  proposedIsOnline: boolean;
   reason: string;
 }
 
 export interface ResolveRescheduleDto {
+  newDay?: RussianDayOfWeek;
+  newPair?: number;
+  newWeekType?: WeekType;
+  newRoomId?: string;
+  newIsOnline?: boolean;
   adminNote?: string;
 }

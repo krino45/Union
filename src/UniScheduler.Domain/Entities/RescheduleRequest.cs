@@ -13,6 +13,10 @@ public class RescheduleRequest : Entity
     public int? ProposedPairNumber { get; set; }
     public WeekType? ProposedWeekType { get; set; }
 
+    // Teacher's optional room suggestion for the new slot. ProposedIsOnline = make the class online (no room).
+    public Guid? ProposedRoomId { get; set; }
+    public bool ProposedIsOnline { get; set; }
+
     public string Reason { get; set; } = string.Empty;
     public RescheduleStatus Status { get; set; } = RescheduleStatus.Pending;
     public string? AdminNote { get; set; }
@@ -21,4 +25,5 @@ public class RescheduleRequest : Entity
 
     public Teacher RequestedByTeacher { get; set; } = null!;
     public ScheduleEntry OriginalEntry { get; set; } = null!;
+    public Room? ProposedRoom { get; set; }
 }

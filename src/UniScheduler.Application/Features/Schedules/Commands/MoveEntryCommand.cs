@@ -13,7 +13,8 @@ public record MoveEntryCommand(
     RussianDayOfWeek NewDayOfWeek,
     int NewPairNumber,
     WeekType NewWeekType,
-    Guid? NewRoomId) : IRequest<ScheduleEntryDto>;
+    Guid? NewRoomId,
+    bool? NewIsOnline = null) : IRequest<ScheduleEntryDto>;
 
 public class MoveEntryCommandHandler : IRequestHandler<MoveEntryCommand, ScheduleEntryDto>
 {
@@ -45,9 +46,12 @@ public class MoveEntryCommandHandler : IRequestHandler<MoveEntryCommand, Schedul
 
         var groupIds = entry.StudentGroups.Select(sg => sg.StudentGroupId);
 
+        var isOnline = request.NewIsOnline ?? entry.IsOnline;
+        var newRoomId = isOnline ? null : request.NewRoomId;
+
         var conflicts = _conflict.DetectConflicts(
-            entry.Id, entry.ScheduleId, request.NewRoomId, entry.TeacherId, groupIds,
-            request.NewDayOfWeek, request.NewPairNumber, request.NewWeekType, entry.IsOnline,
+            entry.Id, entry.ScheduleId, newRoomId, entry.TeacherId, groupIds,
+            request.NewDayOfWeek, request.NewPairNumber, request.NewWeekType, isOnline,
             allEntries);
 
         if (conflicts.Count > 0)
@@ -56,7 +60,8 @@ public class MoveEntryCommandHandler : IRequestHandler<MoveEntryCommand, Schedul
         entry.DayOfWeek = request.NewDayOfWeek;
         entry.PairNumber = request.NewPairNumber;
         entry.WeekType = request.NewWeekType;
-        entry.RoomId = request.NewRoomId;
+        entry.IsOnline = isOnline;
+        entry.RoomId = newRoomId;
 
         var schedule = await _db.Schedules.FindAsync(new object[] { entry.ScheduleId }, cancellationToken);
         if (schedule == null)
