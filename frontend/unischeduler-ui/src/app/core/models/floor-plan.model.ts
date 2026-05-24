@@ -6,6 +6,11 @@ export enum FloorPlanNodeType {
   Corridor  = 'Corridor',
 }
 
+export interface EntranceConnection {
+  toBuildingId: string;
+  distanceMeters: number;
+}
+
 export interface FloorPlanNode {
   id: string;
   buildingId: string;
@@ -15,6 +20,7 @@ export interface FloorPlanNode {
   nodeType: FloorPlanNodeType;
   roomId: string | null;
   label: string | null;
+  connections?: EntranceConnection[];
 }
 
 export interface FloorPlanEdge {
@@ -44,6 +50,7 @@ export interface SaveFloorPlanNodeRequest {
   nodeType: FloorPlanNodeType;
   roomId: string | null;
   label: string | null;
+  connections?: EntranceConnection[];
 }
 
 export interface SaveFloorPlanEdgeRequest {

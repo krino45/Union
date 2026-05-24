@@ -2,6 +2,8 @@ using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.DTOs;
 
+public record EntranceConnectionDto(Guid ToBuildingId, int DistanceMeters);
+
 public record FloorPlanNodeDto(
     Guid Id,
     Guid BuildingId,
@@ -10,7 +12,8 @@ public record FloorPlanNodeDto(
     double Y,
     FloorPlanNodeType NodeType,
     Guid? RoomId,
-    string? Label
+    string? Label,
+    List<EntranceConnectionDto> Connections
 );
 
 public record FloorPlanEdgeDto(
@@ -39,8 +42,11 @@ public record SaveFloorPlanNodeRequest(
     double Y,
     FloorPlanNodeType NodeType,
     Guid? RoomId,
-    string? Label
+    string? Label,
+    List<SaveEntranceConnectionRequest>? Connections = null
 );
+
+public record SaveEntranceConnectionRequest(Guid ToBuildingId, int DistanceMeters);
 
 public record SaveFloorPlanEdgeRequest(
     Guid FromNodeId,

@@ -14,6 +14,7 @@ public interface IApplicationDbContext
     DbSet<BuildingDistance> BuildingDistances { get; }
     DbSet<FloorPlanNode> FloorPlanNodes { get; }
     DbSet<FloorPlanEdge> FloorPlanEdges { get; }
+    DbSet<EntranceConnection> EntranceConnections { get; }
     DbSet<Room> Rooms { get; }
     DbSet<Department> Departments { get; }
     DbSet<GroupBlockedDay> GroupBlockedDays { get; }

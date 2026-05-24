@@ -2,7 +2,9 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.DTOs;
+using UniScheduler.Application.Features.FloorPlan;
 using UniScheduler.Domain.Entities;
+using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.Buildings.Commands;
 
@@ -15,6 +17,11 @@ public class SaveFloorPlanCommandHandler : IRequestHandler<SaveFloorPlanCommand>
 
     public async Task Handle(SaveFloorPlanCommand command, CancellationToken cancellationToken)
     {
+        var oldConnections = await _db.EntranceConnections
+            .Where(c => c.FromBuildingId == command.BuildingId)
+            .ToListAsync(cancellationToken);
+        _db.EntranceConnections.RemoveRange(oldConnections);
+
         var oldEdges = await _db.FloorPlanEdges
             .Where(e => e.BuildingId == command.BuildingId)
             .ToListAsync(cancellationToken);
@@ -59,6 +66,26 @@ public class SaveFloorPlanCommandHandler : IRequestHandler<SaveFloorPlanCommand>
             });
         }
 
+        foreach (var n in req.Nodes)
+        {
+            if (n.NodeType != FloorPlanNodeType.Entrance || n.Connections == null) continue;
+            if (!nodeByClientId.TryGetValue(n.Id, out var node)) continue;
+            foreach (var c in n.Connections)
+            {
+                if (c.ToBuildingId == command.BuildingId || c.DistanceMeters <= 0) continue;
+                _db.EntranceConnections.Add(new EntranceConnection
+                {
+                    FromNode = node,
+                    FromBuildingId = command.BuildingId,
+                    ToBuildingId = c.ToBuildingId,
+                    DistanceMeters = c.DistanceMeters
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await BuildingDistanceRecomputer.RecomputeForBuildingAsync(_db, command.BuildingId, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
     }
 }

@@ -14,10 +14,22 @@ public class GetFloorPlanQueryHandler : IRequestHandler<GetFloorPlanQuery, Floor
 
     public async Task<FloorPlanDto> Handle(GetFloorPlanQuery request, CancellationToken cancellationToken)
     {
-        var nodes = await _db.FloorPlanNodes
+        var connectionsByNode = (await _db.EntranceConnections
+                .Where(c => c.FromBuildingId == request.BuildingId)
+                .Select(c => new { c.FromNodeId, c.ToBuildingId, c.DistanceMeters })
+                .ToListAsync(cancellationToken))
+            .GroupBy(c => c.FromNodeId)
+            .ToDictionary(g => g.Key, g => g.Select(c => new EntranceConnectionDto(c.ToBuildingId, c.DistanceMeters)).ToList());
+
+        var rawNodes = await _db.FloorPlanNodes
             .Where(n => n.BuildingId == request.BuildingId)
-            .Select(n => new FloorPlanNodeDto(n.Id, n.BuildingId, n.Floor, n.X, n.Y, n.NodeType, n.RoomId, n.Label))
+            .Select(n => new { n.Id, n.BuildingId, n.Floor, n.X, n.Y, n.NodeType, n.RoomId, n.Label })
             .ToListAsync(cancellationToken);
+
+        var nodes = rawNodes
+            .Select(n => new FloorPlanNodeDto(n.Id, n.BuildingId, n.Floor, n.X, n.Y, n.NodeType, n.RoomId, n.Label,
+                connectionsByNode.TryGetValue(n.Id, out var conns) ? conns : new List<EntranceConnectionDto>()))
+            .ToList();
 
         var edges = await _db.FloorPlanEdges
             .Where(e => e.BuildingId == request.BuildingId)

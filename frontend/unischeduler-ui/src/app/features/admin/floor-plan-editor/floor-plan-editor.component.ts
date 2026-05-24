@@ -250,6 +250,23 @@ const NODE_ICONS: Record<string, string> = {
             <span class="prop-val">{{ node.x|number:'1.0-0' }} / {{ node.y|number:'1.0-0' }}</span>
           </div>
 
+          <!-- Entrance → other campuses -->
+          <ng-container *ngIf="node.nodeType===FNT.Entrance">
+            <mat-divider style="margin:10px 0 8px"></mat-divider>
+            <div class="prop-lbl">Расстояние до корпусов (м)</div>
+            <div class="conn-hint">Пусто = нет прохода от этого входа</div>
+            <div class="conn-list" *ngIf="otherBuildings.length > 0; else noOtherBld">
+              <div class="conn-row" *ngFor="let b of otherBuildings">
+                <span class="conn-code">{{ b.shortCode }}</span>
+                <input type="number" min="1" step="10" class="prop-input conn-input"
+                       [ngModel]="getConnMeters(node, b.id)" [ngModelOptions]="{standalone:true}"
+                       (ngModelChange)="setConnMeters(node, b.id, $event)"
+                       placeholder="—">
+              </div>
+            </div>
+            <ng-template #noOtherBld><div class="conn-hint">Нет других корпусов</div></ng-template>
+          </ng-container>
+
           <!-- Multi-floor stairs/elevator -->
           <ng-container *ngIf="isMultiFloorType(node)">
             <mat-divider style="margin:10px 0 8px"></mat-divider>
@@ -420,6 +437,11 @@ const NODE_ICONS: Record<string, string> = {
     .add-room-form { background: #e8f5e9; border-radius: 6px; padding: 8px; margin-bottom: 10px; }
     .add-room-row { display: flex; gap: 6px; align-items: center; }
 
+    .conn-hint { font-size: 10px; color: #888; margin: 2px 0 6px; }
+    .conn-list { display: flex; flex-direction: column; gap: 5px; }
+    .conn-row { display: flex; align-items: center; gap: 8px; }
+    .conn-code { font-weight: 700; font-size: 12px; min-width: 28px; color: #2e7d32; }
+    .conn-input { flex: 1; }
     .floor-checks { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 6px; }
     .fcheck { display: flex; align-items: center; gap: 3px; font-size: 11px; cursor: pointer; }
     .fcheck input { cursor: pointer; }
@@ -773,6 +795,30 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     return this.buildingRooms.filter(r => r.floor === node.floor);
   }
 
+  // ── Entrance → other-building connections ────────────────────────────────────
+
+  get otherBuildings(): Building[] {
+    return this.buildings.filter(b => b.id !== this.selectedBuildingId);
+  }
+
+  getConnMeters(node: EditorNode, toBuildingId: string): number | null {
+    return node.connections?.find(c => c.toBuildingId === toBuildingId)?.distanceMeters ?? null;
+  }
+
+  setConnMeters(node: EditorNode, toBuildingId: string, value: number | null): void {
+    if (!node.connections) node.connections = [];
+    const meters = value != null && value > 0 ? Math.round(value) : null;
+    const idx = node.connections.findIndex(c => c.toBuildingId === toBuildingId);
+    if (meters === null) {
+      if (idx >= 0) node.connections.splice(idx, 1); // empty = no connection
+    } else if (idx >= 0) {
+      node.connections[idx].distanceMeters = meters;
+    } else {
+      node.connections.push({ toBuildingId, distanceMeters: meters });
+    }
+    this.markDirty();
+  }
+
   // ── Mode / selection ─────────────────────────────────────────────────────────
 
   setMode(m: EditorMode): void { this.mode = m; this.edgeSource = null; if (m !== 'select') this.clearSelection(); }
@@ -1027,7 +1073,10 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     if (!this.selectedBuildingId || this.saving) return;
     this.saving = true;
     this.api.saveFloorPlan(this.selectedBuildingId, {
-      nodes: this.nodes.map(n => ({ id: n.id, floor: n.floor, x: n.x, y: n.y, nodeType: n.nodeType, roomId: n.roomId, label: n.label })),
+      nodes: this.nodes.map(n => ({
+        id: n.id, floor: n.floor, x: n.x, y: n.y, nodeType: n.nodeType, roomId: n.roomId, label: n.label,
+        connections: n.nodeType === FloorPlanNodeType.Entrance ? (n.connections ?? []) : []
+      })),
       edges: this.edges.map(e => ({ fromNodeId: e.fromNodeId, toNodeId: e.toNodeId, distanceMeters: e.distanceMeters }))
     }).subscribe({
       next: () => {

@@ -107,7 +107,7 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
         var token = _jwt.GenerateToken(refreshed);
         var universities = refreshed.UniversityAccesses
             .Select(a => new UniversityAccessDto(
-                a.UniversityId, a.University.Name, a.University.ShortName, a.University.LogoUrl, a.Role.ToString()))
+                a.UniversityId, a.University.Name, a.University.ShortName, a.University.LogoUrl, a.University.City, a.Role.ToString()))
             .ToList();
 
         return new LoginResult(token, refreshed.Username, refreshed.Role, refreshed.Id, refreshed.TeacherId, refreshed.Email, universities);

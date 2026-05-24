@@ -8,6 +8,7 @@ export interface UniversityAccess {
   universityName: string;
   shortName: string;
   logoUrl?: string;
+  city?: string;
   role: 'Admin' | 'Teacher';
 }
 

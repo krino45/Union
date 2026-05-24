@@ -24,6 +24,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<BuildingDistance> BuildingDistances => Set<BuildingDistance>();
     public DbSet<FloorPlanNode> FloorPlanNodes => Set<FloorPlanNode>();
     public DbSet<FloorPlanEdge> FloorPlanEdges => Set<FloorPlanEdge>();
+    public DbSet<EntranceConnection> EntranceConnections => Set<EntranceConnection>();
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<GroupBlockedDay> GroupBlockedDays => Set<GroupBlockedDay>();

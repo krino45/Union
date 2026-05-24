@@ -51,3 +51,28 @@ public class FloorPlanEdgeConfiguration : IEntityTypeConfiguration<FloorPlanEdge
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
+
+public class EntranceConnectionConfiguration : IEntityTypeConfiguration<EntranceConnection>
+{
+    public void Configure(EntityTypeBuilder<EntranceConnection> builder)
+    {
+        // One distance per (entrance node, target building).
+        builder.HasKey(c => new { c.FromNodeId, c.ToBuildingId });
+        builder.Property(c => c.DistanceMeters).IsRequired();
+
+        builder.HasOne(c => c.FromNode)
+            .WithMany(n => n.Connections)
+            .HasForeignKey(c => c.FromNodeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(c => c.FromBuilding)
+            .WithMany()
+            .HasForeignKey(c => c.FromBuildingId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(c => c.ToBuilding)
+            .WithMany()
+            .HasForeignKey(c => c.ToBuildingId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}

@@ -11,6 +11,7 @@ public record UniversityAccessDto(
     string UniversityName,
     string ShortName,
     string? LogoUrl,
+    string? City,
     string Role);
 
 public record LoginResult(
@@ -53,6 +54,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
                 a.University.Name,
                 a.University.ShortName,
                 a.University.LogoUrl,
+                a.University.City,
                 a.Role.ToString()))
             .ToList();
 
@@ -88,6 +90,7 @@ public class RenewTokenCommandHandler : IRequestHandler<RenewTokenCommand, Login
                 a.University.Name,
                 a.University.ShortName,
                 a.University.LogoUrl,
+                a.University.City,
                 a.Role.ToString()))
             .ToList();
 

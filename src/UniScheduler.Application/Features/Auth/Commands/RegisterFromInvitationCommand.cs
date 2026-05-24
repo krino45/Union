@@ -77,7 +77,7 @@ public class RegisterFromInvitationCommandHandler : IRequestHandler<RegisterFrom
         var token = _jwt.GenerateToken(user);
         var universities = new List<UniversityAccessDto>
         {
-            new UniversityAccessDto(inv.UniversityId, inv.University.Name, inv.University.ShortName, inv.University.LogoUrl, inv.UniversityRole.ToString())
+            new UniversityAccessDto(inv.UniversityId, inv.University.Name, inv.University.ShortName, inv.University.LogoUrl, inv.University.City, inv.UniversityRole.ToString())
         };
         return new LoginResult(token, user.Username, user.Role, user.Id, user.TeacherId, user.Email, universities);
     }

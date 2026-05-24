@@ -17,4 +17,6 @@ public class FloorPlanNode : Entity
     public Room? Room { get; set; }
     public ICollection<FloorPlanEdge> EdgesFrom { get; set; } = new List<FloorPlanEdge>();
     public ICollection<FloorPlanEdge> EdgesTo { get; set; } = new List<FloorPlanEdge>();
+    // Cross-building walking links — only meaningful for Entrance nodes.
+    public ICollection<EntranceConnection> Connections { get; set; } = new List<EntranceConnection>();
 }
