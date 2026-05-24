@@ -7,9 +7,12 @@ using UniScheduler.Domain.Entities;
 
 namespace UniScheduler.Application.Features.Auth.Commands;
 
-// Accept an invitation as an already-logged-in user. The session must belong to the invitee
-// - If invitation has a TeacherId, the current user AppUser.TeacherId must match it
-// - If invitation has no TeacherId, accepting while logged in is not supported here
+// Accept an invitation as an already-logged-in user.
+// Caller account email MUST equal the invitation email.
+//  - Invitation with TeacherId: caller must either already be linked to that teacher,
+//    OR not be linked to any teacher. If linked to a different teacher, refuse.
+//    Also refuse if the target teacher is already linked to someone else.
+//  - Invitation without TeacherId: just grant/upgrade uni access.
 public record AcceptInvitationCommand(string Token) : IRequest<LoginResult>;
 
 public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCommand, LoginResult>
@@ -44,14 +47,31 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken)
             ?? throw new UnauthorizedAccessException("Пользователь не найден.");
 
+        var inviteEmail = inv.Email.Trim().ToLowerInvariant();
+        var myEmail = currentUser.Email?.Trim().ToLowerInvariant();
+        if (myEmail == null || myEmail != inviteEmail)
+            throw new ForbiddenException(
+                $"Это приглашение отправлено на {inv.Email}. Войдите в аккаунт с этим e-mail или зарегистрируйте новый по ссылке из письма.");
+
         if (inv.TeacherId.HasValue)
         {
-            if (currentUser.TeacherId != inv.TeacherId)
-                throw new ForbiddenException("Это приглашение не предназначено для вашего аккаунта.");
-        }
-        else
-        {
-            throw new ForbiddenException("Это приглашение можно принять только через регистрацию.");
+            if (currentUser.TeacherId == inv.TeacherId)
+            {
+                // Already correctly bound.
+            }
+            else if (currentUser.TeacherId == null)
+            {
+                // Bind. But guard against a race where the teacher is already linked to a different account.
+                var teacherAlreadyLinked = await _db.AppUsers
+                    .AnyAsync(u => u.TeacherId == inv.TeacherId && u.Id != currentUser.Id, cancellationToken);
+                if (teacherAlreadyLinked)
+                    throw new ForbiddenException("К указанному преподавателю уже привязан другой аккаунт.");
+                currentUser.TeacherId = inv.TeacherId;
+            }
+            else
+            {
+                throw new ForbiddenException("Ваш аккаунт уже привязан к другому преподавателю.");
+            }
         }
 
         // Grant or upgrade the UserUniversityAccess
@@ -90,6 +110,6 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
                 a.UniversityId, a.University.Name, a.University.ShortName, a.University.LogoUrl, a.Role.ToString()))
             .ToList();
 
-        return new LoginResult(token, refreshed.Username, refreshed.Role, refreshed.Id, refreshed.TeacherId, universities);
+        return new LoginResult(token, refreshed.Username, refreshed.Role, refreshed.Id, refreshed.TeacherId, refreshed.Email, universities);
     }
 }

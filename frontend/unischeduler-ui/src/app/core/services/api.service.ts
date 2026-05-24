@@ -187,6 +187,10 @@ export class ApiService {
   getTeachers(): Observable<Teacher[]> {
     return this.http.get<Teacher[]>(`${this.base}/teachers`);
   }
+  // Teachers for a specific university (superadmin invite dialog) — overrides the ambient tenant header.
+  getTeachersForUniversity(universityId: string): Observable<Teacher[]> {
+    return this.http.get<Teacher[]>(`${this.base}/teachers`, { headers: { 'X-University-Id': universityId } });
+  }
   getTeacher(id: string): Observable<Teacher> {
     return this.http.get<Teacher>(`${this.base}/teachers/${id}`);
   }

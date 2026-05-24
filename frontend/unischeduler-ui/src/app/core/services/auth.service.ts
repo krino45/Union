@@ -7,14 +7,19 @@ import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
+  // The auth token is an httpOnly cookie (shared across tabs, unreadable by JS). This localStorage
+  // entry is only a non-secret profile cache so route guards can run synchronously on reload; it is
+  // re-validated against /auth/me on startup and kept in sync across tabs.
   private readonly userKey = 'unischeduler_user';
   private currentUserSubject = new BehaviorSubject<CurrentUser | null>(this.loadUser());
+  private readonly channel = ('BroadcastChannel' in window) ? new BroadcastChannel('uni-auth') : null;
 
   currentUser$ = this.currentUserSubject.asObservable();
 
   constructor(private http: HttpClient, private router: Router) {
+    this.listenForCrossTabChanges();
     if (this.currentUser) {
-      this.tryRenewOnStartup();
+      this.me().subscribe({ error: (e) => { if (e?.status === 401) this.clearLocal(); } });
     }
   }
 
@@ -49,10 +54,6 @@ export class AuthService {
     return u.universities.length > 1 || this.isSuperAdmin;
   }
 
-  get token(): string | null {
-    return this.currentUser?.token ?? null;
-  }
-
   login(request: LoginRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/login`, request).pipe(
       tap(response => this.storeUser(response))
@@ -71,46 +72,66 @@ export class AuthService {
     );
   }
 
-  renewToken(): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/renew`, {}).pipe(
+  /** Hydrate/refresh the session from the cookie. Used on startup and after self-grants. */
+  me(): Observable<AuthResponse> {
+    return this.http.get<AuthResponse>(`${environment.apiUrl}/auth/me`).pipe(
       tap(response => this.storeUser(response, true))
     );
+  }
+
+  /** Kept for callers that expect to refresh universities (superadmin self-grant). */
+  renewToken(): Observable<AuthResponse> {
+    return this.me();
   }
 
   selectUniversity(access: UniversityAccess): void {
     const user = this.currentUser;
     if (!user) return;
-    const updated: CurrentUser = { ...user, selectedUniversity: access };
-    localStorage.setItem(this.userKey, JSON.stringify(updated));
-    this.currentUserSubject.next(updated);
+    this.persist({ ...user, selectedUniversity: access });
   }
 
   clearUniversitySelection(): void {
     const user = this.currentUser;
     if (!user) return;
-    const updated: CurrentUser = { ...user, selectedUniversity: undefined };
-    localStorage.setItem(this.userKey, JSON.stringify(updated));
-    this.currentUserSubject.next(updated);
+    this.persist({ ...user, selectedUniversity: undefined });
   }
 
   logout(): void {
-    localStorage.removeItem(this.userKey);
-    this.currentUserSubject.next(null);
+    this.http.post(`${environment.apiUrl}/auth/logout`, {}).subscribe({ next: () => {}, error: () => {} });
+    this.clearLocal();
+    this.channel?.postMessage({ type: 'logout' });
+    this.router.navigate(['/login']);
+  }
+
+  handleUnauthorized(): void {
+    if (!this.currentUser) return;
+    this.clearLocal();
+    this.channel?.postMessage({ type: 'logout' });
     this.router.navigate(['/login']);
   }
 
   private storeUser(response: AuthResponse, keepSelected = false): void {
     const existing = this.currentUser;
     const user: CurrentUser = {
-      token: response.token,
       username: response.username,
       role: response.role,
       teacherId: response.teacherId,
+      email: response.email,
       universities: response.universities ?? [],
       selectedUniversity: keepSelected ? existing?.selectedUniversity : undefined
     };
+    this.persist(user);
+  }
+
+  private persist(user: CurrentUser): void {
     localStorage.setItem(this.userKey, JSON.stringify(user));
     this.currentUserSubject.next(user);
+    this.channel?.postMessage({ type: 'sync' });
+  }
+
+  private clearLocal(): void {
+    localStorage.removeItem(this.userKey);
+    this.currentUserSubject.next(null);
   }
 
   private loadUser(): CurrentUser | null {
@@ -118,7 +139,6 @@ export class AuthService {
       const data = localStorage.getItem(this.userKey);
       if (!data) return null;
       const user = JSON.parse(data) as CurrentUser;
-      // Ensure backwards compatibility: if universities is missing, default to empty
       if (!user.universities) user.universities = [];
       return user;
     } catch {
@@ -126,7 +146,26 @@ export class AuthService {
     }
   }
 
-  private tryRenewOnStartup(): void {
-    this.renewToken().subscribe({ error: () => {} });
+  private listenForCrossTabChanges(): void {
+    this.channel?.addEventListener('message', (e: MessageEvent) => {
+      if (e.data?.type === 'logout') {
+        if (this.currentUser) this.clearLocal();
+      } else if (e.data?.type === 'sync') {
+        this.applyCrossTabState(this.loadUser());
+      }
+    });
+
+    // Fallback for browsers without BroadcastChannel: the storage event fires in other tabs.
+    window.addEventListener('storage', (e: StorageEvent) => {
+      if (e.key !== this.userKey) return;
+      this.applyCrossTabState(e.newValue === null ? null : this.loadUser());
+    });
+  }
+
+  private applyCrossTabState(user: CurrentUser | null): void {
+    this.currentUserSubject.next(user);
+    if (user && this.router.url.split('?')[0] === '/login') {
+      this.router.navigate(['/']);
+    }
   }
 }

@@ -6,13 +6,15 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { AuthService } from '../../core/services/auth.service';
 import { UniversityAccess } from '../../core/models';
+import { ThemeToggleComponent } from '../../shared/components/theme-toggle/theme-toggle.component';
 
 @Component({
   selector: 'app-university-select',
   standalone: true,
-  imports: [CommonModule, MatCardModule, MatButtonModule, MatIconModule],
+  imports: [CommonModule, MatCardModule, MatButtonModule, MatIconModule, ThemeToggleComponent],
   template: `
     <div class="select-container">
+      <app-theme-toggle></app-theme-toggle>
       <div class="header">
         <mat-icon class="logo-icon">school</mat-icon>
         <h1>Юниан</h1>

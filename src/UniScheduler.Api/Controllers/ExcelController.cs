@@ -1,4 +1,4 @@
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UniScheduler.Application.Common.Interfaces;
@@ -8,7 +8,7 @@ namespace UniScheduler.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,SuperAdmin")]
 public class ExcelController : ControllerBase
 {
     private readonly IExcelExportService _export;

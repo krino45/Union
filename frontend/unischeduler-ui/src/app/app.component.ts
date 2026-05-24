@@ -1,5 +1,5 @@
-import { Component, Inject } from '@angular/core';
-import { DOCUMENT, CommonModule } from '@angular/common';
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSidenavModule } from '@angular/material/sidenav';
@@ -9,6 +9,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from './core/services/auth.service';
+import { ThemeService } from './core/services/theme.service';
 
 @Component({
   selector: 'app-root',
@@ -141,8 +142,8 @@ import { AuthService } from './core/services/auth.service';
             <mat-icon>map</mat-icon>
             Редактор планировок
           </button>
-          <button mat-icon-button (click)="toggleDarkMode()" [matTooltip]="isDarkMode ? 'Светлая тема' : 'Тёмная тема'" class="dark-toggle">
-            <mat-icon>{{ isDarkMode ? 'light_mode' : 'dark_mode' }}</mat-icon>
+          <button mat-icon-button (click)="theme.toggle()" [matTooltip]="(theme.dark$ | async) ? 'Светлая тема' : 'Тёмная тема'" class="dark-toggle">
+            <mat-icon>{{ (theme.dark$ | async) ? 'light_mode' : 'dark_mode' }}</mat-icon>
           </button>
           <span class="role-badge" *ngIf="auth.isSuperAdmin">Суперадмин</span>
           <span class="role-badge" *ngIf="!auth.isSuperAdmin && auth.currentUniversity">
@@ -183,25 +184,22 @@ import { AuthService } from './core/services/auth.service';
   `]
 })
 export class AppComponent {
-  isDarkMode = false;
-
   constructor(
     public auth: AuthService,
-    private router: Router,
-    @Inject(DOCUMENT) private doc: Document
+    public theme: ThemeService,
+    private router: Router
   ) {
-    this.isDarkMode = localStorage.getItem('darkMode') === 'true';
-    if (this.isDarkMode) this.doc.body.classList.add('dark-mode');
+    this.auth.currentUser$.subscribe(user => {
+      const url = this.router.url.split('?')[0];
+      const onAuthPage = url === '/login' || url.startsWith('/register');
+      if (!user && !onAuthPage) {
+        this.router.navigate(['/login']);
+      }
+    });
   }
 
   switchUniversity(): void {
     this.auth.clearUniversitySelection();
     this.router.navigate(['/select-university']);
-  }
-
-  toggleDarkMode(): void {
-    this.isDarkMode = !this.isDarkMode;
-    this.doc.body.classList.toggle('dark-mode', this.isDarkMode);
-    localStorage.setItem('darkMode', String(this.isDarkMode));
   }
 }

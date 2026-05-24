@@ -1,4 +1,4 @@
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UniScheduler.Application.DTOs;
@@ -9,7 +9,7 @@ namespace UniScheduler.Api.Controllers;
 
 [ApiController]
 [Route("api/calendar-plans")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,SuperAdmin")]
 public class CalendarPlansController : ControllerBase
 {
     private readonly IMediator _mediator;

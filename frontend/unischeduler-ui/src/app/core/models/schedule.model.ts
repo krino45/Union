@@ -73,6 +73,7 @@ export interface InvitationDto {
 
 export interface InvitationInfo {
   isValid: boolean;
+  email: string | null;
   universityName: string | null;
   universityShortName: string | null;
   universityRole: 'Admin' | 'Teacher' | null;

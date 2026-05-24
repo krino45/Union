@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using UniScheduler.Api.Auth;
 using UniScheduler.Api.Middleware;
 using UniScheduler.Api.Services;
 using UniScheduler.Application;
@@ -32,6 +33,18 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = jwtSection["Issuer"],
             ValidAudience = jwtSection["Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret))
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                if (string.IsNullOrEmpty(ctx.Token) &&
+                    ctx.Request.Cookies.TryGetValue(AuthCookie.Name, out var cookieToken))
+                {
+                    ctx.Token = cookieToken;
+                }
+                return Task.CompletedTask;
+            }
         };
     });
 

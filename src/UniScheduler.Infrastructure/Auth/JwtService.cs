@@ -36,6 +36,8 @@ public class JwtService : IJwtService
         };
         if (user.TeacherId.HasValue)
             claims.Add(new Claim("teacherId", user.TeacherId.Value.ToString()));
+        if (!string.IsNullOrWhiteSpace(user.Email))
+            claims.Add(new Claim(ClaimTypes.Email, user.Email));
 
         var token = new JwtSecurityToken(
             issuer: _issuer,

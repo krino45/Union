@@ -406,8 +406,15 @@ body.dark-mode {
   /*  Solver settings dialog  */
   .section-label { color: rgba(255,255,255,0.50) !important; }
 
-  /*  Login page  */
-  .login-container { background: #1a1a1a !important; }
+  /*  Auth pages (login / register / select-university)  */
+  .login-container,
+  .register-container,
+  .select-container { background: #1a1a1a !important; }
+  .invite-summary { background: #1c2a3a !important; color: rgba(255,255,255,0.87) !important; }
+  .invite-email { color: #90caf9 !important; }
+  .uni-short { color: rgba(255,255,255,0.45) !important; }
+  .uni-role { color: #90caf9 !important; }
+  .superadmin-card .uni-role, .superadmin-card .uni-icon { color: #ce93d8 !important; }
 
   /*  Shared schedule-table component  */
   /* (used in teacher view and public schedule pages)  */

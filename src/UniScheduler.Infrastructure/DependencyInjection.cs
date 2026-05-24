@@ -1,7 +1,7 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Infrastructure.Auth;
 using UniScheduler.Infrastructure.Email;
@@ -17,7 +17,7 @@ public static class DependencyInjection
     {
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(
-                configuration.GetConnectionString("DefaultConnection"),
+                ResolveConnectionString(configuration),
                 b => b.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName)));
 
         services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
@@ -34,5 +34,31 @@ public static class DependencyInjection
         services.AddScoped<IEmailSender, ConsoleEmailSender>();
 
         return services;
+    }
+
+    private static string ResolveConnectionString(IConfiguration configuration)
+    {
+        var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+        if (!string.IsNullOrWhiteSpace(databaseUrl) &&
+            (databaseUrl.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) ||
+             databaseUrl.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase)))
+        {
+            var uri = new Uri(databaseUrl);
+            var userInfo = uri.UserInfo.Split(':', 2);
+            return new NpgsqlConnectionStringBuilder
+            {
+                Host = uri.Host,
+                Port = uri.Port > 0 ? uri.Port : 5432,
+                Username = Uri.UnescapeDataString(userInfo[0]),
+                Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : string.Empty,
+                Database = uri.AbsolutePath.TrimStart('/'),
+                SslMode = SslMode.Prefer,
+                TrustServerCertificate = true
+            }.ConnectionString;
+        }
+
+        return configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException(
+                "No database connection string. Set DATABASE_URL or ConnectionStrings__DefaultConnection.");
     }
 }

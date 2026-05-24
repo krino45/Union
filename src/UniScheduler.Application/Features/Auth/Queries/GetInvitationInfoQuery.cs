@@ -10,6 +10,7 @@ namespace UniScheduler.Application.Features.Auth.Queries;
 // "registration", "accept" or "wrong account" UX without leaking details.
 public record InvitationInfoDto(
     bool IsValid,                 // false: expired/consumed/not-found
+    string? Email,                // the invited e-mail (so UI can prefill / explain a mismatch)
     string? UniversityName,
     string? UniversityShortName,
     UniversityRole? UniversityRole,
@@ -29,7 +30,7 @@ public class GetInvitationInfoQueryHandler : IRequestHandler<GetInvitationInfoQu
     public async Task<InvitationInfoDto> Handle(GetInvitationInfoQuery request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Token))
-            return new InvitationInfoDto(false, null, null, null, null, false, "invalid");
+            return new InvitationInfoDto(false, null, null, null, null, null, false, "invalid");
 
         var otpHash = CreateInvitationCommandHandler.HashToken(request.Token);
         var inv = await _db.Invitations
@@ -38,43 +39,45 @@ public class GetInvitationInfoQueryHandler : IRequestHandler<GetInvitationInfoQu
             .FirstOrDefaultAsync(i => i.OtpHash == otpHash, cancellationToken);
 
         if (inv == null || inv.ConsumedAt != null || inv.ExpiresAt < DateTime.UtcNow)
-            return new InvitationInfoDto(false, null, null, null, null, false, "invalid");
+            return new InvitationInfoDto(false, null, null, null, null, null, false, "invalid");
 
         var teacherDisplay = inv.Teacher != null
             ? $"{inv.Teacher.LastName} {inv.Teacher.FirstName}".Trim()
             : null;
 
-        bool teacherAlreadyLinked = false;
+        // The "teacher already linked" flag here means: somebody other than the current caller is linked.
+        var currentUserId = _user.UserId;
+        bool teacherAlreadyLinkedElsewhere = false;
         if (inv.TeacherId.HasValue)
-            teacherAlreadyLinked = await _db.AppUsers
-                .AnyAsync(u => u.TeacherId == inv.TeacherId, cancellationToken);
-
-        string mode;
-        if (_user.UserId.HasValue)
         {
-            // Logged-in flow: can the current user accept?
+            teacherAlreadyLinkedElsewhere = await _db.AppUsers
+                .AnyAsync(u => u.TeacherId == inv.TeacherId && (!currentUserId.HasValue || u.Id != currentUserId.Value), cancellationToken);
+        }
+
+        var inviteEmail = inv.Email.Trim().ToLowerInvariant();
+        string mode;
+        if (currentUserId.HasValue)
+        {
             var me = await _db.AppUsers
-                .FirstOrDefaultAsync(u => u.Id == _user.UserId, cancellationToken);
-            if (me == null)
-                mode = "wrong-account";
-            else if (inv.TeacherId.HasValue && me.TeacherId == inv.TeacherId)
-                mode = "accept";
-            else
-                mode = "wrong-account";
+                .FirstOrDefaultAsync(u => u.Id == currentUserId.Value, cancellationToken);
+            var myEmail = me?.Email?.Trim().ToLowerInvariant();
+            // Identity gate: the logged-in session must own the invited e-mail.
+            mode = (myEmail != null && myEmail == inviteEmail) ? "accept" : "wrong-account";
         }
         else
         {
-            // Anonymous flow: register, unless the teacher is already linked elsewhere
-            mode = teacherAlreadyLinked ? "wrong-account" : "register";
+            // Anonymous: offer the register page (which also exposes a "log in with existing account" tab).
+            mode = "register";
         }
 
         return new InvitationInfoDto(
             true,
+            inv.Email,
             inv.University.Name,
             inv.University.ShortName,
             inv.UniversityRole,
             teacherDisplay,
-            teacherAlreadyLinked,
+            teacherAlreadyLinkedElsewhere,
             mode);
     }
 }

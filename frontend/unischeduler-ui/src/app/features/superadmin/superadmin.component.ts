@@ -20,6 +20,7 @@ import { Observable, debounceTime, distinctUntilChanged, switchMap, of, startWit
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { UniversityAccess } from '../../core/models';
+import { Teacher } from '../../core/models/teacher.model';
 
 @Component({
   selector: 'app-superadmin',
@@ -117,7 +118,12 @@ export class SuperAdminComponent implements OnInit {
     private router: Router
   ) {}
 
-  ngOnInit(): void { this.load(); }
+  ngOnInit(): void {
+    if (this.auth.currentUniversity) {
+      this.auth.clearUniversitySelection();
+    }
+    this.load();
+  }
 
   load(): void {
     this.api.getUniversities().subscribe(data => this.universities = data);
@@ -155,13 +161,22 @@ export class SuperAdminComponent implements OnInit {
 
   enterUniversity(u: any): void {
     // SuperAdmin auto-grants themselves Admin access before entering so the X-University-Id header
-    // gets through global query filters cleanly.
+    // gets through global query filters cleanly. Then renew the JWT so the local universities list
+    // includes the new access row.
     this.api.grantSelfUniversityAccess(u.id).subscribe({
-      next: () => this.proceedToUniversity(u),
+      next: () => this.refreshAndProceed(u),
       error: e => {
-        if (e.status === 204 || e.status === 200) this.proceedToUniversity(u);
+        if (e.status === 204 || e.status === 200) this.refreshAndProceed(u);
         else this.snackBar.open(e.error?.title || 'Не удалось получить доступ', 'OK', { duration: 4000 });
       }
+    });
+  }
+
+  private refreshAndProceed(u: any): void {
+    // renewToken() updates auth.currentUser.universities with the freshly-granted access
+    this.auth.renewToken().subscribe({
+      next: () => this.proceedToUniversity(u),
+      error: () => this.proceedToUniversity(u)
     });
   }
 
@@ -386,18 +401,28 @@ export class UniversityUsersDialogComponent implements OnInit {
     <h2 mat-dialog-title>Приглашения: {{ data.name }}</h2>
     <mat-dialog-content>
       <div class="invite-form">
-        <mat-form-field appearance="outline" class="grow">
-          <mat-label>E-mail</mat-label>
-          <input matInput [(ngModel)]="email" placeholder="user@example.com">
-        </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>Роль</mat-label>
-          <mat-select [(ngModel)]="role">
+          <mat-select [(ngModel)]="role" (ngModelChange)="onRoleChange()">
             <mat-option value="Teacher">Преподаватель</mat-option>
             <mat-option value="Admin" *ngIf="auth.isSuperAdmin">Администратор</mat-option>
           </mat-select>
         </mat-form-field>
-        <button mat-raised-button color="primary" (click)="invite()" [disabled]="!email">
+        <mat-form-field appearance="outline" class="grow" *ngIf="role === 'Teacher'">
+          <mat-label>Преподаватель</mat-label>
+          <mat-select [(ngModel)]="teacherId" (ngModelChange)="onTeacherChange()">
+            <mat-option *ngFor="let t of teachers" [value]="t.id">
+              {{ t.displayName || (t.lastName + ' ' + t.firstName) }}<span *ngIf="t.email"> · {{ t.email }}</span>
+            </mat-option>
+          </mat-select>
+          <mat-hint>Приглашение привяжет аккаунт к этой карточке</mat-hint>
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="grow">
+          <mat-label>E-mail</mat-label>
+          <input matInput [(ngModel)]="email" placeholder="user@example.com" type="email">
+          <mat-hint *ngIf="role === 'Teacher'">Можно оставить — возьмём e-mail преподавателя</mat-hint>
+        </mat-form-field>
+        <button mat-raised-button color="primary" (click)="invite()" [disabled]="!canInvite">
           <mat-icon>send</mat-icon> Пригласить
         </button>
       </div>
@@ -448,9 +473,11 @@ export class UniversityUsersDialogComponent implements OnInit {
 })
 export class UniversityInvitationsDialogComponent implements OnInit {
   invitations: any[] = [];
+  teachers: Teacher[] = [];
   cols = ['email', 'role', 'status', 'expires', 'actions'];
   email = '';
   role: 'Admin' | 'Teacher' = 'Teacher';
+  teacherId: string | null = null;
 
   constructor(
     private api: ApiService,
@@ -459,7 +486,10 @@ export class UniversityInvitationsDialogComponent implements OnInit {
     @Inject(MAT_DIALOG_DATA) public data: any
   ) {}
 
-  ngOnInit(): void { this.load(); }
+  ngOnInit(): void {
+    this.load();
+    this.api.getTeachersForUniversity(this.data.id).subscribe(list => this.teachers = list);
+  }
 
   load(): void {
     this.api.listInvitations(this.data.id).subscribe(list => this.invitations = list);
@@ -469,15 +499,38 @@ export class UniversityInvitationsDialogComponent implements OnInit {
     return new Date(i.expiresAt) < new Date();
   }
 
+  // Teacher invites must be bound to a teacher card (the backend enforces this too); admin invites
+  // just need an e-mail.
+  get canInvite(): boolean {
+    if (this.role === 'Teacher') return !!this.teacherId && (!!this.email || this.teacherHasEmail);
+    return !!this.email;
+  }
+
+  private get teacherHasEmail(): boolean {
+    return !!this.teachers.find(t => t.id === this.teacherId)?.email;
+  }
+
+  onRoleChange(): void {
+    if (this.role === 'Admin') this.teacherId = null;
+  }
+
+  onTeacherChange(): void {
+    // Pre-fill the e-mail from the teacher card so the admin doesn't have to retype it.
+    const t = this.teachers.find(x => x.id === this.teacherId);
+    if (t?.email && !this.email) this.email = t.email;
+  }
+
   invite(): void {
-    if (!this.email) return;
-    this.api.createInvitation(this.data.id, this.email, this.role).subscribe({
+    if (!this.canInvite) return;
+    const teacherId = this.role === 'Teacher' ? (this.teacherId ?? undefined) : undefined;
+    this.api.createInvitation(this.data.id, this.email, this.role, teacherId).subscribe({
       next: () => {
         this.email = '';
+        this.teacherId = null;
         this.load();
         this.snackBar.open('Приглашение отправлено (ссылка в консоли сервера)', 'OK', { duration: 4000 });
       },
-      error: e => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
+      error: e => this.snackBar.open(e.error?.title || e.error?.message || 'Ошибка', 'OK', { duration: 4000 })
     });
   }
 

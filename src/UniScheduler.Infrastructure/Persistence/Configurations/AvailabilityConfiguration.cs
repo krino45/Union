@@ -42,6 +42,9 @@ public class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
         builder.HasKey(u => u.Id);
         builder.Property(u => u.Username).IsRequired().HasMaxLength(100);
         builder.HasIndex(u => u.Username).IsUnique();
+        builder.Property(u => u.Email).HasMaxLength(256);
+        // Unique only when present (admins/superadmins may have no e-mail).
+        builder.HasIndex(u => u.Email).IsUnique().HasFilter("\"Email\" IS NOT NULL");
         builder.Property(u => u.PasswordHash).IsRequired();
         builder.Property(u => u.Role).IsRequired();
 

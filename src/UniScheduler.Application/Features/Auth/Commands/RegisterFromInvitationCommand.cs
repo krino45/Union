@@ -48,9 +48,14 @@ public class RegisterFromInvitationCommandHandler : IRequestHandler<RegisterFrom
         if (await _db.AppUsers.AnyAsync(u => u.Username == request.Username, cancellationToken))
             throw new InvalidOperationException("Пользователь с таким логином уже существует.");
 
+        var email = inv.Email.Trim().ToLowerInvariant();
+        if (await _db.AppUsers.AnyAsync(u => u.Email == email, cancellationToken))
+            throw new InvalidOperationException("Аккаунт с таким e-mail уже существует. Войдите и примите приглашение.");
+
         var user = new AppUser
         {
             Username = request.Username,
+            Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Role = inv.SystemRole,
             TeacherId = inv.TeacherId
@@ -74,6 +79,6 @@ public class RegisterFromInvitationCommandHandler : IRequestHandler<RegisterFrom
         {
             new UniversityAccessDto(inv.UniversityId, inv.University.Name, inv.University.ShortName, inv.University.LogoUrl, inv.UniversityRole.ToString())
         };
-        return new LoginResult(token, user.Username, user.Role, user.Id, user.TeacherId, universities);
+        return new LoginResult(token, user.Username, user.Role, user.Id, user.TeacherId, user.Email, universities);
     }
 }

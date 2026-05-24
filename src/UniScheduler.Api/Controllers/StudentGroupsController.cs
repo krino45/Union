@@ -1,4 +1,4 @@
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UniScheduler.Application.DTOs;
@@ -10,7 +10,7 @@ namespace UniScheduler.Api.Controllers;
 
 [ApiController]
 [Route("api/student-groups")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,SuperAdmin")]
 public class StudentGroupsController : ControllerBase
 {
     private readonly IMediator mediator;

@@ -1,0 +1,17 @@
+# The backend image only needs src/
+**/bin
+**/obj
+frontend
+tests
+.git
+.github
+.idea
+.vs
+.vscode
+.claude
+**/*.user
+**/node_modules
+**/dist
+Dockerfile
+.dockerignore
+README.md

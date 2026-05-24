@@ -9,9 +9,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatTabsModule } from '@angular/material/tabs';
+import { MatDividerModule } from '@angular/material/divider';
 import { ApiService } from '../../../core/services/api.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { InvitationInfo } from '../../../core/models';
+import { ThemeToggleComponent } from '../../../shared/components/theme-toggle/theme-toggle.component';
 
 @Component({
   selector: 'app-register',
@@ -19,10 +22,12 @@ import { InvitationInfo } from '../../../core/models';
   imports: [
     CommonModule, ReactiveFormsModule, RouterLink,
     MatCardModule, MatFormFieldModule, MatInputModule,
-    MatButtonModule, MatIconModule, MatProgressSpinnerModule, MatChipsModule
+    MatButtonModule, MatIconModule, MatProgressSpinnerModule, MatChipsModule,
+    MatTabsModule, MatDividerModule, ThemeToggleComponent
   ],
   template: `
     <div class="register-container">
+      <app-theme-toggle></app-theme-toggle>
       <mat-card class="register-card">
         <mat-card-header>
           <mat-icon mat-card-avatar>school</mat-icon>
@@ -50,27 +55,30 @@ import { InvitationInfo } from '../../../core/models';
             <button mat-button color="primary" routerLink="/login">К входу</button>
           </div>
 
-          <!-- Wrong account -->
+          <!-- Wrong account: user is logged in as someone who can't accept -->
           <div *ngIf="token && !loadingInfo && info?.mode === 'wrong-account'" class="status">
             <mat-icon class="status-icon warn">block</mat-icon>
-            <p *ngIf="auth.isAuthenticated">
-              Это приглашение не предназначено для текущего аккаунта (<strong>{{ auth.currentUser?.username }}</strong>).
+            <p>
+              Это приглашение отправлено на <strong>{{ info?.email }}</strong>.
             </p>
-            <p *ngIf="auth.isAuthenticated && info?.teacherAlreadyLinked">
-              К указанному преподавателю уже привязан другой аккаунт. Выйдите и войдите под тем логином, чтобы принять приглашение.
+            <p *ngIf="auth.isAuthenticated">
+              Вы вошли как <strong>{{ auth.currentUser?.username }}</strong>{{ auth.currentUser?.email ? ' (' + auth.currentUser?.email + ')' : '' }} — другой аккаунт.
+              Выйдите и войдите в аккаунт с этим e-mail, либо зарегистрируйте новый по ссылке.
             </p>
             <p *ngIf="!auth.isAuthenticated">
-              Для этого приглашения требуется вход под существующим аккаунтом.
+              Войдите в аккаунт с этим e-mail, чтобы принять приглашение.
             </p>
             <div class="actions">
-              <button mat-button (click)="auth.logout()" *ngIf="auth.isAuthenticated">
+              <button mat-button (click)="logoutAndReturn()" *ngIf="auth.isAuthenticated">
                 <mat-icon>logout</mat-icon> Выйти
               </button>
-              <button mat-button routerLink="/login" *ngIf="!auth.isAuthenticated">К входу</button>
+              <button mat-raised-button color="primary" (click)="goToLoginKeepingToken()" *ngIf="!auth.isAuthenticated">
+                <mat-icon>login</mat-icon> Войти
+              </button>
             </div>
           </div>
 
-          <!-- Accept (existing user) -->
+          <!-- Accept (existing logged-in user) -->
           <div *ngIf="token && !loadingInfo && info?.mode === 'accept'" class="status">
             <mat-icon class="status-icon ok">how_to_reg</mat-icon>
             <p>
@@ -85,7 +93,7 @@ import { InvitationInfo } from '../../../core/models';
             <p class="muted">Вы вошли как <strong>{{ auth.currentUser?.username }}</strong>.</p>
             <div *ngIf="error" class="error-msg">{{ error }}</div>
             <div class="actions">
-              <button mat-stroked-button (click)="auth.logout()">
+              <button mat-stroked-button (click)="logoutAndReturn()">
                 <mat-icon>logout</mat-icon> Не я
               </button>
               <button mat-raised-button color="primary" [disabled]="accepting" (click)="accept()">
@@ -95,11 +103,11 @@ import { InvitationInfo } from '../../../core/models';
             </div>
           </div>
 
-          <!-- Register (new user) -->
+          <!-- Anonymous + register/login choice -->
           <ng-container *ngIf="token && !loadingInfo && info?.mode === 'register'">
             <div class="invite-summary">
               <p>
-                Создание аккаунта для <strong>{{ info?.universityName }}</strong>
+                Приглашение в <strong>{{ info?.universityName }}</strong>
                 <span *ngIf="info?.universityRole"> —
                   <mat-chip>{{ info!.universityRole === 'Admin' ? 'Администратор' : 'Преподаватель' }}</mat-chip>
                 </span>
@@ -107,30 +115,64 @@ import { InvitationInfo } from '../../../core/models';
                   ({{ info?.teacherDisplayName }})
                 </span>
               </p>
+              <p class="invite-email" *ngIf="info?.email">
+                <mat-icon>mail</mat-icon> {{ info?.email }}
+              </p>
             </div>
-            <form [formGroup]="form" (ngSubmit)="onSubmit()">
-              <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Логин</mat-label>
-                <input matInput formControlName="username" autocomplete="username">
-                <mat-icon matSuffix>person</mat-icon>
-                <mat-hint>Минимум 3 символа</mat-hint>
-              </mat-form-field>
-              <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Пароль</mat-label>
-                <input matInput [type]="hidePassword ? 'password' : 'text'"
-                       formControlName="password" autocomplete="new-password">
-                <button mat-icon-button matSuffix type="button" (click)="hidePassword = !hidePassword">
-                  <mat-icon>{{ hidePassword ? 'visibility_off' : 'visibility' }}</mat-icon>
-                </button>
-                <mat-hint>Минимум 6 символов</mat-hint>
-              </mat-form-field>
-              <div *ngIf="error" class="error-msg">{{ error }}</div>
-              <button mat-raised-button color="primary" type="submit"
-                      [disabled]="form.invalid || loading" class="full-width submit-btn">
-                <mat-spinner *ngIf="loading" diameter="20"></mat-spinner>
-                <span *ngIf="!loading">Создать аккаунт</span>
-              </button>
-            </form>
+
+            <mat-tab-group [(selectedIndex)]="tabIndex" mat-stretch-tabs="false">
+              <mat-tab label="Новый аккаунт">
+                <form [formGroup]="form" (ngSubmit)="onSubmit()" class="tab-form">
+                  <p class="muted small">Аккаунт будет создан с e-mail <strong>{{ info?.email }}</strong> — им вы и будете входить.</p>
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Логин</mat-label>
+                    <input matInput formControlName="username" autocomplete="username">
+                    <mat-icon matSuffix>person</mat-icon>
+                    <mat-hint>Минимум 3 символа</mat-hint>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Пароль</mat-label>
+                    <input matInput [type]="hidePassword ? 'password' : 'text'"
+                           formControlName="password" autocomplete="new-password">
+                    <button mat-icon-button matSuffix type="button" (click)="hidePassword = !hidePassword">
+                      <mat-icon>{{ hidePassword ? 'visibility_off' : 'visibility' }}</mat-icon>
+                    </button>
+                    <mat-hint>Минимум 6 символов</mat-hint>
+                  </mat-form-field>
+                  <div *ngIf="error && tabIndex === 0" class="error-msg">{{ error }}</div>
+                  <button mat-raised-button color="primary" type="submit"
+                          [disabled]="form.invalid || loading" class="full-width submit-btn">
+                    <mat-spinner *ngIf="loading" diameter="20"></mat-spinner>
+                    <span *ngIf="!loading">Создать аккаунт</span>
+                  </button>
+                </form>
+              </mat-tab>
+
+              <mat-tab label="У меня уже есть аккаунт">
+                <form [formGroup]="loginForm" (ngSubmit)="onLogin()" class="tab-form">
+                  <p class="muted small">Войдите в аккаунт с e-mail <strong>{{ info?.email }}</strong> — приглашение будет привязано к нему.</p>
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Email или логин</mat-label>
+                    <input matInput formControlName="username" autocomplete="username">
+                    <mat-icon matSuffix>person</mat-icon>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Пароль</mat-label>
+                    <input matInput [type]="hidePassword2 ? 'password' : 'text'"
+                           formControlName="password" autocomplete="current-password">
+                    <button mat-icon-button matSuffix type="button" (click)="hidePassword2 = !hidePassword2">
+                      <mat-icon>{{ hidePassword2 ? 'visibility_off' : 'visibility' }}</mat-icon>
+                    </button>
+                  </mat-form-field>
+                  <div *ngIf="error && tabIndex === 1" class="error-msg">{{ error }}</div>
+                  <button mat-raised-button color="primary" type="submit"
+                          [disabled]="loginForm.invalid || loginLoading" class="full-width submit-btn">
+                    <mat-spinner *ngIf="loginLoading" diameter="20"></mat-spinner>
+                    <span *ngIf="!loginLoading">Войти и принять</span>
+                  </button>
+                </form>
+              </mat-tab>
+            </mat-tab-group>
           </ng-container>
         </mat-card-content>
       </mat-card>
@@ -141,7 +183,7 @@ import { InvitationInfo } from '../../../core/models';
       display: flex; justify-content: center; align-items: center;
       min-height: 100vh; background: #f5f5f5;
     }
-    .register-card { width: 420px; padding: 16px; }
+    .register-card { width: 440px; padding: 16px; }
     .full-width { width: 100%; margin-bottom: 12px; }
     .error-msg { color: #f44336; font-size: 13px; margin-bottom: 12px; }
     .submit-btn { height: 44px; }
@@ -154,25 +196,34 @@ import { InvitationInfo } from '../../../core/models';
     .actions { display: flex; gap: 8px; margin-top: 8px; justify-content: center; flex-wrap: wrap; }
     .invite-summary { background: #e3f2fd; border-radius: 4px; padding: 10px 14px; margin: 0 0 16px; font-size: 13px; }
     .invite-summary p { margin: 0; }
+    .invite-email { display: flex; align-items: center; gap: 6px; margin-top: 6px !important; color: #1565c0; font-weight: 500; }
+    .invite-email mat-icon { font-size: 18px; width: 18px; height: 18px; }
     mat-chip { font-size: 11px; }
+    .tab-form { padding: 16px 4px 4px; }
+    .muted { color: #888; }
+    .small { font-size: 12px; margin: 0 0 12px; }
   `]
 })
 export class RegisterComponent implements OnInit {
   form: FormGroup;
+  loginForm: FormGroup;
   token: string | null = null;
   info: InvitationInfo | null = null;
   loadingInfo = false;
   loading = false;
+  loginLoading = false;
   accepting = false;
   hidePassword = true;
+  hidePassword2 = true;
   error = '';
+  tabIndex = 0;
 
   get subtitle(): string {
     if (!this.token) return 'Регистрация по приглашению';
     if (this.info?.mode === 'accept') return 'Принять приглашение';
     if (this.info?.mode === 'wrong-account') return 'Неверный аккаунт';
     if (this.info?.mode === 'invalid') return 'Приглашение недоступно';
-    return 'Регистрация по приглашению';
+    return 'Принять приглашение';
   }
 
   constructor(
@@ -186,16 +237,27 @@ export class RegisterComponent implements OnInit {
       username: ['', [Validators.required, Validators.minLength(3)]],
       password: ['', [Validators.required, Validators.minLength(6)]]
     });
+    this.loginForm = this.fb.group({
+      username: ['', Validators.required],
+      password: ['', Validators.required]
+    });
   }
 
   ngOnInit(): void {
     this.token = this.route.snapshot.queryParamMap.get('token');
     if (!this.token) return;
+    this.loadInfo();
+  }
 
+  private loadInfo(): void {
+    if (!this.token) return;
     this.loadingInfo = true;
     this.api.getInvitationInfo(this.token).subscribe({
       next: info => { this.info = info; this.loadingInfo = false; },
-      error: () => { this.info = { isValid: false, universityName: null, universityShortName: null, universityRole: null, teacherDisplayName: null, teacherAlreadyLinked: false, mode: 'invalid' }; this.loadingInfo = false; }
+      error: () => {
+        this.info = { isValid: false, email: null, universityName: null, universityShortName: null, universityRole: null, teacherDisplayName: null, teacherAlreadyLinked: false, mode: 'invalid' };
+        this.loadingInfo = false;
+      }
     });
   }
 
@@ -206,15 +268,7 @@ export class RegisterComponent implements OnInit {
     this.auth.acceptInvitation(this.token).subscribe({
       next: res => {
         this.accepting = false;
-        const access = res.universities?.find((u: any) => u.universityName === this.info?.universityName)
-          ?? res.universities?.[0];
-        if (access) {
-          this.auth.selectUniversity(access);
-          if (access.role === 'Admin') this.router.navigate(['/admin/schedules']);
-          else this.router.navigate(['/teacher/my-schedule']);
-        } else {
-          this.router.navigate(['/select-university']);
-        }
+        this.navigateAfterAccept(res);
       },
       error: err => {
         this.accepting = false;
@@ -230,18 +284,65 @@ export class RegisterComponent implements OnInit {
     this.auth.registerFromInvitation(this.token, this.form.value.username, this.form.value.password).subscribe({
       next: (res) => {
         this.loading = false;
-        if (res.universities?.length === 1) {
-          this.auth.selectUniversity(res.universities[0]);
-          if (res.universities[0].role === 'Admin') this.router.navigate(['/admin/schedules']);
-          else this.router.navigate(['/teacher/my-schedule']);
-        } else {
-          this.router.navigate(['/select-university']);
-        }
+        this.navigateAfterAccept(res);
       },
       error: (err) => {
         this.loading = false;
         this.error = err.error?.title || err.error?.message || 'Не удалось зарегистрироваться.';
       }
     });
+  }
+
+  onLogin(): void {
+    if (this.loginForm.invalid || !this.token) return;
+    this.loginLoading = true;
+    this.error = '';
+    const token = this.token;
+    this.auth.login(this.loginForm.value).subscribe({
+      next: () => {
+        // After login, accept the invitation immediately. acceptInvitation()
+        // attaches teacher binding (if any) and grants the uni access.
+        this.auth.acceptInvitation(token).subscribe({
+          next: res => {
+            this.loginLoading = false;
+            this.navigateAfterAccept(res);
+          },
+          error: err => {
+            this.loginLoading = false;
+            // Re-probe so the UI updates: if the logged-in account can't accept,
+            // show the "wrong-account" branch.
+            this.loadInfo();
+            this.error = err.error?.title || err.error?.message || 'Не удалось принять приглашение этим аккаунтом.';
+          }
+        });
+      },
+      error: (err) => {
+        this.loginLoading = false;
+        this.error = err.error?.title || err.error?.message || 'Неверный логин или пароль.';
+      }
+    });
+  }
+
+  logoutAndReturn(): void {
+    const token = this.token;
+    this.auth.logout();
+    // logout navigates to /login; come back to /register with the token preserved
+    setTimeout(() => this.router.navigate(['/register'], { queryParams: { token } }), 0);
+  }
+
+  goToLoginKeepingToken(): void {
+    this.router.navigate(['/login'], { queryParams: { returnUrl: `/register?token=${this.token}` } });
+  }
+
+  private navigateAfterAccept(res: any): void {
+    const access = res.universities?.find((u: any) => u.universityName === this.info?.universityName)
+      ?? res.universities?.[0];
+    if (access) {
+      this.auth.selectUniversity(access);
+      if (access.role === 'Admin') this.router.navigate(['/admin/schedules']);
+      else this.router.navigate(['/teacher/my-schedule']);
+    } else {
+      this.router.navigate(['/select-university']);
+    }
   }
 }

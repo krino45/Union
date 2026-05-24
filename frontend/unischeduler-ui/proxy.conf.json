@@ -1,0 +1,8 @@
+{
+  "/api": {
+    "target": "http://192.168.1.135:5007",
+    "secure": false,
+    "changeOrigin": true,
+    "ws": true
+  }
+}

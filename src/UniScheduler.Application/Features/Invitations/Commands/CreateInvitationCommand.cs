@@ -42,6 +42,9 @@ public class CreateInvitationCommandHandler : IRequestHandler<CreateInvitationCo
         if (request.UniversityRole == UniversityRole.Admin && !_user.IsSuperAdmin)
             throw new ForbiddenException("Только суперадминистратор может приглашать администраторов.");
 
+        if (request.UniversityRole == UniversityRole.Teacher && !request.TeacherId.HasValue)
+            throw new InvalidOperationException("Приглашение преподавателя должно быть привязано к карточке преподавателя.");
+
         if (!_user.IsSuperAdmin)
         {
             var access = await _db.UserUniversityAccesses

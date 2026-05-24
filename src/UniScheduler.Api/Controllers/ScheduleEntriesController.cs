@@ -1,4 +1,4 @@
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UniScheduler.Application.Common.Interfaces;
@@ -11,7 +11,7 @@ namespace UniScheduler.Api.Controllers;
 
 [ApiController]
 [Route("api/schedule-entries")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,SuperAdmin")]
 public class ScheduleEntriesController : ControllerBase
 {
     private readonly IMediator _mediator;

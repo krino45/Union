@@ -1,4 +1,4 @@
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UniScheduler.Application.Common.Models;
@@ -9,7 +9,7 @@ namespace UniScheduler.Api.Controllers;
 
 [ApiController]
 [Route("api/solver-settings")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,SuperAdmin")]
 public class SolverSettingsController : ControllerBase
 {
     private readonly IMediator mediator;

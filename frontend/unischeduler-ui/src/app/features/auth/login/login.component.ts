@@ -1,7 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -9,6 +9,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AuthService } from '../../../core/services/auth.service';
+import { ThemeToggleComponent } from '../../../shared/components/theme-toggle/theme-toggle.component';
 
 @Component({
   selector: 'app-login',
@@ -16,10 +17,12 @@ import { AuthService } from '../../../core/services/auth.service';
   imports: [
     CommonModule, ReactiveFormsModule,
     MatCardModule, MatFormFieldModule, MatInputModule,
-    MatButtonModule, MatIconModule, MatProgressSpinnerModule
+    MatButtonModule, MatIconModule, MatProgressSpinnerModule,
+    ThemeToggleComponent
   ],
   template: `
     <div class="login-container">
+      <app-theme-toggle></app-theme-toggle>
       <mat-card class="login-card">
         <mat-card-header>
           <mat-icon mat-card-avatar>school</mat-icon>
@@ -29,7 +32,7 @@ import { AuthService } from '../../../core/services/auth.service';
         <mat-card-content>
           <form [formGroup]="form" (ngSubmit)="onSubmit()">
             <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Логин</mat-label>
+              <mat-label>Email или логин</mat-label>
               <input matInput formControlName="username" autocomplete="username">
               <mat-icon matSuffix>person</mat-icon>
             </mat-form-field>
@@ -63,17 +66,27 @@ import { AuthService } from '../../../core/services/auth.service';
     button[type=submit] { height: 44px; }
   `]
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   form: FormGroup;
   loading = false;
   hidePassword = true;
   error = '';
+  private returnUrl: string | null = null;
 
-  constructor(private fb: FormBuilder, private auth: AuthService, private router: Router) {
+  constructor(
+    private fb: FormBuilder,
+    private auth: AuthService,
+    private router: Router,
+    private route: ActivatedRoute
+  ) {
     this.form = this.fb.group({
       username: ['', Validators.required],
       password: ['', Validators.required]
     });
+  }
+
+  ngOnInit(): void {
+    this.returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
   }
 
   onSubmit(): void {
@@ -83,6 +96,10 @@ export class LoginComponent {
     this.auth.login(this.form.value).subscribe({
       next: (res) => {
         this.loading = false;
+        if (this.returnUrl) {
+          this.router.navigateByUrl(this.returnUrl);
+          return;
+        }
         if (res.role === 'SuperAdmin') {
           this.router.navigate(['/superadmin']);
         } else if (res.universities?.length === 1) {
@@ -95,7 +112,7 @@ export class LoginComponent {
       },
       error: (err) => {
         this.loading = false;
-        this.error = err.error?.title || err.error?.message || 'Неверный логин или пароль';
+        this.error = err.error?.title || err.error?.message || 'Неверный email/логин или пароль';
       }
     });
   }

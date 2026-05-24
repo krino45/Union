@@ -1,4 +1,4 @@
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UniScheduler.Application.DTOs;
@@ -29,7 +29,7 @@ public class RescheduleRequestsController : ControllerBase
     }
 
     [HttpPut("{id:guid}/approve")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> Approve(Guid id, [FromBody] ApproveRequest req, CancellationToken ct)
     {
         await _mediator.Send(new ApproveRescheduleRequestCommand(id, req.NewDay, req.NewPair, req.NewWeekType, req.NewRoomId, req.Note), ct);
@@ -37,7 +37,7 @@ public class RescheduleRequestsController : ControllerBase
     }
 
     [HttpPut("{id:guid}/reject")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> Reject(Guid id, [FromBody] RejectRequest req, CancellationToken ct)
     {
         await _mediator.Send(new RejectRescheduleRequestCommand(id, req.Note), ct);

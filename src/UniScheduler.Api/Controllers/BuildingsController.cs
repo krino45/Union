@@ -1,4 +1,4 @@
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UniScheduler.Application.DTOs;
@@ -11,7 +11,7 @@ namespace UniScheduler.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,SuperAdmin")]
 public class BuildingsController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -86,7 +86,7 @@ public class BuildingsController : ControllerBase
         return NoContent();
     }
 
-    // ─── Floor plan drafts (multi-user, named, owner-private by default) ──────────────────
+    // Floor plan drafts (multi-user, named, owner-private by default)
 
     [HttpGet("{buildingId:guid}/floorplan/drafts")]
     public async Task<ActionResult<List<FloorPlanDraftSummaryDto>>> ListFloorPlanDrafts(Guid buildingId, CancellationToken ct)

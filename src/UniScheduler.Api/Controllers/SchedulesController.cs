@@ -8,15 +8,20 @@ using UniScheduler.Application.Features.Schedules.Queries;
 using UniScheduler.Domain.Enums;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Unicode;
 
 namespace UniScheduler.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin")]
+// Reads are open to any authenticated user (tenant-scoped by X-University-Id query filter)
+// every write is restricted to admins
+[Authorize]
 public class SchedulesController : ControllerBase
 {
+    private const string AdminOnly = "Admin,SuperAdmin";
+
     private readonly IMediator mediator;
     private readonly IGenerationJobQueue jobQueue;
 
@@ -34,6 +39,7 @@ public class SchedulesController : ControllerBase
     public async Task<ActionResult<ScheduleDto>> GetById(Guid id, CancellationToken ct)
         => Ok(await mediator.Send(new GetScheduleByIdQuery(id), ct));
 
+    [Authorize(Roles = AdminOnly)]
     [HttpPost]
     public async Task<ActionResult<ScheduleDto>> Create([FromBody] CreateScheduleCommand cmd, CancellationToken ct)
     {
@@ -41,6 +47,7 @@ public class SchedulesController : ControllerBase
         return CreatedAtAction(nameof(GetAll), result);
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
@@ -48,6 +55,7 @@ public class SchedulesController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpPost("{id:guid}/publish")]
     public async Task<IActionResult> Publish(Guid id, CancellationToken ct)
     {
@@ -55,6 +63,7 @@ public class SchedulesController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpPatch("{id:guid}/access")]
     public async Task<IActionResult> SetAccess(Guid id, [FromBody] SetScheduleAccessRequest req, CancellationToken ct)
     {
@@ -62,6 +71,7 @@ public class SchedulesController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpPatch("{id:guid}/name")]
     public async Task<IActionResult> Rename(Guid id, [FromBody] RenameScheduleRequest req, CancellationToken ct)
     {
@@ -69,6 +79,7 @@ public class SchedulesController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpPost("{id:guid}/archive")]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
     {
@@ -76,6 +87,7 @@ public class SchedulesController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpPost("{id:guid}/unarchive")]
     public async Task<IActionResult> Unarchive(Guid id, CancellationToken ct)
     {
@@ -83,10 +95,12 @@ public class SchedulesController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpPost("{id:guid}/update-score")]
     public async Task<ActionResult<int>> UpdateScore(Guid id, CancellationToken ct)
         => Ok(await mediator.Send(new UpdateBaseScoreCommand(id), ct));
 
+    [Authorize(Roles = AdminOnly)]
     [HttpPost("{id:guid}/validate-edit")]
     public async Task<ActionResult<List<ValidationIssue>>> ValidateEdit(Guid id, [FromBody] ValidateEditBody body, CancellationToken ct)
     {
@@ -95,6 +109,7 @@ public class SchedulesController : ControllerBase
         return Ok(await mediator.Send(q, ct));
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpPost("{id:guid}/generate")]
     public IActionResult Generate(Guid id, [FromBody] GenerateRequest? body)
     {
@@ -102,6 +117,7 @@ public class SchedulesController : ControllerBase
         return Accepted(new { jobId, scheduleId = id, status = "queued" });
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpGet("{id:guid}/generate/status")]
     public IActionResult GetGenerationStatus(Guid id)
     {
@@ -109,6 +125,7 @@ public class SchedulesController : ControllerBase
         return Ok(status);
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpGet("{id:guid}/audit")]
     public async Task<ActionResult<ScheduleAuditDto>> Audit(Guid id, CancellationToken ct)
         => Ok(await mediator.Send(new GetScheduleAuditQuery(id), ct));
@@ -119,6 +136,7 @@ public class SchedulesController : ControllerBase
         CancellationToken ct)
         => Ok(await mediator.Send(new GetScheduleEntriesQuery(id, groupId, teacherId, dayOfWeek), ct));
 
+    [Authorize(Roles = AdminOnly)]
     [HttpGet("{id:guid}/plan-progress")]
     public async Task<ActionResult<List<PlanProgressItem>>> PlanProgress(Guid id, CancellationToken ct)
         => Ok(await mediator.Send(new GetPlanProgressQuery(id), ct));
@@ -147,6 +165,7 @@ public class SchedulesController : ControllerBase
         return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", $"schedule-{id:N}.json");
     }
 
+    [Authorize(Roles = AdminOnly)]
     [HttpPost("{id:guid}/import/json")]
     [RequestSizeLimit(5 * 1024 * 1024)]
     public async Task<ActionResult<ImportFromJsonResult>> ImportJson(

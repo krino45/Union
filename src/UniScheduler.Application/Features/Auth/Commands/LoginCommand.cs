@@ -19,6 +19,7 @@ public record LoginResult(
     string Role,
     Guid UserId,
     Guid? TeacherId,
+    string? Email,
     IReadOnlyList<UniversityAccessDto> Universities);
 
 public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
@@ -34,10 +35,12 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
 
     public async Task<LoginResult> Handle(LoginCommand request, CancellationToken cancellationToken)
     {
+        var identifier = (request.Username ?? string.Empty).Trim();
+        var emailLookup = identifier.ToLowerInvariant();
         var user = await _db.AppUsers
             .Include(u => u.UniversityAccesses)
                 .ThenInclude(a => a.University)
-            .FirstOrDefaultAsync(u => u.Username == request.Username, cancellationToken)
+            .FirstOrDefaultAsync(u => u.Username == identifier || (u.Email != null && u.Email == emailLookup), cancellationToken)
             ?? throw new UnauthorizedAccessException("Invalid credentials.");
 
         if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
@@ -53,7 +56,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
                 a.Role.ToString()))
             .ToList();
 
-        return new LoginResult(token, user.Username, user.Role, user.Id, user.TeacherId, universities);
+        return new LoginResult(token, user.Username, user.Role, user.Id, user.TeacherId, user.Email, universities);
     }
 }
 
@@ -88,6 +91,6 @@ public class RenewTokenCommandHandler : IRequestHandler<RenewTokenCommand, Login
                 a.Role.ToString()))
             .ToList();
 
-        return new LoginResult(token, user.Username, user.Role, user.Id, user.TeacherId, universities);
+        return new LoginResult(token, user.Username, user.Role, user.Id, user.TeacherId, user.Email, universities);
     }
 }
