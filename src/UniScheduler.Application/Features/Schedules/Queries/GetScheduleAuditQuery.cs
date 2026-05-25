@@ -37,7 +37,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             ?? throw new NotFoundException(nameof(Schedule), request.ScheduleId);
 
         var entries = await db.ScheduleEntries
-            .Include(e => e.StudentGroups)
+            .Include(e => e.StudentGroups).ThenInclude(sg => sg.StudentGroup)
             .Include(e => e.Teacher)
             .Where(e => e.ScheduleId == request.ScheduleId)
             .ToListAsync(ct);
@@ -62,26 +62,41 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         var warnings  = new List<AuditIssueDto>();
         var seen = new HashSet<string>();
 
-        //  Hard conflicts: double-booking 
+        //  Hard conflicts: double-booking
         for (int i = 0; i < entries.Count; i++)
         for (int j = i + 1; j < entries.Count; j++)
         {
             var a = entries[i]; var b = entries[j];
             if (!SlotsOverlap(a, b)) continue;
 
-            if (!a.IsOnline && !b.IsOnline && a.RoomId.HasValue && a.RoomId == b.RoomId)
-                AddUnique(conflicts, seen, "RoomDoubleBooked",
-                    $"Аудитория занята дважды: {DayLabel(a.DayOfWeek)} пара {a.PairNumber}");
+            // Same teacher + same physical room = same combined lecture split across week types by the scraper.
+            // Not a real conflict — the teacher is in one place teaching one session.
+            bool samePhysicalSession = a.TeacherId == b.TeacherId
+                && !a.IsOnline && !b.IsOnline
+                && a.RoomId.HasValue && a.RoomId == b.RoomId;
 
-            if (a.TeacherId == b.TeacherId)
+            string slot = $"{DayLabel(a.DayOfWeek)} пара {a.PairNumber} ({WeekOverlapLabel(a.WeekType, b.WeekType)})";
+
+            if (!samePhysicalSession && !a.IsOnline && !b.IsOnline && a.RoomId.HasValue && a.RoomId == b.RoomId)
+                AddUnique(conflicts, seen, "RoomDoubleBooked",
+                    $"Аудитория занята дважды: {slot}");
+
+            if (!samePhysicalSession && a.TeacherId == b.TeacherId)
                 AddUnique(conflicts, seen, "TeacherDoubleBooked",
-                    $"{a.Teacher.LastName}: двойная нагрузка — {DayLabel(a.DayOfWeek)} пара {a.PairNumber}");
+                    $"{a.Teacher.LastName}: двойная нагрузка — {slot}");
 
             var aGroups = a.StudentGroups.Select(sg => sg.StudentGroupId).ToHashSet();
             var bGroups = b.StudentGroups.Select(sg => sg.StudentGroupId).ToHashSet();
-            if (aGroups.Overlaps(bGroups))
+            var sharedGroupIds = aGroups.Intersect(bGroups).ToHashSet();
+            if (!samePhysicalSession && sharedGroupIds.Count > 0)
+            {
+                var names = a.StudentGroups
+                    .Where(sg => sharedGroupIds.Contains(sg.StudentGroupId))
+                    .Select(sg => sg.StudentGroup?.Name ?? sg.StudentGroupId.ToString())
+                    .OrderBy(n => n);
                 AddUnique(conflicts, seen, "GroupDoubleBooked",
-                    $"Группы пересекаются: {DayLabel(a.DayOfWeek)} пара {a.PairNumber}");
+                    $"Группы пересекаются ({string.Join(", ", names)}): {slot}");
+            }
         }
 
         // Build group → entries lookup
@@ -238,4 +253,16 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         LessonType.Seminar   => "сем.",
         _                    => ""
     };
+
+    // Returns the effective week label for the overlapping pair of entries.
+    private static string WeekOverlapLabel(WeekType a, WeekType b)
+    {
+        if (a == WeekType.Both && b == WeekType.Both) return "каждую нед.";
+        if (a == WeekType.Both || b == WeekType.Both)
+        {
+            var specific = a == WeekType.Both ? b : a;
+            return specific == WeekType.Odd ? "нечётная + каждая" : "чётная + каждая";
+        }
+        return a == WeekType.Odd ? "нечётная" : "чётная";
+    }
 }

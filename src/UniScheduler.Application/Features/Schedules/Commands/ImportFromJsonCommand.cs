@@ -70,6 +70,10 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
         // Counters for the summary line.
         int newSubjects = 0, newTeachers = 0, newBuildings = 0, newRooms = 0, newGroups = 0, newFaculties = 0;
 
+        // Track newly-created groups so we can auto-create study plans
+        var createdGroups = new List<StudentGroup>();
+        var groupSubjects = new Dictionary<StudentGroup, HashSet<Subject>>(ReferenceEqualityComparer.Instance);
+
         // A faculty is required to create a group; reuse the schedule's faculty, else the first one,
         // else mint a placeholder.
         Faculty? PlaceholderFaculty()
@@ -156,6 +160,7 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
             found = new StudentGroup { Name = name, Year = 1, Specialty = "Импорт", StudentCount = 0, Faculty = fac };
             _db.StudentGroups.Add(found);
             groups.Add(found);
+            createdGroups.Add(found);
             newGroups++;
             return found;
         }
@@ -175,6 +180,13 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
                 .Where(g => !string.IsNullOrWhiteSpace(g))
                 .Select(g => ResolveGroup(g.Trim()))
                 .ToList();
+
+            foreach (var g in resolvedGroups)
+            {
+                if (!groupSubjects.TryGetValue(g, out var subSet))
+                    groupSubjects[g] = subSet = new HashSet<Subject>(ReferenceEqualityComparer.Instance);
+                subSet.Add(subject);
+            }
 
             Room? room = null;
             if (!item.IsOnline && !string.IsNullOrWhiteSpace(item.RoomNumber))
@@ -213,6 +225,28 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
         }
 
         schedule.Status = ScheduleStatus.Draft;
+
+        // Entries have 0 hours — the user fills in the real values afterwards.
+        int newPlans = 0;
+        foreach (var group in createdGroups)
+        {
+            var plan = new StudyPlan
+            {
+                Name = group.Name,
+                AcademicYear = schedule.AcademicYear,
+                Term = schedule.Term
+            };
+            _db.StudyPlans.Add(plan);
+            _db.StudyPlanGroups.Add(new StudyPlanGroup { StudyPlan = plan, StudentGroup = group });
+
+            if (groupSubjects.TryGetValue(group, out var subs))
+            {
+                foreach (var sub in subs)
+                    _db.StudyPlanEntries.Add(new StudyPlanEntry { StudyPlan = plan, Subject = sub });
+            }
+            newPlans++;
+        }
+
         await _db.SaveChangesAsync(ct);
 
         var created = new List<string>();
@@ -222,6 +256,7 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
         if (newRooms     > 0) created.Add($"аудиторий: {newRooms}");
         if (newGroups    > 0) created.Add($"групп: {newGroups}");
         if (newFaculties > 0) created.Add($"факультетов: {newFaculties}");
+        if (newPlans     > 0) created.Add($"учебных планов: {newPlans} (с 0 часами — заполните вручную)");
         if (created.Count > 0)
             notes.Insert(0, "Автоматически создано — " + string.Join(", ", created) + ". Проверьте и дополните данные.");
 
