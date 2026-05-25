@@ -33,6 +33,14 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
         p?.Report("Загрузка данных...");
         var existing = await db.ScheduleEntries.Where(e => e.ScheduleId == request.ScheduleId).ToListAsync(cancellationToken);
+        if (existing.Count > 0)
+        {
+            var existingIds = existing.Select(e => e.Id).ToList();
+            var relatedRequests = await db.RescheduleRequests
+                .Where(r => existingIds.Contains(r.OriginalEntryId))
+                .ToListAsync(cancellationToken);
+            db.RescheduleRequests.RemoveRange(relatedRequests);
+        }
         db.ScheduleEntries.RemoveRange(existing);
 
         var settingsEntity = await db.SolverSettings.FirstOrDefaultAsync(cancellationToken);

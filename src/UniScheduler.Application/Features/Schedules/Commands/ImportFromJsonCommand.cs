@@ -56,6 +56,14 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
         {
             var existing = await _db.ScheduleEntries
                 .Where(e => e.ScheduleId == req.ScheduleId).ToListAsync(ct);
+            if (existing.Count > 0)
+            {
+                var existingIds = existing.Select(e => e.Id).ToList();
+                var relatedRequests = await _db.RescheduleRequests
+                    .Where(r => existingIds.Contains(r.OriginalEntryId))
+                    .ToListAsync(ct);
+                _db.RescheduleRequests.RemoveRange(relatedRequests);
+            }
             _db.ScheduleEntries.RemoveRange(existing);
         }
 
