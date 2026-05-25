@@ -13,6 +13,8 @@ html, body {
 /* Mat snackbar */
 .mat-mdc-snack-bar-container { --mdc-snackbar-container-color: #323232; }
 
+.mat-column-actions { white-space: nowrap; }
+
 /* CDK drag */
 .cdk-drag-preview {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
