@@ -178,7 +178,7 @@ import { ThemeService } from './core/services/theme.service';
     .header-floorplan-btn { color: #fff; margin-right: 12px; }
     .header-floorplan-btn.active-header-link { background: rgba(255,255,255,0.18); }
     .dark-toggle { color: #fff; margin-right: 8px; }
-    .content { padding: 24px; overflow-x: hidden; }
+    .content { padding: 24px; }
     .resize-handle {
       position: absolute; right: 0; top: 0;
       width: 5px; height: 100%;
