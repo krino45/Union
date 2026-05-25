@@ -113,7 +113,7 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
                 (string.IsNullOrEmpty(firstName) || t.FirstName.StartsWith(firstName, StringComparison.OrdinalIgnoreCase)));
             if (found != null) return found;
 
-            found = new Teacher { LastName = lastName, FirstName = firstName, MiddleName = "", Email = "" };
+            found = new Teacher { LastName = lastName, FirstName = firstName, MiddleName = "", Email = $"import-{Guid.NewGuid():N}@placeholder" };
             _db.Teachers.Add(found);
             teachers.Add(found);
             newTeachers++;

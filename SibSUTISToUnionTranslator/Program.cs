@@ -5,9 +5,72 @@ using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 
 // Usage: SibSUTISToUnionTranslator [groups.json] [output.json]
+//         SibSUTISToUnionTranslator merge <input.json> [output.json]
 //
 // groups.json format: { "ИП211": "123", "ИП212": "456" }
 //   Key = group name, value = ID.
+//
+// merge: reads an already-scraped schedule JSON, merges entries that share the same
+//        room+day+pair+weekType into one entry with combined groups, then writes the result.
+
+if (args.Length >= 2 && args[0].Equals("merge", StringComparison.OrdinalIgnoreCase))
+{
+    var mergeIn  = args[1];
+    var mergeOut = args.Length > 2 ? args[2] : mergeIn; // overwrite in place if no output path given
+
+    if (!File.Exists(mergeIn))
+    {
+        Console.Error.WriteLine($"File not found: {mergeIn}");
+        return 1;
+    }
+
+    var opts = new JsonSerializerOptions
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    var entries = JsonSerializer.Deserialize<List<JsonEntryImport>>(
+        await File.ReadAllTextAsync(mergeIn, Encoding.UTF8), opts) ?? [];
+
+    Console.WriteLine($"Loaded {entries.Count} entries from {mergeIn}.");
+
+    // Key: (building, room, dayOfWeek, pairNumber, weekType) — the unique constraint the DB enforces.
+    // Null/empty room means online; those are keyed by teacher+discipline so they don't merge blindly.
+    var slotMap = new Dictionary<string, JsonEntryImport>();
+    var merged = new List<JsonEntryImport>();
+    int mergedCount = 0;
+
+    foreach (var entry in entries)
+    {
+        bool hasRoom = !string.IsNullOrWhiteSpace(entry.RoomNumber) && !entry.IsOnline;
+        string key = hasRoom
+            ? $"{entry.BuildingShortCode ?? ""}|{entry.RoomNumber}|{entry.DayOfWeek}|{entry.PairNumber}|{entry.WeekType}"
+            : $"online|{entry.TeacherLastName}|{entry.TeacherFirstName}|{entry.SubjectShortName}|{entry.DayOfWeek}|{entry.PairNumber}|{entry.WeekType}";
+
+        if (slotMap.TryGetValue(key, out var existing))
+        {
+            var combined = existing.GroupNames
+                .Union(entry.GroupNames, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g)
+                .ToList();
+            slotMap[key] = existing with { GroupNames = combined };
+            mergedCount++;
+        }
+        else
+        {
+            slotMap[key] = entry;
+        }
+    }
+
+    merged = slotMap.Values.ToList();
+    Console.WriteLine($"Merged {mergedCount} duplicate slots. {merged.Count} entries remain.");
+
+    await File.WriteAllTextAsync(mergeOut, JsonSerializer.Serialize(merged, opts), Encoding.UTF8);
+    Console.WriteLine($"Written to {mergeOut}.");
+    return 0;
+}
 
 var groupsPath = args.Length > 0 ? args[0] : "groups.json";
 var outputPath = args.Length > 1 ? args[1] : "schedule.json";
@@ -33,11 +96,48 @@ var groupIds = JsonSerializer.Deserialize<Dictionary<string, string>>(
 
 Console.WriteLine($"Loaded {groupIds.Count} groups.");
 
+// --- empty-group skip list ---
+var emptyGroupsPath = args.Length > 2 ? args[2] : "empty_groups.json";
+var emptyGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+if (File.Exists(emptyGroupsPath))
+{
+    try
+    {
+        var loaded = JsonSerializer.Deserialize<List<string>>(
+            File.ReadAllText(emptyGroupsPath, Encoding.UTF8));
+        if (loaded != null) foreach (var g in loaded) emptyGroups.Add(g);
+        Console.WriteLine($"Loaded {emptyGroups.Count} previously empty groups from {emptyGroupsPath} — will skip them.");
+    }
+    catch { /* ignore corrupt file */ }
+}
+
+void SaveEmptyGroups()
+{
+    try
+    {
+        var json = JsonSerializer.Serialize(
+            emptyGroups.OrderBy(x => x).ToList(),
+            new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(emptyGroupsPath, json, Encoding.UTF8);
+    }
+    catch (Exception ex) { Console.Error.WriteLine($"Warning: could not save empty groups — {ex.Message}"); }
+}
+
+Console.CancelKeyPress += (_, e) =>
+{
+    e.Cancel = true;
+    SaveEmptyGroups();
+    Console.WriteLine($"Interrupted — saved {emptyGroups.Count} empty groups to {emptyGroupsPath}.");
+    Environment.Exit(130);
+};
+AppDomain.CurrentDomain.ProcessExit += (_, _) => SaveEmptyGroups();
+
 var knownGroupNames = new HashSet<string>(groupIds.Keys, StringComparer.OrdinalIgnoreCase);
 
-// Key: canonical entry identity (ignores which week it was seen in)
-// Value: (week1 seen, week2 seen, first-seen data)
-var entryMap = new Dictionary<EntryKey, (bool w1, bool w2, EntryData d)>();
+// Key: canonical entry identity (ignores which week it was seen in, ignores group combination)
+// Groups are tracked separately so the same physical slot seen from different group pages merges correctly.
+var entryMap    = new Dictionary<EntryKey, (bool w1, bool w2, EntryData d)>();
+var entryGroups = new Dictionary<EntryKey, HashSet<string>>();
 
 using var playwright = await Playwright.CreateAsync();
 await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
@@ -71,17 +171,24 @@ if (page.Url.Contains("auth"))
 
 foreach (var (groupName, groupId) in groupIds)
 {
+    if (emptyGroups.Contains(groupName))
+    {
+        Console.WriteLine($"Skipping {groupName} — previously empty.");
+        continue;
+    }
+
     Console.WriteLine($"Scraping group {groupName} (id={groupId})...");
 
     await page.GotoAsync($"https://sibsutis.ru/students/schedule/?type=student&month=2&group={groupId}");
     try
     {
         await page.WaitForSelectorAsync("a[class=calendar__cell]", new() { Timeout = 15_000 });
-        await Task.Delay(TimeSpan.FromSeconds(0.5));
+        await Task.Delay(TimeSpan.FromSeconds(Random.Shared.NextDouble()));
     }
     catch
     {
-        Console.Error.WriteLine($"  Timed out waiting for calendar — skipping.");
+        Console.Error.WriteLine($"  Timed out waiting for calendar — marking as empty and skipping.");
+        emptyGroups.Add(groupName);
         continue;
     }
 
@@ -92,6 +199,7 @@ foreach (var (groupName, groupId) in groupIds)
 
     if (days == null) continue;
 
+    bool groupHadEntries = false;
     for (int i = 1; i < days.Length && i <= 14; i++)
     {
         if (string.IsNullOrWhiteSpace(days[i]) || days[i] == "null") continue;
@@ -128,11 +236,18 @@ foreach (var (groupName, groupId) in groupIds)
                 var lessonType = MapLessonType(sub.TYPE_LESSON);
 
                 var key = new EntryKey(
-                    string.Join("|", relevantGroups),
                     dayOfWeek, pairNumber,
                     sub.DISCIPLINE ?? "",
                     lastName, firstName,
                     building ?? "", room ?? "", isOnline, lessonType);
+
+                // Merge groups across pages — the same physical slot may appear on multiple group pages
+                if (!entryGroups.TryGetValue(key, out var groupSet))
+                {
+                    groupSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    entryGroups[key] = groupSet;
+                }
+                foreach (var g in relevantGroups) groupSet.Add(g);
 
                 if (!entryMap.TryGetValue(key, out var existing))
                     existing = (false, false, new EntryData(relevantGroups, sub.DISCIPLINE ?? "", lastName, firstName,
@@ -141,10 +256,21 @@ foreach (var (groupName, groupId) in groupIds)
                 entryMap[key] = isWeek2
                     ? (existing.w1, true, existing.d)
                     : (true, existing.w2, existing.d);
+
+                groupHadEntries = true;
             }
         }
     }
+
+    if (!groupHadEntries)
+    {
+        emptyGroups.Add(groupName);
+        Console.WriteLine($"  No entries found — marked as empty.");
+    }
 }
+
+SaveEmptyGroups();
+Console.WriteLine($"Saved {emptyGroups.Count} empty groups to {emptyGroupsPath}.");
 
 var result = entryMap.Select(kvp =>
 {
@@ -155,11 +281,14 @@ var result = entryMap.Select(kvp =>
         (true, false) => WeekType.Odd,
         _             => WeekType.Even
     };
+    var groups = entryGroups.TryGetValue(kvp.Key, out var gs)
+        ? gs.OrderBy(x => x).ToList()
+        : d.Groups.ToList();
     return new JsonEntryImport(
         SubjectShortName: d.Discipline,
         TeacherLastName:  d.LastName,
         TeacherFirstName: d.FirstName,
-        GroupNames:       d.Groups.ToList(),
+        GroupNames:       groups,
         BuildingShortCode: d.BuildingShortCode,
         RoomNumber:       d.RoomNumber,
         DayOfWeek:        kvp.Key.DayOfWeek,
@@ -201,7 +330,7 @@ static async Task<Dictionary<string, string>> CollectGroupsAsync()
             if (resp?.Results == null) continue;
             foreach (var item in resp.Results)
                 result[item.Text] = item.Id;
-            await Task.Delay(TimeSpan.FromSeconds(0.5 + Random.Shared.NextDouble()));
+            await Task.Delay(TimeSpan.FromSeconds(Random.Shared.NextDouble()));
         }
         catch (Exception ex)
         {
@@ -289,7 +418,6 @@ record JsonEntryImport(
 // internal types
 
 record EntryKey(
-    string GroupsKey,
     RussianDayOfWeek DayOfWeek,
     int PairNumber,
     string Discipline,

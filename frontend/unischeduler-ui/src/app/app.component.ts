@@ -215,9 +215,11 @@ export class AppComponent {
     e.preventDefault();
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
+    const contentEl = document.querySelector<HTMLElement>('.mat-sidenav-content');
     const onMove = (mv: MouseEvent) => {
       this._sidenavWidth = Math.max(160, Math.min(420, mv.clientX));
       document.documentElement.style.setProperty('--sidenav-w', `${this._sidenavWidth}px`);
+      if (contentEl) contentEl.style.marginLeft = `${this._sidenavWidth}px`;
     };
     const onUp = () => {
       document.body.style.userSelect = '';
