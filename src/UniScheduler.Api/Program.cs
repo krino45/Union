@@ -75,7 +75,7 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Юниан API", Version = "v1", Description = "Юниан — University Scheduler" });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Юниран API", Version = "v1", Description = "Юниран — University Scheduler" });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -117,7 +117,7 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Юниан v1"));
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Юниран v1"));
 }
 
 app.UseCors("AllowAngular");

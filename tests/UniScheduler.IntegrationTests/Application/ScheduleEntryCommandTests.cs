@@ -47,7 +47,7 @@ public class ScheduleEntryCommandTests
     {
         using var db = DbContextFactory.Create();
         var (schedule, teacher, subject, group, room) = await SeedAsync(db);
-        var handler = new CreateEntryCommandHandler(db, new ConflictDetector());
+        var handler = new CreateEntryCommandHandler(db, new ConflictDetector(), new FakeCurrentUser());
 
         var result = await handler.Handle(new CreateEntryCommand(
             schedule.Id, subject.Id, teacher.Id, room.Id, [group.Id],
@@ -69,7 +69,7 @@ public class ScheduleEntryCommandTests
         db.Teachers.Add(teacher2);
         await db.SaveChangesAsync();
 
-        var handler = new CreateEntryCommandHandler(db, new ConflictDetector());
+        var handler = new CreateEntryCommandHandler(db, new ConflictDetector(), new FakeCurrentUser());
         await handler.Handle(new CreateEntryCommand(
             schedule.Id, subject.Id, teacher.Id, room.Id, [],
             RussianDayOfWeek.Monday, 1, WeekType.Both, LessonType.Lecture, false),
@@ -88,7 +88,7 @@ public class ScheduleEntryCommandTests
     {
         using var db = DbContextFactory.Create();
         var (schedule, teacher, subject, group, room) = await SeedAsync(db, ScheduleStatus.Archived);
-        var handler = new CreateEntryCommandHandler(db, new ConflictDetector());
+        var handler = new CreateEntryCommandHandler(db, new ConflictDetector(), new FakeCurrentUser());
 
         var act = async () => await handler.Handle(new CreateEntryCommand(
             schedule.Id, subject.Id, teacher.Id, room.Id, [group.Id],
@@ -103,7 +103,7 @@ public class ScheduleEntryCommandTests
     {
         using var db = DbContextFactory.Create();
         var (schedule, teacher, subject, group, room) = await SeedAsync(db, ScheduleStatus.Published);
-        var handler = new CreateEntryCommandHandler(db, new ConflictDetector());
+        var handler = new CreateEntryCommandHandler(db, new ConflictDetector(), new FakeCurrentUser());
 
         await handler.Handle(new CreateEntryCommand(
             schedule.Id, subject.Id, teacher.Id, room.Id, [],
@@ -121,7 +121,7 @@ public class ScheduleEntryCommandTests
         var entry = AddEntry(db, schedule, teacher, subject, group, room, RussianDayOfWeek.Monday, 1);
         await db.SaveChangesAsync();
 
-        var result = await new MoveEntryCommandHandler(db, new ConflictDetector())
+        var result = await new MoveEntryCommandHandler(db, new ConflictDetector(), new FakeCurrentUser())
             .Handle(new MoveEntryCommand(entry.Id, RussianDayOfWeek.Wednesday, 3, WeekType.Odd, room.Id),
                 CancellationToken.None);
 
@@ -139,7 +139,7 @@ public class ScheduleEntryCommandTests
         var entry2 = AddEntry(db, schedule, teacher, subject, group, room, RussianDayOfWeek.Tuesday, 2);
         await db.SaveChangesAsync();
 
-        var act = async () => await new MoveEntryCommandHandler(db, new ConflictDetector())
+        var act = async () => await new MoveEntryCommandHandler(db, new ConflictDetector(), new FakeCurrentUser())
             .Handle(new MoveEntryCommand(entry1.Id, RussianDayOfWeek.Tuesday, 2, WeekType.Both, room.Id),
                 CancellationToken.None);
 
@@ -154,7 +154,7 @@ public class ScheduleEntryCommandTests
         var entry = AddEntry(db, schedule, teacher, subject, group, room, RussianDayOfWeek.Monday, 1);
         await db.SaveChangesAsync();
 
-        await new MoveEntryCommandHandler(db, new ConflictDetector())
+        await new MoveEntryCommandHandler(db, new ConflictDetector(), new FakeCurrentUser())
             .Handle(new MoveEntryCommand(entry.Id, RussianDayOfWeek.Friday, 4, WeekType.Even, null),
                 CancellationToken.None);
 
@@ -169,7 +169,7 @@ public class ScheduleEntryCommandTests
         var entry = AddEntry(db, schedule, teacher, subject, group, room, RussianDayOfWeek.Monday, 1);
         await db.SaveChangesAsync();
 
-        var act = async () => await new MoveEntryCommandHandler(db, new ConflictDetector())
+        var act = async () => await new MoveEntryCommandHandler(db, new ConflictDetector(), new FakeCurrentUser())
             .Handle(new MoveEntryCommand(entry.Id, RussianDayOfWeek.Friday, 4, WeekType.Both, null),
                 CancellationToken.None);
 
@@ -180,7 +180,7 @@ public class ScheduleEntryCommandTests
     public async Task MoveEntry_Missing_ThrowsNotFoundException()
     {
         using var db = DbContextFactory.Create();
-        var act = async () => await new MoveEntryCommandHandler(db, new ConflictDetector())
+        var act = async () => await new MoveEntryCommandHandler(db, new ConflictDetector(), new FakeCurrentUser())
             .Handle(new MoveEntryCommand(Guid.NewGuid(), RussianDayOfWeek.Monday, 1, WeekType.Both, null),
                 CancellationToken.None);
         await act.Should().ThrowAsync<NotFoundException>();

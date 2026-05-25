@@ -22,17 +22,15 @@ public class CreateInvitationCommandHandler : IRequestHandler<CreateInvitationCo
     private readonly IApplicationDbContext _db;
     private readonly ICurrentUserService _user;
     private readonly IEmailSender _email;
-
-    // Base URL used to build the register link in invitation emails.
-    // replace with config injection when SMTP is wired.
-    private const string BaseUrl = "http://localhost:4200";
+    private readonly IAppUrls _urls;
 
     public CreateInvitationCommandHandler(
         IApplicationDbContext db,
         ICurrentUserService user,
-        IEmailSender email)
+        IEmailSender email,
+        IAppUrls urls)
     {
-        _db = db; _user = user; _email = email;
+        _db = db; _user = user; _email = email; _urls = urls;
     }
 
     public async Task<CreateInvitationResult> Handle(CreateInvitationCommand request, CancellationToken cancellationToken)
@@ -88,17 +86,17 @@ public class CreateInvitationCommandHandler : IRequestHandler<CreateInvitationCo
         await _db.SaveChangesAsync(cancellationToken);
 
         // Send email
-        var registerUrl = $"{BaseUrl.TrimEnd('/')}/register?token={token}";
+        var registerUrl = $"{_urls.BaseUrl}/register?token={token}";
         var university = await _db.Universities.FindAsync(new object[] { request.UniversityId }, cancellationToken);
         var teacherSuffix = teacher != null ? $" как преподаватель <strong>{teacher.LastName} {teacher.FirstName}</strong>" : string.Empty;
         var body = $@"
             <p>Здравствуйте!</p>
-            <p>Вас пригласили в систему «Юниан» — университет <strong>{university?.Name}</strong>{teacherSuffix}.</p>
+            <p>Вас пригласили в систему «Юниран» — университет <strong>{university?.Name}</strong>{teacherSuffix}.</p>
             <p>Перейдите по ссылке, чтобы принять приглашение (действует 7 дней):</p>
             <p><a href=""{registerUrl}"">{registerUrl}</a></p>
             <p>Если у вас уже есть аккаунт в системе, ссылка предложит подтвердить и привязать его. Иначе будет создан новый.</p>
             <p>Если вы не ждали это приглашение, просто проигнорируйте письмо.</p>";
-        await _email.SendAsync(invitation.Email, "Приглашение в Юниан", body, cancellationToken);
+        await _email.SendAsync(invitation.Email, "Приглашение в Юниран", body, cancellationToken);
 
         return new CreateInvitationResult(invitation.Id, invitation.Email, invitation.ExpiresAt);
     }

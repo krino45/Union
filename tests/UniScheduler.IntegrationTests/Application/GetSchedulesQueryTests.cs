@@ -16,7 +16,7 @@ public class GetSchedulesQueryTests
     public async Task GetSchedules_EmptyDb_ReturnsEmpty()
     {
         using var db = DbContextFactory.Create();
-        var result = await new GetSchedulesQueryHandler(db)
+        var result = await new GetSchedulesQueryHandler(db, new FakeCurrentUser())
             .Handle(new GetSchedulesQuery(), CancellationToken.None);
         result.Should().BeEmpty();
     }
@@ -30,7 +30,7 @@ public class GetSchedulesQueryTests
             MakeSchedule(Term.Second, ScheduleStatus.Published));
         await db.SaveChangesAsync();
 
-        var result = await new GetSchedulesQueryHandler(db)
+        var result = await new GetSchedulesQueryHandler(db, new FakeCurrentUser())
             .Handle(new GetSchedulesQuery(), CancellationToken.None);
 
         result.Should().HaveCount(2);
@@ -45,7 +45,7 @@ public class GetSchedulesQueryTests
             MakeSchedule(Term.Second, ScheduleStatus.Published));
         await db.SaveChangesAsync();
 
-        var result = await new GetSchedulesQueryHandler(db)
+        var result = await new GetSchedulesQueryHandler(db, new FakeCurrentUser())
             .Handle(new GetSchedulesQuery(ScheduleStatus.Draft), CancellationToken.None);
 
         result.Should().ContainSingle().Which.Status.Should().Be(ScheduleStatus.Draft);
@@ -60,7 +60,7 @@ public class GetSchedulesQueryTests
             MakeSchedule(Term.Second, ScheduleStatus.Archived));
         await db.SaveChangesAsync();
 
-        var result = await new GetSchedulesQueryHandler(db)
+        var result = await new GetSchedulesQueryHandler(db, new FakeCurrentUser())
             .Handle(new GetSchedulesQuery(ScheduleStatus.Archived), CancellationToken.None);
 
         result.Should().ContainSingle().Which.Status.Should().Be(ScheduleStatus.Archived);
@@ -75,7 +75,7 @@ public class GetSchedulesQueryTests
             new Schedule { AcademicYear = 2026, Term = Term.First, StartDate = Start, EndDate = End, Status = ScheduleStatus.Draft });
         await db.SaveChangesAsync();
 
-        var result = await new GetSchedulesQueryHandler(db)
+        var result = await new GetSchedulesQueryHandler(db, new FakeCurrentUser())
             .Handle(new GetSchedulesQuery(), CancellationToken.None);
 
         result[0].AcademicYear.Should().Be(2026);
@@ -97,7 +97,7 @@ public class GetSchedulesQueryTests
         });
         await db.SaveChangesAsync();
 
-        var result = await new GetSchedulesQueryHandler(db)
+        var result = await new GetSchedulesQueryHandler(db, new FakeCurrentUser())
             .Handle(new GetSchedulesQuery(), CancellationToken.None);
 
         result.Should().ContainSingle().Which.FacultyName.Should().Be("ФИТ");

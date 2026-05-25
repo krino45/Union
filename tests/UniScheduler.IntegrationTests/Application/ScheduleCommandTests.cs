@@ -17,7 +17,7 @@ public class ScheduleCommandTests
     public async Task CreateSchedule_PersistsWithDraftStatus()
     {
         using var db = DbContextFactory.Create();
-        var handler = new CreateScheduleCommandHandler(db);
+        var handler = new CreateScheduleCommandHandler(db, new FakeCurrentUser());
 
         var result = await handler.Handle(
             new CreateScheduleCommand(2026, Term.First, Start, End, null, false),
@@ -37,7 +37,7 @@ public class ScheduleCommandTests
         db.Faculties.Add(faculty);
         await db.SaveChangesAsync();
 
-        var handler = new CreateScheduleCommandHandler(db);
+        var handler = new CreateScheduleCommandHandler(db, new FakeCurrentUser());
         var result = await handler.Handle(
             new CreateScheduleCommand(2026, Term.First, Start, End, faculty.Id, false),
             CancellationToken.None);
@@ -54,7 +54,7 @@ public class ScheduleCommandTests
         db.Schedules.Add(schedule);
         await db.SaveChangesAsync();
 
-        await new PublishScheduleCommandHandler(db)
+        await new PublishScheduleCommandHandler(db, new FakeCurrentUser())
             .Handle(new PublishScheduleCommand(schedule.Id), CancellationToken.None);
 
         (await db.Schedules.FindAsync(schedule.Id))!.Status.Should().Be(ScheduleStatus.Published);
@@ -64,7 +64,7 @@ public class ScheduleCommandTests
     public async Task PublishSchedule_MissingSchedule_ThrowsNotFoundException()
     {
         using var db = DbContextFactory.Create();
-        var act = async () => await new PublishScheduleCommandHandler(db)
+        var act = async () => await new PublishScheduleCommandHandler(db, new FakeCurrentUser())
             .Handle(new PublishScheduleCommand(Guid.NewGuid()), CancellationToken.None);
         await act.Should().ThrowAsync<NotFoundException>();
     }
@@ -105,7 +105,7 @@ public class ScheduleCommandTests
         db.Schedules.Add(schedule);
         await db.SaveChangesAsync();
 
-        await new DeleteScheduleCommandHandler(db)
+        await new DeleteScheduleCommandHandler(db, new FakeCurrentUser())
             .Handle(new DeleteScheduleCommand(schedule.Id), CancellationToken.None);
 
         db.Schedules.Should().BeEmpty();
@@ -119,7 +119,7 @@ public class ScheduleCommandTests
         db.Schedules.Add(schedule);
         await db.SaveChangesAsync();
 
-        var act = async () => await new DeleteScheduleCommandHandler(db)
+        var act = async () => await new DeleteScheduleCommandHandler(db, new FakeCurrentUser())
             .Handle(new DeleteScheduleCommand(schedule.Id), CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidOperationException>()
@@ -130,7 +130,7 @@ public class ScheduleCommandTests
     public async Task DeleteSchedule_MissingSchedule_ThrowsNotFoundException()
     {
         using var db = DbContextFactory.Create();
-        var act = async () => await new DeleteScheduleCommandHandler(db)
+        var act = async () => await new DeleteScheduleCommandHandler(db, new FakeCurrentUser())
             .Handle(new DeleteScheduleCommand(Guid.NewGuid()), CancellationToken.None);
         await act.Should().ThrowAsync<NotFoundException>();
     }

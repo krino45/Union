@@ -122,6 +122,33 @@ public class SchedulesEndpointTests : IClassFixture<TestWebApplicationFactory>
         body.Should().Contain("404");
     }
 
+    [Theory]
+    [InlineData("GET", "/api/schedules/" + Id)]
+    [InlineData("POST", "/api/schedules")]
+    [InlineData("DELETE", "/api/schedules/" + Id)]
+    [InlineData("POST", "/api/schedules/" + Id + "/publish")]
+    [InlineData("PATCH", "/api/schedules/" + Id + "/access")]
+    [InlineData("PATCH", "/api/schedules/" + Id + "/name")]
+    [InlineData("POST", "/api/schedules/" + Id + "/archive")]
+    [InlineData("POST", "/api/schedules/" + Id + "/unarchive")]
+    [InlineData("POST", "/api/schedules/" + Id + "/update-score")]
+    [InlineData("POST", "/api/schedules/" + Id + "/validate-edit")]
+    [InlineData("POST", "/api/schedules/" + Id + "/generate")]
+    [InlineData("GET", "/api/schedules/" + Id + "/generate/status")]
+    [InlineData("GET", "/api/schedules/" + Id + "/audit")]
+    [InlineData("GET", "/api/schedules/" + Id + "/entries")]
+    [InlineData("GET", "/api/schedules/" + Id + "/plan-progress")]
+    [InlineData("GET", "/api/schedules/" + Id + "/export/json")]
+    [InlineData("POST", "/api/schedules/" + Id + "/import/json")]
+    public async Task Endpoint_Unauthenticated_Returns401(string method, string url)
+    {
+        var response = await _factory.CreateClient()
+            .SendAsync(new HttpRequestMessage(new HttpMethod(method), url));
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    private const string Id = "11111111-1111-1111-1111-111111111111";
+
     private sealed record ScheduleBody(Guid Id, int AcademicYear, string Term,
         string StartDate, string EndDate, string Status);
 }

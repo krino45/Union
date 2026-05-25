@@ -31,7 +31,7 @@ import { ThemeToggleComponent } from '../../../shared/components/theme-toggle/th
       <mat-card class="register-card">
         <mat-card-header>
           <mat-icon mat-card-avatar>school</mat-icon>
-          <mat-card-title>Юниан</mat-card-title>
+          <mat-card-title>Юниран</mat-card-title>
           <mat-card-subtitle>{{ subtitle }}</mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>

@@ -41,7 +41,7 @@ public class GenerateScheduleCommandTests
         await db.SaveChangesAsync();
 
         var mockSolver = new Mock<ISchedulerService>();
-        mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>()))
+        mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<string>?>()))
             .ReturnsAsync(new SchedulerOutput(SolverStatus.Infeasible, "No solution", []));
 
         var result = await new GenerateScheduleCommandHandler(db, mockSolver.Object)
@@ -74,7 +74,7 @@ public class GenerateScheduleCommandTests
         db.ScheduleEntries.Should().HaveCount(1);
 
         var mockSolver = new Mock<ISchedulerService>();
-        mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>()))
+        mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<string>?>()))
             .ReturnsAsync(new SchedulerOutput(SolverStatus.Optimal, null, []));
 
         await new GenerateScheduleCommandHandler(db, mockSolver.Object)
@@ -114,7 +114,7 @@ public class GenerateScheduleCommandTests
 
         var assignment = new SchedulerAssignment(0, RussianDayOfWeek.Monday, 1, WeekType.Both, room.Id);
         var mockSolver = new Mock<ISchedulerService>();
-        mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>()))
+        mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<string>?>()))
             .ReturnsAsync(new SchedulerOutput(SolverStatus.Optimal, null, [assignment]));
 
         var result = await new GenerateScheduleCommandHandler(db, mockSolver.Object)
@@ -134,7 +134,7 @@ public class GenerateScheduleCommandTests
         await db.SaveChangesAsync();
 
         var mockSolver = new Mock<ISchedulerService>();
-        mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>()))
+        mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<string>?>()))
             .ReturnsAsync(new SchedulerOutput(SolverStatus.Optimal, null, []));
 
         await new GenerateScheduleCommandHandler(db, mockSolver.Object)

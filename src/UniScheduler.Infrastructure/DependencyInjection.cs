@@ -31,9 +31,24 @@ public static class DependencyInjection
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<ICurrentUniversityService, CurrentUniversityService>();
-        services.AddScoped<IEmailSender, ConsoleEmailSender>();
+        services.AddSingleton<IAppUrls, AppUrls>();
+
+        AddEmailSender(services, configuration);
 
         return services;
+    }
+
+    private static void AddEmailSender(IServiceCollection services, IConfiguration configuration)
+    {
+        var settings = configuration.GetSection(EmailSettings.SectionName).Get<EmailSettings>() ?? new EmailSettings();
+        services.AddSingleton(settings);
+
+        if (string.Equals(settings.Provider, "Resend", StringComparison.OrdinalIgnoreCase))
+            services.AddHttpClient<IEmailSender, ResendEmailSender>();
+        else if (string.Equals(settings.Provider, "Smtp", StringComparison.OrdinalIgnoreCase))
+            services.AddScoped<IEmailSender, SmtpEmailSender>();
+        else
+            services.AddScoped<IEmailSender, ConsoleEmailSender>();
     }
 
     private static string ResolveConnectionString(IConfiguration configuration)

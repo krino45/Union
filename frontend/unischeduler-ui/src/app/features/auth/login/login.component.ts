@@ -26,7 +26,7 @@ import { ThemeToggleComponent } from '../../../shared/components/theme-toggle/th
       <mat-card class="login-card">
         <mat-card-header>
           <mat-icon mat-card-avatar>school</mat-icon>
-          <mat-card-title>Юниан</mat-card-title>
+          <mat-card-title>Юниран</mat-card-title>
           <mat-card-subtitle>Вход в систему</mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>

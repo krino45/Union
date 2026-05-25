@@ -22,7 +22,7 @@ public class AuthEndpointTests : IClassFixture<TestWebApplicationFactory>
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<LoginBody>();
         body!.Token.Should().NotBeNullOrEmpty();
-        body.Role.Should().Be("Admin");
+        body.Role.Should().Be("SuperAdmin");
     }
 
     [Fact]
@@ -58,6 +58,32 @@ public class AuthEndpointTests : IClassFixture<TestWebApplicationFactory>
         response.Content.Headers.ContentType?.MediaType.Should().Contain("json");
         var body = await response.Content.ReadAsStringAsync();
         body.Should().Contain("Unauthorized");
+    }
+
+    [Theory]
+    [InlineData("GET", "/api/auth/me")]
+    [InlineData("POST", "/api/auth/renew")]
+    [InlineData("POST", "/api/auth/accept-invitation")]
+    public async Task ProtectedEndpoint_Unauthenticated_Returns401(string method, string url)
+    {
+        var response = await _factory.CreateClient()
+            .SendAsync(new HttpRequestMessage(new HttpMethod(method), url));
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Logout_IsAnonymous_Returns204()
+    {
+        var response = await _factory.CreateClient().PostAsync("/api/auth/logout", null);
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task GetInvitationInfo_UnknownToken_IsReachableNotUnauthorized()
+    {
+        // [AllowAnonymous]: the route should resolve and run the handler, never 401.
+        var response = await _factory.CreateClient().GetAsync($"/api/auth/invitation/{Guid.NewGuid():N}");
+        response.StatusCode.Should().NotBe(HttpStatusCode.Unauthorized);
     }
 
     private sealed record LoginBody(string Token, string Role, Guid UserId, Guid? TeacherId);

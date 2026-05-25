@@ -17,7 +17,7 @@ import { ThemeToggleComponent } from '../../shared/components/theme-toggle/theme
       <app-theme-toggle></app-theme-toggle>
       <div class="header">
         <mat-icon class="logo-icon">school</mat-icon>
-        <h1>Юниан</h1>
+        <h1>Юниран</h1>
         <p class="subtitle">Выберите университет</p>
       </div>
       <div class="cards">
