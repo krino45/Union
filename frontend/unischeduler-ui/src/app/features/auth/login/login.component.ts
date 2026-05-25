@@ -65,7 +65,7 @@ import { ThemeToggleComponent } from '../../../shared/components/theme-toggle/th
     .full-width { width: 100%; margin-bottom: 12px; }
     .error-msg { color: #f44336; font-size: 13px; margin-bottom: 12px; }
     button[type=submit] { height: 44px; }
-    .forgot-link { display: block; width: 100%; margin-top: 8px; font-size: 13px; }
+    .forgot-link { display: block; width: fit-content; margin-top: 8px; font-size: 13px; }
   `]
 })
 export class LoginComponent implements OnInit {
@@ -114,7 +114,9 @@ export class LoginComponent implements OnInit {
       },
       error: (err) => {
         this.loading = false;
-        this.error = err.error?.title || err.error?.message || 'Неверный email/логин или пароль';
+        this.error = err.status === 401
+          ? 'Неверный email/логин или пароль'
+          : err.error?.message || 'Ошибка входа. Попробуйте позже.';
       }
     });
   }

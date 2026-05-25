@@ -26,8 +26,8 @@ import { ThemeToggleComponent } from '../../../shared/components/theme-toggle/th
       <mat-card class="auth-card">
         <mat-card-header>
           <mat-icon mat-card-avatar>lock_reset</mat-icon>
-          <mat-card-title>Сброс пароля</mat-card-title>
-          <mat-card-subtitle>Юниран</mat-card-subtitle>
+          <mat-card-title>Юниран</mat-card-title>
+          <mat-card-subtitle>Сброс пароля</mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>
           <div *ngIf="sent" class="status">

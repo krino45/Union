@@ -41,7 +41,7 @@ import { ThemeToggleComponent } from '../../shared/components/theme-toggle/theme
           <h1>Управление системой</h1>
         </div>
         <div class="header-right">
-          <app-theme-toggle></app-theme-toggle>
+          <app-theme-toggle [fixed]="false"></app-theme-toggle>
           <button mat-stroked-button (click)="goToUniSelect()">
             <mat-icon>arrow_back</mat-icon> К выбору университета
           </button>

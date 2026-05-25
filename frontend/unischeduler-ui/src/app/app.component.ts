@@ -136,7 +136,6 @@ import { ThemeService } from './core/services/theme.service';
           <span class="uni-title">
             {{ auth.currentUniversity?.universityName || 'Юниран' }}
           </span>
-          <span class="spacer"></span>
           <button mat-button routerLink="/admin/floor-plan" routerLinkActive="active-header-link"
                   *ngIf="auth.isAdmin && auth.currentUniversity" class="header-floorplan-btn">
             <mat-icon>map</mat-icon>
@@ -172,9 +171,8 @@ import { ThemeService } from './core/services/theme.service';
     .sidenav-footer { margin-top: auto; padding: 8px; }
     .user-info { display: flex; align-items: center; gap: 8px; padding: 8px; font-size: 14px; }
     .logout-btn { width: 100%; }
-    .spacer { flex: 1; }
     .role-badge { font-size: 13px; opacity: 0.85; }
-    .uni-title { font-size: 15px; font-weight: 600; }
+    .uni-title { font-size: 15px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .header-floorplan-btn { color: #fff; margin-right: 12px; }
     .header-floorplan-btn.active-header-link { background: rgba(255,255,255,0.18); }
     .dark-toggle { color: #fff; margin-right: 8px; }
