@@ -1,23 +1,27 @@
 import { Routes } from '@angular/router';
-import { authGuard, adminGuard } from './core/guards/auth.guard';
+import { authGuard, adminGuard, guestGuard } from './core/guards/auth.guard';
 import { universityGuard, superAdminGuard } from './core/guards/university.guard';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'select-university', pathMatch: 'full' },
   {
     path: 'login',
+    canActivate: [guestGuard],
     loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent)
   },
   {
     path: 'register',
+    canActivate: [guestGuard],
     loadComponent: () => import('./features/auth/register/register.component').then(m => m.RegisterComponent)
   },
   {
     path: 'forgot-password',
+    canActivate: [guestGuard],
     loadComponent: () => import('./features/auth/forgot-password/forgot-password.component').then(m => m.ForgotPasswordComponent)
   },
   {
     path: 'reset-password',
+    canActivate: [guestGuard],
     loadComponent: () => import('./features/auth/reset-password/reset-password.component').then(m => m.ResetPasswordComponent)
   },
   {
