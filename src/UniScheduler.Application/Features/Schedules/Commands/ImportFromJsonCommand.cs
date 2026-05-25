@@ -227,23 +227,39 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
         schedule.Status = ScheduleStatus.Draft;
 
         // Entries have 0 hours — the user fills in the real values afterwards.
+        // Group newly-created groups by identical subject sets — groups that share the same curriculum
+        // go into one shared study plan instead of N separate ones.
         int newPlans = 0;
+        var planGroupsByKey  = new Dictionary<string, List<StudentGroup>>();
+        var planSubjectsByKey = new Dictionary<string, HashSet<Subject>>();
         foreach (var group in createdGroups)
         {
-            var plan = new StudyPlan
+            groupSubjects.TryGetValue(group, out var subs);
+            // Key = sorted subject short-names; empty set → individual plan keyed by group name
+            var key = subs is { Count: > 0 }
+                ? string.Join("\x01", subs.Select(s => s.ShortName).OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+                : $"\x00{group.Name}";
+            if (!planGroupsByKey.ContainsKey(key))
             {
-                Name = group.Name,
-                AcademicYear = schedule.AcademicYear,
-                Term = schedule.Term
-            };
-            _db.StudyPlans.Add(plan);
-            _db.StudyPlanGroups.Add(new StudyPlanGroup { StudyPlan = plan, StudentGroup = group });
-
-            if (groupSubjects.TryGetValue(group, out var subs))
-            {
-                foreach (var sub in subs)
-                    _db.StudyPlanEntries.Add(new StudyPlanEntry { StudyPlan = plan, Subject = sub });
+                planGroupsByKey[key]  = new List<StudentGroup>();
+                planSubjectsByKey[key] = subs ?? new HashSet<Subject>(ReferenceEqualityComparer.Instance);
             }
+            planGroupsByKey[key].Add(group);
+        }
+
+        foreach (var (key, batch) in planGroupsByKey)
+        {
+            var planSubs  = planSubjectsByKey[key];
+            var planName  = batch.Count == 1
+                ? batch[0].Name
+                : string.Join(", ", batch.Select(g => g.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
+
+            var plan = new StudyPlan { Name = planName, AcademicYear = schedule.AcademicYear, Term = schedule.Term };
+            _db.StudyPlans.Add(plan);
+            foreach (var g in batch)
+                _db.StudyPlanGroups.Add(new StudyPlanGroup { StudyPlan = plan, StudentGroup = g });
+            foreach (var sub in planSubs)
+                _db.StudyPlanEntries.Add(new StudyPlanEntry { StudyPlan = plan, Subject = sub });
             newPlans++;
         }
 

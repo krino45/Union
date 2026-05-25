@@ -29,8 +29,8 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../shared/constants/pairs';
     <div class="page-header">
       <h1>Моя занятость</h1>
       <div class="legend">
-        <span class="legend-blocked">Заблокировано</span>
-        <span class="legend-free">Свободно</span>
+        <span class="legend-item"><span class="legend-swatch legend-swatch-blocked"></span>Заблокировано</span>
+        <span class="legend-item"><span class="legend-swatch legend-swatch-free"></span>Свободно</span>
       </div>
     </div>
 
@@ -73,11 +73,14 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../shared/constants/pairs';
     </mat-card>
   `,
   styles: [`
+    :host { display: block; padding-top: 16px; }
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     h1 { margin: 0; }
     .legend { display: flex; gap: 16px; align-items: center; }
-    .legend-blocked { display: inline-block; width: 20px; height: 20px; background: #ffcdd2; border-radius: 3px; vertical-align: middle; }
-    .legend-free { display: inline-block; width: 20px; height: 20px; background: #e8f5e9; border-radius: 3px; vertical-align: middle; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
+    .legend-swatch { width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0; }
+    .legend-swatch-blocked { background: #ffcdd2; }
+    .legend-swatch-free { background: #e8f5e9; }
     .week-selector { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
     .hint { font-size: 12px; color: #888; }
     .avail-table { border-collapse: collapse; width: 100%; }
@@ -90,6 +93,16 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../shared/constants/pairs';
     .avail-cell.blocked { background: #ffcdd2; }
     .avail-cell.blocked:hover { background: #ef9a9a; }
     mat-icon { color: #c62828; font-size: 20px; }
+
+    :host-context(body.dark-mode) .avail-table th, :host-context(body.dark-mode) .avail-table td { border-color: #444; }
+    :host-context(body.dark-mode) .avail-table th { background: #2a2a2a; }
+    :host-context(body.dark-mode) .avail-cell { background: #1b3a28; }
+    :host-context(body.dark-mode) .avail-cell:hover { background: #24522f; }
+    :host-context(body.dark-mode) .avail-cell.blocked { background: #4a1c1c; }
+    :host-context(body.dark-mode) .avail-cell.blocked:hover { background: #612424; }
+    :host-context(body.dark-mode) mat-icon { color: #ef9a9a; }
+    :host-context(body.dark-mode) .legend-swatch-blocked { background: #4a1c1c; }
+    :host-context(body.dark-mode) .legend-swatch-free { background: #1b3a28; }
   `]
 })
 export class AvailabilityEditorComponent implements OnInit {

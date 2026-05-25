@@ -32,7 +32,7 @@ public class OrToolsSchedulerService : ISchedulerService
 
         // key: (reqIdx, day, pair, weekTypeIdx, roomIdx)  value: BoolVar
         // WeekType.Both requirements use wi=0 only; they occupy both odd AND even weeks.
-        // WeekType.Odd  → wi=0, WeekType.Even → wi=1.
+        // WeekType.Odd > wi=0, WeekType.Even > wi=1.
         var vars = new Dictionary<(int ri, int d, int p, int wi, int rmi), BoolVar>();
 
         progress?.Report($"Создание переменных ({reqs.Count} занятий, {rooms.Count} аудиторий)...");
@@ -119,41 +119,80 @@ public class OrToolsSchedulerService : ISchedulerService
             model.AddExactlyOne(slotVars);
         }
 
-        progress?.Report("Ограничение H4: конфликты аудиторий...");
-        // Both-type vars (wi=0) occupy the slot on both odd and even weeks, so they appear in
-        // BOTH the wi=0 and the wi=1 conflict cells.
+        // teacherReqs is also used for isTeacherUsed auxiliary vars and soft objectives below.
+        var teacherReqs = teachers.ToDictionary(t => t.Id, t =>
+            reqs.Select((r, i) => (r, i)).Where(x => x.r.TeacherId == t.Id).Select(x => x.i).ToList());
+        var teacherIdxMap = teachers.Select((t, i) => (t.Id, i)).ToDictionary(x => x.Id, x => x.i);
+
+        // Precompute group headcount per requirement for capacity checks.
+        var reqGroupSize = reqs.Select(r => groups.Where(g => r.GroupIds.Contains(g.Id)).Sum(g => g.StudentCount)).ToArray();
+
+        progress?.Report("Ограничение H4: конфликты аудиторий (по преподавателям)...");
+        // H4: at most one TEACHER per room per slot.
+        //     Multiple requirements of the SAME teacher are allowed in the same room at the same time
+        //     (combined / flow lecture). Different teachers cannot share a room.
+        // H4-cap: total headcount of all concurrent requirements ≤ room capacity.
         for (int rmi = 0; rmi < rooms.Count; rmi++)
         for (int d = 0; d < NumDays; d++)
         for (int p = 0; p < numPairs; p++)
         for (int wi = 0; wi < 2; wi++)
         {
-            var cell = vars
-                .Where(kv => kv.Key.rmi == rmi && kv.Key.d == d && kv.Key.p == p
-                             && AffectsWeekIndex(reqs[kv.Key.ri].WeekType, wi))
-                .Select(kv => kv.Value).ToList();
-            if (cell.Count > 1) model.AddAtMostOne(cell);
-        }
+            var teacherPresences = new List<BoolVar>();
+            var capVars  = new List<IntVar>();
+            var capSizes = new List<long>();
 
-        progress?.Report("Ограничение H5: конфликты преподавателей...");
-        var teacherReqs = teachers.ToDictionary(t => t.Id, t =>
-            reqs.Select((r, i) => (r, i)).Where(x => x.r.TeacherId == t.Id).Select(x => x.i).ToList());
-
-        foreach (var (_, trIdxs) in teacherReqs)
-        {
-            if (trIdxs.Count <= 1) continue;
-            for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < numPairs; p++)
-            for (int wi = 0; wi < 2; wi++)
+            foreach (var (tId, trIdxs) in teacherReqs)
             {
-                var cell = new List<BoolVar>();
+                var tVars = new List<BoolVar>();
                 foreach (int ri in trIdxs)
                 {
                     if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
                     int varWi = VarWeekIndex(reqs[ri].WeekType);
-                    foreach (var kv in vars.Where(x => x.Key.ri == ri && x.Key.d == d && x.Key.p == p && x.Key.wi == varWi))
-                        cell.Add(kv.Value);
+                    if (!vars.TryGetValue((ri, d, p, varWi, rmi), out var v)) continue;
+                    tVars.Add(v);
+                    capVars.Add(v);
+                    capSizes.Add(reqGroupSize[ri]);
                 }
-                if (cell.Count > 1) model.AddAtMostOne(cell);
+                if (tVars.Count == 0) continue;
+                int ti = teacherIdxMap[tId];
+                var pres = model.NewBoolVar($"tp_{ti}_{rmi}_{d}_{p}_{wi}");
+                model.AddMaxEquality(pres, tVars.Select(v => (IntVar)v).ToArray());
+                teacherPresences.Add(pres);
+            }
+
+            if (teacherPresences.Count > 1) model.AddAtMostOne(teacherPresences);
+            if (capVars.Count > 0 && rooms[rmi].Capacity > 0)
+                model.Add(LinearExpr.WeightedSum(capVars.ToArray(), capSizes.ToArray()) <= rooms[rmi].Capacity);
+        }
+
+        progress?.Report("Ограничение H5: конфликты преподавателей (по аудиториям)...");
+        // H5: each teacher can be in at most one ROOM per slot.
+        //     Being in the same room for multiple requirements is fine (H4 already enforces same-teacher-same-room).
+        foreach (var (tId, trIdxs) in teacherReqs)
+        {
+            if (trIdxs.Count <= 1) continue;
+            int ti = teacherIdxMap[tId];
+            for (int d = 0; d < NumDays; d++)
+            for (int p = 0; p < numPairs; p++)
+            for (int wi = 0; wi < 2; wi++)
+            {
+                var roomPresences = new List<BoolVar>();
+                for (int rmi = 0; rmi < rooms.Count; rmi++)
+                {
+                    var rVars = new List<BoolVar>();
+                    foreach (int ri in trIdxs)
+                    {
+                        if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
+                        int varWi = VarWeekIndex(reqs[ri].WeekType);
+                        if (vars.TryGetValue((ri, d, p, varWi, rmi), out var v))
+                            rVars.Add(v);
+                    }
+                    if (rVars.Count == 0) continue;
+                    var pres = model.NewBoolVar($"tr_{ti}_{rmi}_{d}_{p}_{wi}");
+                    model.AddMaxEquality(pres, rVars.Select(v => (IntVar)v).ToArray());
+                    roomPresences.Add(pres);
+                }
+                if (roomPresences.Count > 1) model.AddAtMostOne(roomPresences);
             }
         }
 
