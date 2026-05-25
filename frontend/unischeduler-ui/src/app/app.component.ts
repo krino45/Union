@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -21,7 +21,8 @@ import { ThemeService } from './core/services/theme.service';
   ],
   template: `
     <mat-sidenav-container class="app-container">
-      <mat-sidenav #sidenav mode="side" [opened]="auth.isAuthenticated && !!auth.currentUniversity" class="sidenav">
+      <mat-sidenav #sidenav mode="side" [opened]="auth.isAuthenticated && !!auth.currentUniversity"
+                   [style.width.px]="sidenavWidth" class="sidenav">
         <div class="sidenav-header" [class.clickable]="auth.canSwitchUniversity"
              (click)="auth.canSwitchUniversity ? switchUniversity() : null"
              [matTooltip]="auth.canSwitchUniversity ? 'Сменить университет' : ''">
@@ -129,6 +130,7 @@ import { ThemeService } from './core/services/theme.service';
             Выйти
           </button>
         </div>
+        <div class="resize-handle" (mousedown)="onResizeStart($event)"></div>
       </mat-sidenav>
 
       <mat-sidenav-content>
@@ -157,7 +159,7 @@ import { ThemeService } from './core/services/theme.service';
   `,
   styles: [`
     .app-container { height: 100vh; }
-    .sidenav { width: 240px; display: flex; flex-direction: column; }
+    .sidenav { display: flex; flex-direction: column; position: relative; }
     .sidenav-header {
       display: flex; align-items: center; gap: 8px;
       padding: 16px; font-size: 18px; font-weight: 600;
@@ -176,16 +178,27 @@ import { ThemeService } from './core/services/theme.service';
     .header-floorplan-btn { color: #fff; margin-right: 12px; }
     .header-floorplan-btn.active-header-link { background: rgba(255,255,255,0.18); }
     .dark-toggle { color: #fff; margin-right: 8px; }
-    .content { padding: 24px; }
+    .content { padding: 24px; overflow-x: hidden; }
+    .resize-handle {
+      position: absolute; right: 0; top: 0;
+      width: 5px; height: 100%;
+      cursor: col-resize; z-index: 10;
+      transition: background 0.15s;
+    }
+    .resize-handle:hover { background: rgba(25, 118, 210, 0.25); }
     mat-nav-list a.active { background: rgba(25,118,210,0.12); }
     h3[matSubheader] { color: #888; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
   `]
 })
 export class AppComponent {
+  sidenavWidth = +(localStorage.getItem('sidenavWidth') ?? '240');
+
   constructor(
     public auth: AuthService,
     public theme: ThemeService,
-    private router: Router
+    private router: Router,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef
   ) {
     let wasAuthenticated = this.auth.isAuthenticated;
     this.auth.currentUser$.subscribe(user => {
@@ -194,6 +207,27 @@ export class AppComponent {
         this.router.navigate(['/login']);
       }
       wasAuthenticated = isAuthenticated;
+    });
+  }
+
+  onResizeStart(e: MouseEvent): void {
+    e.preventDefault();
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    this.ngZone.runOutsideAngular(() => {
+      const onMove = (mv: MouseEvent) => {
+        this.sidenavWidth = Math.max(160, Math.min(420, mv.clientX));
+        this.cdr.detectChanges();
+      };
+      const onUp = () => {
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        localStorage.setItem('sidenavWidth', String(this.sidenavWidth));
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
     });
   }
 
