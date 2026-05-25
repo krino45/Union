@@ -1,4 +1,4 @@
-import { Component, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -21,8 +21,7 @@ import { ThemeService } from './core/services/theme.service';
   ],
   template: `
     <mat-sidenav-container class="app-container">
-      <mat-sidenav #sidenav mode="side" [opened]="auth.isAuthenticated && !!auth.currentUniversity"
-                   [style.width.px]="sidenavWidth" class="sidenav">
+      <mat-sidenav #sidenav mode="side" [opened]="auth.isAuthenticated && !!auth.currentUniversity" class="sidenav">
         <div class="sidenav-header" [class.clickable]="auth.canSwitchUniversity"
              (click)="auth.canSwitchUniversity ? switchUniversity() : null"
              [matTooltip]="auth.canSwitchUniversity ? 'Сменить университет' : ''">
@@ -159,7 +158,7 @@ import { ThemeService } from './core/services/theme.service';
   `,
   styles: [`
     .app-container { height: 100vh; }
-    .sidenav { display: flex; flex-direction: column; position: relative; }
+    .sidenav { width: var(--sidenav-w, 240px); display: flex; flex-direction: column; position: relative; }
     .sidenav-header {
       display: flex; align-items: center; gap: 8px;
       padding: 16px; font-size: 18px; font-weight: 600;
@@ -191,15 +190,14 @@ import { ThemeService } from './core/services/theme.service';
   `]
 })
 export class AppComponent {
-  sidenavWidth = +(localStorage.getItem('sidenavWidth') ?? '240');
+  private _sidenavWidth = +(localStorage.getItem('sidenavWidth') ?? '240');
 
   constructor(
     public auth: AuthService,
     public theme: ThemeService,
-    private router: Router,
-    private ngZone: NgZone,
-    private cdr: ChangeDetectorRef
+    private router: Router
   ) {
+    document.documentElement.style.setProperty('--sidenav-w', `${this._sidenavWidth}px`);
     let wasAuthenticated = this.auth.isAuthenticated;
     this.auth.currentUser$.subscribe(user => {
       const isAuthenticated = !!user;
@@ -214,21 +212,19 @@ export class AppComponent {
     e.preventDefault();
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
-    this.ngZone.runOutsideAngular(() => {
-      const onMove = (mv: MouseEvent) => {
-        this.sidenavWidth = Math.max(160, Math.min(420, mv.clientX));
-        this.cdr.detectChanges();
-      };
-      const onUp = () => {
-        document.body.style.userSelect = '';
-        document.body.style.cursor = '';
-        localStorage.setItem('sidenavWidth', String(this.sidenavWidth));
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
+    const onMove = (mv: MouseEvent) => {
+      this._sidenavWidth = Math.max(160, Math.min(420, mv.clientX));
+      document.documentElement.style.setProperty('--sidenav-w', `${this._sidenavWidth}px`);
+    };
+    const onUp = () => {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      localStorage.setItem('sidenavWidth', String(this._sidenavWidth));
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   }
 
   switchUniversity(): void {
