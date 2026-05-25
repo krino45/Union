@@ -27,6 +27,18 @@ public class DeleteScheduleCommandHandler : IRequestHandler<DeleteScheduleComman
         if (schedule.Status == ScheduleStatus.Draft)
             ScheduleAccessGuard.EnsureOwnerOnly(schedule, _user, "удалить черновик");
 
+        var entryIds = await _db.ScheduleEntries
+            .Where(e => e.ScheduleId == request.ScheduleId)
+            .Select(e => e.Id)
+            .ToListAsync(cancellationToken);
+        if (entryIds.Count > 0)
+        {
+            var relatedRequests = await _db.RescheduleRequests
+                .Where(r => entryIds.Contains(r.OriginalEntryId))
+                .ToListAsync(cancellationToken);
+            _db.RescheduleRequests.RemoveRange(relatedRequests);
+        }
+
         _db.Schedules.Remove(schedule);
         await _db.SaveChangesAsync(cancellationToken);
     }

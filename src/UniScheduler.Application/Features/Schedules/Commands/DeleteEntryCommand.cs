@@ -33,6 +33,11 @@ public class DeleteEntryCommandHandler : IRequestHandler<DeleteEntryCommand>
             ScheduleAccessGuard.TransferOwnershipOnDemote(schedule, _user);
         }
 
+        var relatedRequests = await _db.RescheduleRequests
+            .Where(r => r.OriginalEntryId == request.EntryId)
+            .ToListAsync(cancellationToken);
+        _db.RescheduleRequests.RemoveRange(relatedRequests);
+
         _db.ScheduleEntries.Remove(entry);
         await _db.SaveChangesAsync(cancellationToken);
     }
