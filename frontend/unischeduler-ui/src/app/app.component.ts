@@ -132,7 +132,7 @@ import { ThemeService } from './core/services/theme.service';
       </mat-sidenav>
 
       <mat-sidenav-content>
-        <mat-toolbar color="primary" *ngIf="auth.isAuthenticated">
+        <mat-toolbar color="primary" *ngIf="auth.isAuthenticated && auth.currentUniversity">
           <span class="uni-title">
             {{ auth.currentUniversity?.universityName || 'Юниран' }}
           </span>
@@ -189,12 +189,13 @@ export class AppComponent {
     public theme: ThemeService,
     private router: Router
   ) {
+    let wasAuthenticated = this.auth.isAuthenticated;
     this.auth.currentUser$.subscribe(user => {
-      const url = this.router.url.split('?')[0];
-      const onAuthPage = url === '/login' || url.startsWith('/register');
-      if (!user && !onAuthPage) {
+      const isAuthenticated = !!user;
+      if (wasAuthenticated && !isAuthenticated) {
         this.router.navigate(['/login']);
       }
+      wasAuthenticated = isAuthenticated;
     });
   }
 

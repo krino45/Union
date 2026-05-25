@@ -324,10 +324,12 @@ export class RegisterComponent implements OnInit {
   }
 
   logoutAndReturn(): void {
-    const token = this.token;
-    this.auth.logout();
-    // logout navigates to /login; come back to /register with the token preserved
-    setTimeout(() => this.router.navigate(['/register'], { queryParams: { token } }), 0);
+    this.error = '';
+    this.loadingInfo = true;
+    this.auth.endSession().subscribe({
+      next: () => this.loadInfo(),
+      error: () => this.loadInfo()
+    });
   }
 
   goToLoginKeepingToken(): void {

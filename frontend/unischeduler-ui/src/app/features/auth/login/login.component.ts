@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -18,7 +18,7 @@ import { ThemeToggleComponent } from '../../../shared/components/theme-toggle/th
     CommonModule, ReactiveFormsModule,
     MatCardModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatIconModule, MatProgressSpinnerModule,
-    ThemeToggleComponent
+    ThemeToggleComponent, RouterLink
   ],
   template: `
     <div class="login-container">
@@ -50,6 +50,7 @@ import { ThemeToggleComponent } from '../../../shared/components/theme-toggle/th
               <mat-spinner *ngIf="loading" diameter="20"></mat-spinner>
               <span *ngIf="!loading">Войти</span>
             </button>
+            <a mat-button routerLink="/forgot-password" class="forgot-link">Забыли пароль?</a>
           </form>
         </mat-card-content>
       </mat-card>
@@ -64,6 +65,7 @@ import { ThemeToggleComponent } from '../../../shared/components/theme-toggle/th
     .full-width { width: 100%; margin-bottom: 12px; }
     .error-msg { color: #f44336; font-size: 13px; margin-bottom: 12px; }
     button[type=submit] { height: 44px; }
+    .forgot-link { display: block; width: 100%; margin-top: 8px; font-size: 13px; }
   `]
 })
 export class LoginComponent implements OnInit {

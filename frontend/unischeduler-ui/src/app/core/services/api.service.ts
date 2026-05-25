@@ -126,6 +126,10 @@ export class ApiService {
     if (q) params = params.set('q', q);
     return this.http.get<any[]>(`${this.base}/users`, { params });
   }
+  // Create a username/password account (no e-mail) and grant Admin/Teacher access to one university.
+  createUser(dto: { username: string; password: string; universityId: string; role: 'Admin' | 'Teacher' }): Observable<{ id: string; username: string; role: string }> {
+    return this.http.post<any>(`${this.base}/users`, dto);
+  }
 
   // Invitations (admin/superadmin)
   listInvitations(universityId: string): Observable<InvitationDto[]> {
@@ -145,6 +149,12 @@ export class ApiService {
   }
   getInvitationInfo(token: string): Observable<InvitationInfo> {
     return this.http.get<InvitationInfo>(`${this.base}/auth/invitation/${encodeURIComponent(token)}`);
+  }
+  forgotPassword(email: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/auth/forgot-password`, { email });
+  }
+  resetPassword(token: string, newPassword: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/auth/reset-password`, { token, newPassword });
   }
 
   //  Departments

@@ -21,6 +21,7 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { UniversityAccess } from '../../core/models';
 import { Teacher } from '../../core/models/teacher.model';
+import { ThemeToggleComponent } from '../../shared/components/theme-toggle/theme-toggle.component';
 
 @Component({
   selector: 'app-superadmin',
@@ -30,7 +31,7 @@ import { Teacher } from '../../core/models/teacher.model';
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSnackBarModule, MatTabsModule, MatSelectModule, MatDividerModule,
-    MatTooltipModule
+    MatTooltipModule, ThemeToggleComponent
   ],
   template: `
     <div class="superadmin-page">
@@ -39,9 +40,12 @@ import { Teacher } from '../../core/models/teacher.model';
           <mat-icon>admin_panel_settings</mat-icon>
           <h1>Управление системой</h1>
         </div>
-        <button mat-stroked-button (click)="goToUniSelect()">
-          <mat-icon>arrow_back</mat-icon> К выбору университета
-        </button>
+        <div class="header-right">
+          <app-theme-toggle></app-theme-toggle>
+          <button mat-stroked-button (click)="goToUniSelect()">
+            <mat-icon>arrow_back</mat-icon> К выбору университета
+          </button>
+        </div>
       </div>
 
       <mat-card>
@@ -100,6 +104,7 @@ import { Teacher } from '../../core/models/teacher.model';
     }
     .header-left { display: flex; align-items: center; gap: 8px; }
     .header-left mat-icon { font-size: 28px; color: #7b1fa2; }
+    .header-right { display: flex; align-items: center; gap: 8px; }
     h1 { margin: 0; }
     .spacer { flex: 1; }
     mat-card-header { display: flex; align-items: center; padding: 16px 16px 8px; }
@@ -318,6 +323,25 @@ export class UniversityDialogComponent {
         </mat-form-field>
         <button mat-raised-button color="primary" (click)="assign()" [disabled]="!selectedUserId">Добавить</button>
       </div>
+
+      <div class="create-section">
+        <h3 class="section-title">Создать администратора без e-mail</h3>
+        <p class="section-hint">Аккаунт с логином и паролем (вход по логину). Сразу получит права администратора в этом университете.</p>
+        <div class="assign-form">
+          <mat-form-field appearance="outline" class="grow">
+            <mat-label>Логин</mat-label>
+            <input matInput [(ngModel)]="newUsername" autocomplete="off">
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="grow">
+            <mat-label>Пароль</mat-label>
+            <input matInput [(ngModel)]="newPassword" type="password" autocomplete="new-password">
+            <mat-hint>Минимум 6 символов</mat-hint>
+          </mat-form-field>
+          <button mat-raised-button color="primary" (click)="createAdmin()" [disabled]="!canCreate || creating">
+            Создать
+          </button>
+        </div>
+      </div>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Закрыть</button>
@@ -326,7 +350,10 @@ export class UniversityDialogComponent {
   styles: [
     '.full-table { width: 100%; min-width: 400px; }',
     '.assign-form { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }',
-    '.assign-form .grow { flex: 1; min-width: 200px; }'
+    '.assign-form .grow { flex: 1; min-width: 200px; }',
+    '.create-section { margin-top: 24px; border-top: 1px solid rgba(0,0,0,0.12); padding-top: 8px; }',
+    '.section-title { margin: 8px 0 2px; font-size: 14px; }',
+    '.section-hint { margin: 0; color: #888; font-size: 12px; }'
   ]
 })
 export class UniversityUsersDialogComponent implements OnInit {
@@ -336,6 +363,13 @@ export class UniversityUsersDialogComponent implements OnInit {
   selectedUserId: string | null = null;
   assignRole = 'Teacher';
   suggestions$: Observable<{ id: string; username: string; role: string }[]> = of([]);
+  newUsername = '';
+  newPassword = '';
+  creating = false;
+
+  get canCreate(): boolean {
+    return this.newUsername.trim().length >= 3 && this.newPassword.length >= 6;
+  }
 
   constructor(
     private api: ApiService,
@@ -384,6 +418,29 @@ export class UniversityUsersDialogComponent implements OnInit {
     this.api.revokeUniversityUser(this.data.id, u.userId).subscribe({
       next: () => { this.load(); this.snackBar.open('Доступ отозван', 'OK', { duration: 2000 }); },
       error: e => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
+    });
+  }
+
+  createAdmin(): void {
+    if (!this.canCreate || this.creating) return;
+    this.creating = true;
+    this.api.createUser({
+      username: this.newUsername.trim(),
+      password: this.newPassword,
+      universityId: this.data.id,
+      role: 'Admin'
+    }).subscribe({
+      next: () => {
+        this.creating = false;
+        this.newUsername = '';
+        this.newPassword = '';
+        this.load();
+        this.snackBar.open('Администратор создан', 'OK', { duration: 2000 });
+      },
+      error: e => {
+        this.creating = false;
+        this.snackBar.open(e.error?.title || e.error?.message || 'Ошибка', 'OK', { duration: 4000 });
+      }
     });
   }
 }
@@ -528,7 +585,7 @@ export class UniversityInvitationsDialogComponent implements OnInit {
         this.email = '';
         this.teacherId = null;
         this.load();
-        this.snackBar.open('Приглашение отправлено (ссылка в консоли сервера)', 'OK', { duration: 4000 });
+        this.snackBar.open('Приглашение отправлено', 'OK', { duration: 4000 });
       },
       error: e => this.snackBar.open(e.error?.title || e.error?.message || 'Ошибка', 'OK', { duration: 4000 })
     });

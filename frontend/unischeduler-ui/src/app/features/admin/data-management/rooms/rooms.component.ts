@@ -41,7 +41,8 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
 
     <mat-card>
       <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
-      <table mat-table [dataSource]="rooms" class="full-width" *ngIf="!loading">
+      <div class="table-scroll" *ngIf="!loading">
+      <table mat-table [dataSource]="rooms" class="full-width">
         <ng-container matColumnDef="number">
           <th mat-header-cell *matHeaderCellDef>Аудитория</th>
           <td mat-cell *matCellDef="let r">
@@ -121,12 +122,14 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
         <tr mat-header-row *matHeaderRowDef="columns"></tr>
         <tr mat-row *matRowDef="let row; columns: columns;" [class.row-disabled]="!row.isEnabled"></tr>
       </table>
+      </div>
     </mat-card>
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     h1 { margin: 0; }
-    .full-width { width: 100%; }
+    .table-scroll { overflow-x: auto; }
+    .full-width { width: 100%; min-width: 920px; }
     mat-chip { font-size: 11px; margin: 1px; }
     .type-chip { background: #e3f2fd; color: #1565c0; font-size: 11px; margin: 1px; }
     .all-types { color: #9e9e9e; font-size: 12px; }

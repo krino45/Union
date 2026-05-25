@@ -68,6 +68,24 @@ public class AuthController : ControllerBase
     public async Task<ActionResult<InvitationInfoDto>> GetInvitationInfo(string token, CancellationToken ct)
         => Ok(await _mediator.Send(new GetInvitationInfoQuery(token), ct));
 
+    /// <summary>Request a password-reset link by e-mail. Always returns 204 (no account-existence leak).</summary>
+    [AllowAnonymous]
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] RequestPasswordResetCommand command, CancellationToken ct)
+    {
+        await _mediator.Send(command, ct);
+        return NoContent();
+    }
+
+    /// <summary>Set a new password using an emailed reset token. Public.</summary>
+    [AllowAnonymous]
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordCommand command, CancellationToken ct)
+    {
+        await _mediator.Send(command, ct);
+        return NoContent();
+    }
+
     private bool TryGetUserId(out Guid userId)
         => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
 

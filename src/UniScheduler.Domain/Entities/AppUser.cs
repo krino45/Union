@@ -14,6 +14,10 @@ public class AppUser : Entity
     public string Role { get; set; } = string.Empty;
     public Guid? TeacherId { get; set; }
 
+    // Password-reset: SHA-256 hash of the emailed reset token + its expiry. Null when no reset is pending.
+    public string? PasswordResetTokenHash { get; set; }
+    public DateTime? PasswordResetExpiresAt { get; set; }
+
     public Teacher? Teacher { get; set; }
     public ICollection<UserUniversityAccess> UniversityAccesses { get; set; } = new List<UserUniversityAccess>();
 }

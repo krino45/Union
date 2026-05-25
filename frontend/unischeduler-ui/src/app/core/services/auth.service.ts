@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { BehaviorSubject, Observable, tap, finalize } from 'rxjs';
 import { Router } from '@angular/router';
 import { LoginRequest, AuthResponse, CurrentUser, UniversityAccess } from '../models';
 import { environment } from '../../../environments/environment';
@@ -101,6 +101,15 @@ export class AuthService {
     this.clearLocal();
     this.channel?.postMessage({ type: 'logout' });
     this.router.navigate(['/login']);
+  }
+
+  endSession(): Observable<unknown> {
+    return this.http.post(`${environment.apiUrl}/auth/logout`, {}).pipe(
+      finalize(() => {
+        this.clearLocal();
+        this.channel?.postMessage({ type: 'logout' });
+      })
+    );
   }
 
   handleUnauthorized(): void {

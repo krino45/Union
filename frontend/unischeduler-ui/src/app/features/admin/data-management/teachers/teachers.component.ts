@@ -431,7 +431,7 @@ export class InviteTeacherDialogComponent {
     this.api.createInvitation(uniId, this.email, 'Teacher', this.data.id).subscribe({
       next: () => {
         this.sending = false;
-        this.snackBar.open('Приглашение отправлено (ссылка в консоли сервера)', 'OK', { duration: 4000 });
+        this.snackBar.open('Приглашение отправлено', 'OK', { duration: 4000 });
         this.dialogRef.close(true);
       },
       error: e => {
