@@ -158,7 +158,7 @@ import { ThemeService } from './core/services/theme.service';
   `,
   styles: [`
     .app-container { height: 100vh; }
-    .sidenav { width: var(--sidenav-w, 240px); display: flex; flex-direction: column; position: relative; }
+    .sidenav { width: var(--sidenav-w, 240px); display: flex; flex-direction: column; }
     .sidenav-header {
       display: flex; align-items: center; gap: 8px;
       padding: 16px; font-size: 18px; font-weight: 600;
@@ -179,9 +179,9 @@ import { ThemeService } from './core/services/theme.service';
     .dark-toggle { color: #fff; margin-right: 8px; }
     .content { padding: 24px; }
     .resize-handle {
-      position: absolute; right: 0; top: 0;
-      width: 5px; height: 100%;
-      cursor: col-resize; z-index: 10;
+      position: absolute; left: calc(var(--sidenav-w, 240px) - 3px); top: 0;
+      width: 6px; height: 100%;
+      cursor: col-resize; z-index: 100;
       transition: background 0.15s;
     }
     .resize-handle:hover { background: rgba(25, 118, 210, 0.25); }
@@ -190,7 +190,10 @@ import { ThemeService } from './core/services/theme.service';
   `]
 })
 export class AppComponent {
-  private _sidenavWidth = +(localStorage.getItem('sidenavWidth') ?? '240');
+  private _sidenavWidth: number = (() => {
+    const v = parseInt(localStorage.getItem('sidenavWidth') ?? '', 10);
+    return isNaN(v) ? 240 : Math.max(160, Math.min(420, v));
+  })();
 
   constructor(
     public auth: AuthService,
