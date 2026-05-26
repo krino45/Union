@@ -136,7 +136,7 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     h1 { margin: 0; }
     .table-scroll { overflow-x: auto; }
-    .search-field { width: 100%; max-width: 420px; margin-bottom: 8px; }
+    .search-field { width: 100%; max-width: 420px; margin-top: 8px; margin-bottom: 8px; }
     .full-width { width: 100%; min-width: 920px; }
     mat-chip { font-size: 11px; margin: 1px; }
     .type-chip { background: #e3f2fd; color: #1565c0; font-size: 11px; margin: 1px; }
@@ -173,7 +173,8 @@ export class RoomsComponent implements OnInit {
     if (!q) return this.rooms;
     return this.rooms.filter(r =>
       (r.number ?? '').toLowerCase().includes(q) ||
-      (r.buildingShortCode ?? '').toLowerCase().includes(q));
+      (r.buildingShortCode ?? '').toLowerCase().includes(q) ||
+      ((r.buildingShortCode ?? '') + '-' + (r.number ?? '')).toLowerCase().includes(q));
   }
 
   utilizationBand(pct: number | undefined): 'empty' | 'low' | 'medium' | 'high' {

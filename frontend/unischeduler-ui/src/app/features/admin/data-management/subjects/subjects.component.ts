@@ -78,6 +78,7 @@ const CURRENT_YEAR = new Date().getFullYear();
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .search-field { width: 100%; max-width: 420px; margin-top: 8px; margin-bottom: 8px; }
     h1 { margin: 0; }
     .full-width { width: 100%; }
     .short { color: #888; font-size: 12px; }
@@ -92,9 +93,19 @@ export class SubjectsComponent implements OnInit {
   subjects: Subject[] = [];
   departments: Department[] = [];
   loading = true;
+  search = '';
   columns = ['name', 'period', 'department', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
+
+  get filteredSubjects(): Subject[] {
+    const q = this.search.trim().toLowerCase();
+    if (!q) return this.subjects;
+    return this.subjects.filter(s =>
+      (s.name ?? '').toLowerCase().includes(q) ||
+      (s.shortName ?? '').toLowerCase().includes(q) ||
+      (s.departmentName ?? '').toLowerCase().includes(q));
+  }
 
   ngOnInit(): void {
     this.api.getDepartments().subscribe(d => { this.departments = d; this.load(); });

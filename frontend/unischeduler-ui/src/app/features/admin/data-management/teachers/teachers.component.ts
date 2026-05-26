@@ -94,7 +94,7 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     h1 { margin: 0; }
     .full-width { width: 100%; }
-    .search-field { width: 100%; max-width: 420px; margin-bottom: 8px; }
+    .search-field { width: 100%; max-width: 420px; margin-top: 8px; margin-bottom: 8px; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
     .load-cell { font-weight: 500; }
   `]

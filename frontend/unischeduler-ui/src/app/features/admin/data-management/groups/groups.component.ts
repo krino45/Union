@@ -1,6 +1,6 @@
 import { Component, OnInit, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, FormGroup, Validators, FormsModule } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -20,7 +20,7 @@ import { DegreeType, RussianDayOfWeek } from '../../../../core/models/enums';
   selector: 'app-groups',
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule,
+    CommonModule, ReactiveFormsModule, FormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSnackBarModule, MatTooltipModule, MatProgressSpinnerModule
@@ -39,8 +39,14 @@ import { DegreeType, RussianDayOfWeek } from '../../../../core/models/enums';
     </div>
 
     <mat-card>
+      <mat-form-field appearance="outline" class="search-field" *ngIf="!loading">
+        <mat-icon matPrefix>search</mat-icon>
+        <mat-label>Поиск по названию или специальности</mat-label>
+        <input matInput [(ngModel)]="search" placeholder="ИВ220">
+        <button mat-icon-button matSuffix *ngIf="search" (click)="search = ''"><mat-icon>close</mat-icon></button>
+      </mat-form-field>
       <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
-      <table mat-table [dataSource]="groups" class="full-width" *ngIf="!loading">
+      <table mat-table [dataSource]="filteredGroups" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Группа</th>
           <td mat-cell *matCellDef="let g">{{ g.name }}</td>
@@ -86,6 +92,7 @@ import { DegreeType, RussianDayOfWeek } from '../../../../core/models/enums';
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .search-field { width: 100%; max-width: 420px; margin-top: 8px; margin-bottom: 8px; }
     .header-actions { display: flex; gap: 8px; }
     h1 { margin: 0; }
     .full-width { width: 100%; }
@@ -98,9 +105,18 @@ export class GroupsComponent implements OnInit {
   groups: StudentGroup[] = [];
   faculties: Faculty[] = [];
   loading = true;
+  search = '';
   columns = ['name', 'faculty', 'year', 'degree', 'specialty', 'count', 'blockedDays', 'actions'];
 
   constructor(private api: ApiService, private dialog: MatDialog, private snackBar: MatSnackBar) {}
+
+  get filteredGroups(): StudentGroup[] {
+    const q = this.search.trim().toLowerCase();
+    if (!q) return this.groups;
+    return this.groups.filter(g =>
+      (g.name ?? '').toLowerCase().includes(q) ||
+      (g.specialty ?? '').toLowerCase().includes(q));
+  }
 
   ngOnInit(): void {
     this.api.getFaculties().subscribe(f => { this.faculties = f; this.load(); });

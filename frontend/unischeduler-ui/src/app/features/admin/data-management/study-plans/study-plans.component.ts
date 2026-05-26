@@ -15,6 +15,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { forkJoin } from 'rxjs';
 import { ApiService } from '../../../../core/services/api.service';
+import { SearchSelectComponent } from '../../../../shared/components/search-select.component';
 import {
   StudyPlan, UpsertStudyPlanDto, UpsertStudyPlanEntryDto,
   CalendarPlan, Subject, StudentGroup, Faculty
@@ -147,10 +148,16 @@ import {
       </mat-card-actions>
     </mat-card>
 
+    <mat-form-field appearance="outline" class="search-field" *ngIf="!loading">
+      <mat-icon matPrefix>search</mat-icon>
+      <mat-label>Поиск по группе или дисциплине</mat-label>
+      <input matInput [(ngModel)]="search" placeholder="ИВ123, ИВ234...">
+      <button mat-icon-button matSuffix *ngIf="search" (click)="search = ''"><mat-icon>close</mat-icon></button>
+    </mat-form-field>
     <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
 
-    <ng-container *ngIf="!loading">
-      <mat-expansion-panel *ngFor="let plan of plans" class="plan-panel">
+    <ng-container *ngIf="!loading && !editing">
+      <mat-expansion-panel *ngFor="let plan of filteredPlans" class="plan-panel">
         <mat-expansion-panel-header>
           <mat-panel-title>{{ plan.name }}</mat-panel-title>
           <mat-panel-description>
@@ -196,10 +203,16 @@ import {
       <div *ngIf="plans.length === 0 && !editing" class="empty-state">
         Нет учебных планов. Создайте первый план.
       </div>
+
+      <div *ngIf="plans.length !== 0 && filteredPlansCount === 0 && !editing" class="empty-state">
+        Фильтр не вернул учебных планов.
+      </div>
+
     </ng-container>
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .search-field { width: 100%; max-width: 420px; margin-top: 8px; margin-bottom: 8px; }
     .edit-card { margin-bottom: 20px; }
     .form-grid { display: flex; flex-direction: column; gap: 8px; }
     .row-2 { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -231,6 +244,7 @@ import {
 })
 export class StudyPlansComponent implements OnInit {
   plans: StudyPlan[] = [];
+  filteredPlansCount: number = 1;
   faculties: Faculty[] = [];
   calendarPlans: CalendarPlan[] = [];
   subjects: Subject[] = [];
@@ -238,9 +252,34 @@ export class StudyPlansComponent implements OnInit {
   loading = true;
   editing = false;
   saving = false;
+  search = '';
   form!: FormGroup;
 
   constructor(private api: ApiService, private fb: FormBuilder, private snackBar: MatSnackBar) {}
+
+  get filteredPlans(): StudyPlan[] {
+    const q = this.search.trim().toLowerCase();
+    if (!q) {
+      this.filteredPlansCount = this.plans.length;
+      return this.plans;
+    }
+
+    const queries = q.split(',').map(term => term.trim()).filter(Boolean);
+
+    const filtered = this.plans.filter(p =>
+      queries.every(query =>
+        (p.name ?? '').toLowerCase().includes(query) ||
+        (p.groups.map(g => g.groupName).join(', ') ?? '').toLowerCase().includes(query) ||
+        p.entries.some(e =>
+          (e.subjectName ?? '').toLowerCase().includes(query) ||
+          e.subjectShortName.toLowerCase().includes(query)
+        )
+      )
+    );
+
+    this.filteredPlansCount = filtered.length;
+    return filtered;
+  }
 
   ngOnInit(): void {
     forkJoin({
