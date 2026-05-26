@@ -21,7 +21,7 @@ public class ScheduleConfiguration : IEntityTypeConfiguration<Schedule>
             .WithMany()
             .HasForeignKey(s => s.FacultyId)
             .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasOne(s => s.University)
             .WithMany()
@@ -61,17 +61,17 @@ public class ScheduleEntryConfiguration : IEntityTypeConfiguration<ScheduleEntry
         builder.HasOne(e => e.Teacher)
             .WithMany(t => t.ScheduleEntries)
             .HasForeignKey(e => e.TeacherId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(e => e.Subject)
             .WithMany(s => s.ScheduleEntries)
             .HasForeignKey(e => e.SubjectId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(e => e.Room)
             .WithMany(r => r.ScheduleEntries)
             .HasForeignKey(e => e.RoomId)
-            .OnDelete(DeleteBehavior.Restrict)
+            .OnDelete(DeleteBehavior.Cascade)
             .IsRequired(false);
     }
 }
@@ -90,6 +90,6 @@ public class ScheduleEntryStudentGroupConfiguration : IEntityTypeConfiguration<S
         builder.HasOne(sg => sg.StudentGroup)
             .WithMany(g => g.ScheduleEntryGroups)
             .HasForeignKey(sg => sg.StudentGroupId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

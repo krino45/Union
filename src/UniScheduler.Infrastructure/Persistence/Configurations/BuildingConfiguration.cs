@@ -32,11 +32,11 @@ public class BuildingDistanceConfiguration : IEntityTypeConfiguration<BuildingDi
         builder.HasOne(d => d.FromBuilding)
             .WithMany(b => b.DistancesFrom)
             .HasForeignKey(d => d.FromBuildingId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(d => d.ToBuilding)
             .WithMany(b => b.DistancesTo)
             .HasForeignKey(d => d.ToBuildingId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

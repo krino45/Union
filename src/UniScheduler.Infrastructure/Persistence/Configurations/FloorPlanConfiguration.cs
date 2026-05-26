@@ -43,12 +43,12 @@ public class FloorPlanEdgeConfiguration : IEntityTypeConfiguration<FloorPlanEdge
         builder.HasOne(e => e.FromNode)
             .WithMany(n => n.EdgesFrom)
             .HasForeignKey(e => e.FromNodeId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(e => e.ToNode)
             .WithMany(n => n.EdgesTo)
             .HasForeignKey(e => e.ToNodeId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 

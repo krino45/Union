@@ -235,7 +235,7 @@ foreach (var (groupName, groupId) in groupIds)
                 var (room, building, isOnline) = ParseClassroom(sub.CLASSROOM);
                 var discipline = sub.DISCIPLINE ?? "";
                 var lessonType = MapLessonType(sub.TYPE_LESSON, discipline);
-                var isLanguage = lessonType == lessonType;
+                var isLanguage = lessonType == LessonType.Language;
                 var subgroup = NormalizeSubgroup(sub.SUBGROUP);
 
                 var teacherNames = (sub.TEACHER ?? Array.Empty<string>())

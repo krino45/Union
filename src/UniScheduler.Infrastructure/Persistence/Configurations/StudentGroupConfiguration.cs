@@ -14,7 +14,7 @@ public class StudentGroupConfiguration : IEntityTypeConfiguration<StudentGroup>
         builder.HasOne(g => g.Faculty)
             .WithMany(f => f.Groups)
             .HasForeignKey(g => g.FacultyId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(g => g.BlockedDays)
             .WithOne(bd => bd.Group)

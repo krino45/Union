@@ -26,18 +26,18 @@ public class RescheduleRequestConfiguration : IEntityTypeConfiguration<Reschedul
         builder.HasOne(r => r.RequestedByTeacher)
             .WithMany()
             .HasForeignKey(r => r.RequestedByTeacherId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(r => r.OriginalEntry)
             .WithMany()
             .HasForeignKey(r => r.OriginalEntryId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(r => r.ProposedRoom)
             .WithMany()
             .HasForeignKey(r => r.ProposedRoomId)
             .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
 
