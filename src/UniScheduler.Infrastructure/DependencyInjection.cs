@@ -52,6 +52,9 @@ public static class DependencyInjection
 
     private static string ResolveConnectionString(IConfiguration configuration)
     {
+        var includeErrorDetail = string.Equals(
+            Environment.GetEnvironmentVariable("DB_ERROR_DETAIL"), "true", StringComparison.OrdinalIgnoreCase);
+
         var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
         if (!string.IsNullOrWhiteSpace(databaseUrl) &&
             (databaseUrl.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) ||
@@ -67,7 +70,8 @@ public static class DependencyInjection
                 Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : string.Empty,
                 Database = uri.AbsolutePath.TrimStart('/'),
                 SslMode = SslMode.Prefer,
-                TrustServerCertificate = true
+                TrustServerCertificate = true,
+                IncludeErrorDetail = includeErrorDetail
             }.ConnectionString;
         }
 

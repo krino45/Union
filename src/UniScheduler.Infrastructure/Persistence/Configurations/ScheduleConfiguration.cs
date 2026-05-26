@@ -47,10 +47,11 @@ public class ScheduleEntryConfiguration : IEntityTypeConfiguration<ScheduleEntry
         builder.Property(e => e.LessonType).IsRequired();
 
         builder.HasIndex(e => new { e.ScheduleId, e.RoomId, e.DayOfWeek, e.PairNumber, e.WeekType })
-            .HasFilter("\"RoomId\" IS NOT NULL")
+            .HasFilter("\"RoomId\" IS NOT NULL AND \"ParallelGroupId\" IS NULL")
             .IsUnique();
 
         builder.HasIndex(e => new { e.ScheduleId, e.TeacherId, e.DayOfWeek, e.PairNumber, e.WeekType })
+            .HasFilter("\"ParallelGroupId\" IS NULL")
             .IsUnique();
 
         builder.HasOne(e => e.Schedule)
