@@ -96,6 +96,7 @@ import {
                   <th>Пр. (ак.ч.)</th>
                   <th>Лаб. (ак.ч.)</th>
                   <th>Сем. (ак.ч.)</th>
+                  <th>Ин.яз (ак.ч.)</th>
                   <th>ВКР (ак.ч.)</th>
                   <th></th>
                 </tr>
@@ -122,6 +123,10 @@ import {
                   <td>
                     <input type="number" min="0" formControlName="seminarHours" class="hrs-input">
                     <small class="ppw" *ngIf="selectedStudyWeeks > 0 && eg.get('seminarHours')?.value > 0">{{ eg.get('seminarHours')?.value / 2 / selectedStudyWeeks | number:'1.0-2' }} п/н</small>
+                  </td>
+                  <td>
+                    <input type="number" min="0" formControlName="languageHours" class="hrs-input">
+                    <small class="ppw" *ngIf="selectedStudyWeeks > 0 && eg.get('languageHours')?.value > 0">{{ eg.get('languageHours')?.value / 2 / selectedStudyWeeks | number:'1.0-2' }} п/н</small>
                   </td>
                   <td>
                     <input type="number" min="0" formControlName="thesisHours" class="hrs-input">
@@ -165,7 +170,7 @@ import {
 
           <table class="entries-view-table" *ngIf="plan.entries.length > 0">
             <thead><tr>
-              <th>Дисциплина</th><th>Лек.</th><th>Пр.</th><th>Лаб.</th><th>Сем.</th><th>ВКР</th><th>Всего</th>
+              <th>Дисциплина</th><th>Лек.</th><th>Пр.</th><th>Лаб.</th><th>Сем.</th><th>Ин.яз</th><th>ВКР</th><th>Всего</th>
             </tr></thead>
             <tbody>
               <tr *ngFor="let e of plan.entries">
@@ -174,8 +179,9 @@ import {
                 <td>{{ e.practicalHours || '—' }}</td>
                 <td>{{ e.labHours || '—' }}</td>
                 <td>{{ e.seminarHours || '—' }}</td>
+                <td>{{ e.languageHours || '—' }}</td>
                 <td>{{ e.thesisHours || '—' }}</td>
-                <td class="total">{{ e.lectureHours + e.practicalHours + e.labHours + e.seminarHours + e.thesisHours }}</td>
+                <td class="total">{{ e.lectureHours + e.practicalHours + e.labHours + e.seminarHours + e.languageHours + e.thesisHours }}</td>
               </tr>
             </tbody>
           </table>
@@ -280,7 +286,7 @@ export class StudyPlansComponent implements OnInit {
   addEntry(): void {
     this.entriesArray.push(this.fb.group({
       subjectId: ['', Validators.required],
-      lectureHours: [0], practicalHours: [0], labHours: [0], seminarHours: [0], thesisHours: [0]
+      lectureHours: [0], practicalHours: [0], labHours: [0], seminarHours: [0], languageHours: [0], thesisHours: [0]
     }));
   }
 
@@ -330,7 +336,7 @@ export class StudyPlansComponent implements OnInit {
       entries: this.fb.array((plan?.entries ?? []).map(e => this.fb.group({
         subjectId: [e.subjectId, Validators.required],
         lectureHours: [e.lectureHours], practicalHours: [e.practicalHours],
-        labHours: [e.labHours], seminarHours: [e.seminarHours], thesisHours: [e.thesisHours]
+        labHours: [e.labHours], seminarHours: [e.seminarHours], languageHours: [e.languageHours ?? 0], thesisHours: [e.thesisHours]
       })))
     });
     return fg;

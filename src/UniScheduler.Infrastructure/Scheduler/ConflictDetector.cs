@@ -17,7 +17,9 @@ public class ConflictDetector : IConflictDetector
         int pairNumber,
         WeekType weekType,
         bool isOnline,
-        IEnumerable<ScheduleEntry> existingEntries)
+        IEnumerable<ScheduleEntry> existingEntries,
+        Guid? parallelGroupId = null,
+        bool roomIsDistributed = false)
     {
         var conflicts = new List<ConflictInfo>();
         var groupIdSet = groupIds.ToHashSet();
@@ -26,6 +28,10 @@ public class ConflictDetector : IConflictDetector
         {
             if (entry.Id == entryId) continue;
 
+            // Parallel sessions of the same logical class (language streams / lab subgroups)
+            // share teacher slots, groups, and the distributed room by design — never conflict.
+            if (parallelGroupId.HasValue && entry.ParallelGroupId == parallelGroupId) continue;
+
             // Only compare entries that could overlap (same slot)
             bool slotsOverlap = entry.DayOfWeek == dayOfWeek
                 && entry.PairNumber == pairNumber
@@ -33,8 +39,9 @@ public class ConflictDetector : IConflictDetector
 
             if (!slotsOverlap) continue;
 
-            // Room double-booking (non-online)
-            if (!isOnline && roomId.HasValue && entry.RoomId == roomId)
+            // Room double-booking (non-online). The distributed sentinel room is a placeholder for
+            // classes with no fixed location, so multiple classes may share it without conflict.
+            if (!isOnline && !roomIsDistributed && roomId.HasValue && entry.RoomId == roomId)
             {
                 conflicts.Add(new ConflictInfo(ConflictType.RoomDoubleBooked,
                     $"Room is already booked at {dayOfWeek} pair {pairNumber} ({weekType})"));

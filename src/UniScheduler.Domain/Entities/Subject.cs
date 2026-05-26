@@ -11,6 +11,11 @@ public class Subject : Entity
     public int AcademicYear { get; set; }
     public Term Term { get; set; }
 
+    /// <summary>When true, lab sessions split this subject's groups into SubgroupCount parallel
+    /// sessions (each its own teacher/room) that are not treated as group double-booking.</summary>
+    public bool AllowsSubgroups { get; set; }
+    public int SubgroupCount { get; set; } = 2;
+
     public Guid? DepartmentId { get; set; }
 
     public University University { get; set; } = null!;

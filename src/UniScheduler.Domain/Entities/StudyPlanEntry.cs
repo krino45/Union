@@ -13,5 +13,6 @@ public class StudyPlanEntry : Entity
     public double PracticalHours { get; set; }
     public double LabHours       { get; set; }
     public double SeminarHours   { get; set; }
+    public double LanguageHours  { get; set; }
     public double ThesisHours    { get; set; }
 }

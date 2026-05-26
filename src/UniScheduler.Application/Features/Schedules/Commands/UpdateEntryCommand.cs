@@ -50,9 +50,13 @@ public class UpdateEntryCommandHandler : IRequestHandler<UpdateEntryCommand, Sch
             .Where(e => e.ScheduleId == entry.ScheduleId && e.Id != r.EntryId)
             .ToListAsync(cancellationToken);
 
+        bool roomIsDistributed = r.RoomId.HasValue
+            && await _db.Rooms.AnyAsync(rm => rm.Id == r.RoomId && rm.IsDistributed, cancellationToken);
+
         var conflicts = _conflict.DetectConflicts(
             r.EntryId, entry.ScheduleId, r.RoomId, r.TeacherId, r.GroupIds,
-            r.DayOfWeek, r.PairNumber, r.WeekType, r.IsOnline, allOtherEntries);
+            r.DayOfWeek, r.PairNumber, r.WeekType, r.IsOnline, allOtherEntries,
+            entry.ParallelGroupId, roomIsDistributed);
 
         if (conflicts.Count > 0) throw new ConflictException(conflicts);
 

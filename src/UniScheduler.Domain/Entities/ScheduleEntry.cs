@@ -16,6 +16,12 @@ public class ScheduleEntry : Entity
     public LessonType LessonType { get; set; }
     public bool IsOnline { get; set; }
 
+    /// <summary>Entries sharing a non-null ParallelGroupId are parallel sessions of one logical
+    /// class (language streams or lab subgroups) and never conflict with each other.</summary>
+    public Guid? ParallelGroupId { get; set; }
+    /// <summary>Display label for a parallel session, e.g. "Подгр. 1" or "Англ. (Иванова)".</summary>
+    public string? SubgroupLabel { get; set; }
+
     public Schedule Schedule { get; set; } = null!;
     public Subject Subject { get; set; } = null!;
     public Teacher Teacher { get; set; } = null!;

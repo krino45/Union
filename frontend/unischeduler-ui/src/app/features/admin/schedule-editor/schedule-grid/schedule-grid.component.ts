@@ -70,6 +70,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                         </div>
                         <div class="subject">{{ entry.subjectShortName || entry.subjectName }}</div>
                         <div class="teacher">{{ entry.teacherDisplayName }}</div>
+                        <div class="subgroup-tag" *ngIf="entry.subgroupLabel">{{ entry.subgroupLabel }}</div>
                         <div class="room">{{ roomLabel(entry) }}</div>
                         <div class="groups" *ngIf="entry.studentGroups?.length">{{ groupNames(entry) }}</div>
                         <div *cdkDragPlaceholder class="drag-placeholder"></div>
@@ -108,6 +109,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                         </div>
                         <div class="subject">{{ entry.subjectShortName || entry.subjectName }}</div>
                         <div class="teacher">{{ entry.teacherDisplayName }}</div>
+                        <div class="subgroup-tag" *ngIf="entry.subgroupLabel">{{ entry.subgroupLabel }}</div>
                         <div class="room">{{ roomLabel(entry) }}</div>
                         <div class="groups" *ngIf="entry.studentGroups?.length">{{ groupNames(entry) }}</div>
                         <div *cdkDragPlaceholder class="drag-placeholder"></div>
@@ -183,6 +185,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
     .delete-btn:hover { opacity: 1; color: #c62828; }
     .subject { font-weight: 600; font-size: 12px; line-height: 1.3; }
     .teacher { font-size: 11px; color: #444; }
+    .subgroup-tag { font-size: 9px; color: #5c6bc0; background: #e8eaf6; border-radius: 3px; padding: 0 4px; display: inline-block; margin: 1px 0; }
     .room { font-size: 10px; color: #666; }
     .groups { font-size: 10px; color: #888; font-style: italic; }
     .drag-placeholder { background: #bbdefb; border: 2px dashed #1976d2; border-radius: 3px; min-height: 28px; }

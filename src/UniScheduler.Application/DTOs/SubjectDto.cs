@@ -9,5 +9,7 @@ public record SubjectDto(
     int AcademicYear,
     Term Term,
     Guid? DepartmentId,
-    string? DepartmentName
+    string? DepartmentName,
+    bool AllowsSubgroups = false,
+    int SubgroupCount = 2
 );

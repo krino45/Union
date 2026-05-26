@@ -9,7 +9,9 @@ namespace UniScheduler.Application.Features.Subjects.Commands;
 public record CreateSubjectCommand(
     string Name, string ShortName,
     int AcademicYear, Term Term,
-    Guid? DepartmentId = null) : IRequest<SubjectDto>;
+    Guid? DepartmentId = null,
+    bool AllowsSubgroups = false,
+    int SubgroupCount = 2) : IRequest<SubjectDto>;
 
 public class CreateSubjectCommandHandler : IRequestHandler<CreateSubjectCommand, SubjectDto>
 {
@@ -23,7 +25,9 @@ public class CreateSubjectCommandHandler : IRequestHandler<CreateSubjectCommand,
         {
             Name = r.Name, ShortName = r.ShortName,
             AcademicYear = r.AcademicYear, Term = r.Term,
-            DepartmentId = r.DepartmentId
+            DepartmentId = r.DepartmentId,
+            AllowsSubgroups = r.AllowsSubgroups,
+            SubgroupCount = r.SubgroupCount < 2 ? 2 : r.SubgroupCount
         };
         db.Subjects.Add(subject);
         await db.SaveChangesAsync(cancellationToken);
@@ -33,6 +37,7 @@ public class CreateSubjectCommandHandler : IRequestHandler<CreateSubjectCommand,
             var dept = await db.Departments.FindAsync(new object[] { r.DepartmentId.Value }, cancellationToken);
             deptName = dept?.Name;
         }
-        return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term, subject.DepartmentId, deptName);
+        return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term, subject.DepartmentId, deptName,
+            subject.AllowsSubgroups, subject.SubgroupCount);
     }
 }

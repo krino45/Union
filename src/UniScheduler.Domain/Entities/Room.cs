@@ -13,6 +13,9 @@ public class Room : Entity
     public bool HasComputers { get; set; }
     public bool HasLab { get; set; }
     public bool IsOnline { get; set; }
+    /// <summary>Sentinel placeholder room for classes with no fixed location (language streams
+    /// taught "по подгруппам"). Exempt from capacity, double-booking, and travel checks.</summary>
+    public bool IsDistributed { get; set; }
     /// <summary>Floor number (1-based). Used for intra-building travel time calculation.</summary>
     public int Floor { get; set; } = 1;
     /// <summary>Lesson types the scheduler may place here. Empty list = all types allowed.</summary>

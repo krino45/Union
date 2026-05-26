@@ -49,10 +49,13 @@ public class MoveEntryCommandHandler : IRequestHandler<MoveEntryCommand, Schedul
         var isOnline = request.NewIsOnline ?? entry.IsOnline;
         var newRoomId = isOnline ? null : request.NewRoomId;
 
+        bool roomIsDistributed = newRoomId.HasValue
+            && await _db.Rooms.AnyAsync(rm => rm.Id == newRoomId && rm.IsDistributed, cancellationToken);
+
         var conflicts = _conflict.DetectConflicts(
             entry.Id, entry.ScheduleId, newRoomId, entry.TeacherId, groupIds,
             request.NewDayOfWeek, request.NewPairNumber, request.NewWeekType, isOnline,
-            allEntries);
+            allEntries, entry.ParallelGroupId, roomIsDistributed);
 
         if (conflicts.Count > 0)
             throw new ConflictException(conflicts);

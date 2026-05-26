@@ -9,6 +9,7 @@ import { MatDialogModule, MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angu
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -40,7 +41,9 @@ const CURRENT_YEAR = new Date().getFullYear();
       <table mat-table [dataSource]="subjects" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Название</th>
-          <td mat-cell *matCellDef="let s">{{ s.name }} <span class="short">({{ s.shortName }})</span></td>
+          <td mat-cell *matCellDef="let s">{{ s.name }} <span class="short">({{ s.shortName }})</span>
+            <span *ngIf="s.allowsSubgroups" class="sg-badge" matTooltip="Лабораторные по подгруппам">×{{ s.subgroupCount }} подгр.</span>
+          </td>
         </ng-container>
         <ng-container matColumnDef="period">
           <th mat-header-cell *matHeaderCellDef>Год / Семестр</th>
@@ -75,6 +78,7 @@ const CURRENT_YEAR = new Date().getFullYear();
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
     .dept-name { font-size: 12px; color: #555; }
     .no-dept { color: #ccc; }
+    .sg-badge { font-size: 11px; color: #5c6bc0; background: #e8eaf6; border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
   `]
 })
 export class SubjectsComponent implements OnInit {
@@ -127,7 +131,7 @@ export class SubjectsComponent implements OnInit {
 @Component({
   selector: 'app-subject-dialog',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatDialogModule],
+  imports: [CommonModule, ReactiveFormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatDialogModule],
   template: `
     <h2 mat-dialog-title>{{ data.subject ? 'Редактировать' : 'Добавить' }} дисциплину</h2>
     <mat-dialog-content>
@@ -162,6 +166,14 @@ export class SubjectsComponent implements OnInit {
             <mat-option *ngFor="let d of data.departments" [value]="d.id">{{ d.shortCode }} — {{ d.name }}</mat-option>
           </mat-select>
         </mat-form-field>
+        <div class="subgroup-row">
+          <mat-checkbox formControlName="allowsSubgroups">Лабораторные по подгруппам</mat-checkbox>
+          <mat-form-field appearance="outline" class="sub-count" *ngIf="form.value.allowsSubgroups">
+            <mat-label>Подгрупп</mat-label>
+            <input matInput type="number" formControlName="subgroupCount" [min]="2" [max]="6">
+          </mat-form-field>
+        </div>
+        <p class="subgroup-hint">Группа делится на подгруппы, каждая с отдельным преподавателем и аудиторией (нужно ≥2 преподавателя на лаб.).</p>
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -169,7 +181,7 @@ export class SubjectsComponent implements OnInit {
       <button mat-raised-button color="primary" [disabled]="form.invalid" (click)="submit()">Сохранить</button>
     </mat-dialog-actions>
   `,
-  styles: [`.dialog-form { display: flex; flex-direction: column; padding-top: 8px; min-width: 380px; gap: 4px; } .row { display: flex; gap: 8px; } .flex1 { flex: 1; } .flex2 { flex: 2; } .full-width { width: 100%; }`]
+  styles: [`.dialog-form { display: flex; flex-direction: column; padding-top: 8px; min-width: 380px; gap: 4px; } .row { display: flex; gap: 8px; } .flex1 { flex: 1; } .flex2 { flex: 2; } .full-width { width: 100%; } .subgroup-row { display: flex; align-items: center; gap: 16px; } .sub-count { width: 110px; } .subgroup-hint { color: #888; font-size: 12px; margin: 0 0 4px; }`]
 })
 export class SubjectDialogComponent {
   form: FormGroup;
@@ -185,7 +197,9 @@ export class SubjectDialogComponent {
       shortName: [s?.shortName ?? '', Validators.required],
       academicYear: [s?.academicYear ?? CURRENT_YEAR, [Validators.required, Validators.min(2020)]],
       term: [s?.term ?? Term.First, Validators.required],
-      departmentId: [s?.departmentId ?? null]
+      departmentId: [s?.departmentId ?? null],
+      allowsSubgroups: [s?.allowsSubgroups ?? false],
+      subgroupCount: [s?.subgroupCount ?? 2, [Validators.min(2), Validators.max(6)]]
     });
   }
 

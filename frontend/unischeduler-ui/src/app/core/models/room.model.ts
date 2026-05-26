@@ -11,6 +11,7 @@ export interface Room {
   hasComputers: boolean;
   hasLab: boolean;
   isOnline: boolean;
+  isDistributed?: boolean;
   floor: number;
   allowedLessonTypes: LessonType[];
   isEnabled: boolean;

@@ -60,9 +60,16 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             return new GenerateScheduleResult(false, "Infeasible", output.Message, 0);
 
         p?.Report($"Сохранение результатов ({output.Assignments.Count} занятий)...");
+        var parallelGuids = new Dictionary<int, Guid>();
         foreach (var assignment in output.Assignments)
         {
             var req = input.Requirements[assignment.RequirementIndex];
+            Guid? parallelGroupId = null;
+            if (req.ParallelKey is int pk)
+            {
+                if (!parallelGuids.TryGetValue(pk, out var g)) parallelGuids[pk] = g = Guid.NewGuid();
+                parallelGroupId = g;
+            }
             var entry = new ScheduleEntry
             {
                 ScheduleId = request.ScheduleId,
@@ -73,7 +80,9 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 PairNumber = assignment.PairNumber,
                 WeekType = assignment.WeekType,
                 LessonType = req.LessonType,
-                IsOnline = req.IsOnline
+                IsOnline = req.IsOnline,
+                ParallelGroupId = parallelGroupId,
+                SubgroupLabel = req.SubgroupLabel
             };
             db.ScheduleEntries.Add(entry);
             foreach (var groupId in req.GroupIds)
@@ -104,6 +113,9 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
     private async Task<(SchedulerInput, ScoreContext)> BuildInputAsync(Schedule schedule, int timeout, SolverWeights weights, CancellationToken ct)
     {
         var rooms = await db.Rooms.Include(r => r.Building).Include(r => r.Department).Where(r => r.IsEnabled).ToListAsync(ct);
+        var distributedRoom = await EnsureDistributedRoomAsync(ct);
+        if (distributedRoom != null && rooms.All(r => r.Id != distributedRoom.Id))
+            rooms.Add(distributedRoom);
         var teachers = await db.Teachers.ToListAsync(ct);
 
         var groupsQuery = db.StudentGroups.Include(g => g.BlockedDays).AsQueryable();
@@ -127,6 +139,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .Where(s => subjectIds.Contains(s.Id))
             .ToListAsync(ct);
         var subjectFacultyIds = subjectsWithDepts.ToDictionary(s => s.Id, s => s.Department?.FacultyId);
+        var subjectsById = subjectsWithDepts.ToDictionary(s => s.Id);
+        var groupSizes = groups.ToDictionary(g => g.Id, g => g.StudentCount);
 
         var distances = await db.BuildingDistances.ToListAsync(ct);
         var floorPlanNodes = await db.FloorPlanNodes.ToListAsync(ct);
@@ -138,6 +152,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
         var requirements = new List<SchedulerRequirement>();
         int idx = 0;
+        int parallelSeq = 1;
 
         foreach (var plan in studyPlans)
         {
@@ -151,14 +166,33 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             foreach (var entry in plan.Entries)
             {
                 subjectFacultyIds.TryGetValue(entry.SubjectId, out var subjFacultyId);
+                subjectsById.TryGetValue(entry.SubjectId, out var subj);
+
                 AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lecture,
                     entry.LectureHours, studyWeeks, planGroupIds, teacherSubjects, merged: true, isLab: false, subjFacultyId);
                 AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Practical,
                     entry.PracticalHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: false, subjFacultyId);
-                AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lab,
-                    entry.LabHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: true, subjFacultyId);
+
+                // Labs split into parallel subgroups when the discipline opts in (requires ≥2 lab teachers).
+                if (subj is { AllowsSubgroups: true } &&
+                    AddSubgroupLabRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
+                        entry.LabHours, studyWeeks, planGroupIds, teacherSubjects, subj.SubgroupCount, groupSizes, subjFacultyId))
+                {
+                    // emitted as subgroups
+                }
+                else
+                {
+                    AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lab,
+                        entry.LabHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: true, subjFacultyId);
+                }
+
                 AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Seminar,
                     entry.SeminarHours, studyWeeks, planGroupIds, teacherSubjects, merged: false, isLab: false, subjFacultyId);
+
+                // Foreign-language classes: each group's slot is split into parallel streams (one per
+                // language teacher) held in the distributed room, since there is no single fixed room.
+                AddLanguageRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
+                    entry.LanguageHours, studyWeeks, planGroupIds, teacherSubjects, subjFacultyId);
             }
         }
 
@@ -204,7 +238,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         var input = new SchedulerInput(
             schedule.Id,
             rooms.Select(r => new SchedulerRoom(r.Id, r.BuildingId, r.RoomType, r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
-                r.Floor, r.AllowedLessonTypes, r.Department?.FacultyId)).ToList(),
+                r.Floor, r.AllowedLessonTypes, r.Department?.FacultyId, r.IsDistributed)).ToList(),
             teachers.Select(t => new SchedulerTeacher(t.Id)).ToList(),
             groups.Select(g => new SchedulerGroup(g.Id, g.StudentCount,
                 g.BlockedDays.Select(bd => (int)bd.DayOfWeek - 1).ToList())).ToList(),
@@ -276,6 +310,101 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         for (int i = 0; i < items.Count; i++)
             result[i % buckets].Add(items[i]);
         return result;
+    }
+
+    // Emits parallel language streams (one requirement per language teacher) for each group.
+    // All streams of a group share a ParallelKey, are co-scheduled, and use the distributed room.
+    private static void AddLanguageRequirements(
+        List<SchedulerRequirement> requirements, ref int idx, ref int parallelSeq,
+        Guid subjectId, double totalHours, int studyWeeks,
+        List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects, Guid? subjectFacultyId)
+    {
+        if (totalHours <= 0) return;
+        var teachers = teacherSubjects
+            .Where(ts => ts.SubjectId == subjectId && ts.LessonType == LessonType.Language)
+            .Select(ts => ts.TeacherId).Distinct().ToList();
+        if (teachers.Count == 0) return;
+
+        foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
+        {
+            foreach (var gId in planGroupIds)
+            {
+                int pkey = parallelSeq++;
+                for (int i = 0; i < teachers.Count; i++)
+                {
+                    requirements.Add(new SchedulerRequirement(
+                        idx++, new[] { gId }, subjectId, LessonType.Language, teachers[i], wt,
+                        IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: false,
+                        SubjectFacultyId: subjectFacultyId,
+                        ParallelKey: pkey,
+                        SubgroupLabel: $"Поток {i + 1}",
+                        HeadcountOverride: null,
+                        RequiresDistributedRoom: true));
+                }
+            }
+        }
+    }
+
+    // Emits a lab as parallel subgroups, each its own teacher and (real) room, seating a fraction of
+    // the group. Returns false when the split is impossible (needs ≥2 distinct lab teachers).
+    private static bool AddSubgroupLabRequirements(
+        List<SchedulerRequirement> requirements, ref int idx, ref int parallelSeq,
+        Guid subjectId, double totalHours, int studyWeeks,
+        List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
+        int subgroupCount, Dictionary<Guid, int> groupSizes, Guid? subjectFacultyId)
+    {
+        if (totalHours <= 0) return false;
+        var teachers = teacherSubjects
+            .Where(ts => ts.SubjectId == subjectId && ts.LessonType == LessonType.Lab)
+            .Select(ts => ts.TeacherId).Distinct().ToList();
+        int n = Math.Min(Math.Max(2, subgroupCount), teachers.Count);
+        if (n < 2) return false;
+
+        foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
+        {
+            foreach (var gId in planGroupIds)
+            {
+                int pkey = parallelSeq++;
+                int total = groupSizes.TryGetValue(gId, out var sz) ? sz : 0;
+                int per = total > 0 ? (int)Math.Ceiling(total / (double)n) : 0;
+                for (int s = 0; s < n; s++)
+                {
+                    requirements.Add(new SchedulerRequirement(
+                        idx++, new[] { gId }, subjectId, LessonType.Lab, teachers[s], wt,
+                        IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: true,
+                        SubjectFacultyId: subjectFacultyId,
+                        ParallelKey: pkey,
+                        SubgroupLabel: $"Подгр. {s + 1}",
+                        HeadcountOverride: per > 0 ? per : (int?)null,
+                        RequiresDistributedRoom: false));
+                }
+            }
+        }
+        return true;
+    }
+
+    // Gets or creates the per-university distributed sentinel room (placeholder for classes with no
+    // fixed location). Buildings are already scoped to the current university by the query filter.
+    private async Task<Room?> EnsureDistributedRoomAsync(CancellationToken ct)
+    {
+        var buildingIds = await db.Buildings.Select(b => b.Id).ToListAsync(ct);
+        if (buildingIds.Count == 0) return null;
+
+        var existing = await db.Rooms.FirstOrDefaultAsync(r => r.IsDistributed && buildingIds.Contains(r.BuildingId), ct);
+        if (existing != null) return existing;
+
+        var room = new Room
+        {
+            BuildingId = buildingIds[0],
+            Number = "— по подгруппам —",
+            RoomType = RoomType.RegularCabinet,
+            Capacity = 0,
+            IsDistributed = true,
+            IsEnabled = true
+        };
+        db.Rooms.Add(room);
+        await db.SaveChangesAsync(ct);
+        return room;
     }
 
 }

@@ -102,7 +102,8 @@ public record SchedulerRoom(
     bool IsOnline,
     int Floor = 1,
     IReadOnlyList<LessonType>? AllowedLessonTypes = null,
-    Guid? DepartmentFacultyId = null
+    Guid? DepartmentFacultyId = null,
+    bool IsDistributed = false
 );
 
 public record SchedulerRoomDistance(Guid FromRoomId, Guid ToRoomId, int DistanceMeters);
@@ -126,7 +127,14 @@ public record SchedulerRequirement(
     bool NeedsProjector,
     bool NeedsComputers,
     bool NeedsLab,
-    Guid? SubjectFacultyId = null
+    Guid? SubjectFacultyId = null,
+    // Requirements sharing a non-null ParallelKey are parallel sessions of one logical class
+    // (language streams / lab subgroups): co-scheduled to the same slot, exempt from mutual
+    // group conflict, and (for languages) placed in the distributed sentinel room.
+    int? ParallelKey = null,
+    string? SubgroupLabel = null,
+    int? HeadcountOverride = null,
+    bool RequiresDistributedRoom = false
 );
 
 public record SchedulerBuildingDistance(Guid FromId, Guid ToId, int DistanceMeters);

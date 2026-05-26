@@ -17,6 +17,8 @@ export interface ScheduleEntry {
   lessonType: LessonType;
   isOnline: boolean;
   studentGroups: { id: string; name: string }[];
+  parallelGroupId?: string | null;
+  subgroupLabel?: string | null;
 }
 
 export interface MoveEntryDto {

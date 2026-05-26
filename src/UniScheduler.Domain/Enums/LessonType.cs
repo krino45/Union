@@ -5,5 +5,6 @@ public enum LessonType
     Lecture = 1,
     Practical = 2,
     Lab = 3,
-    Seminar = 4
+    Seminar = 4,
+    Language = 5
 }

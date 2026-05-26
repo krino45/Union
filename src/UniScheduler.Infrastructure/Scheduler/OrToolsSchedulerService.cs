@@ -93,12 +93,17 @@ public class OrToolsSchedulerService : ISchedulerService
         {
             var gstTeachers = new Dictionary<(Guid grp, Guid subj, LessonType lt), HashSet<Guid>>();
             foreach (var req in reqs)
+            {
+                // Parallel sessions (language streams / lab subgroups) intentionally assign several
+                // teachers to the same (group, subject, lesson type) — exempt from the one-teacher rule.
+                if (req.ParallelKey.HasValue) continue;
                 foreach (var gId in req.GroupIds)
                 {
                     var key = (gId, req.SubjectId, req.LessonType);
                     if (!gstTeachers.TryGetValue(key, out var ts)) gstTeachers[key] = ts = new HashSet<Guid>();
                     ts.Add(req.TeacherId);
                 }
+            }
             var teacherConflicts = gstTeachers
                 .Where(kv => kv.Value.Count > 1)
                 .Select(kv => $"group …{kv.Key.grp.ToString()[..8]}: {kv.Key.lt} of subj …{kv.Key.subj.ToString()[..8]}")
@@ -125,7 +130,8 @@ public class OrToolsSchedulerService : ISchedulerService
         var teacherIdxMap = teachers.Select((t, i) => (t.Id, i)).ToDictionary(x => x.Id, x => x.i);
 
         // Precompute group headcount per requirement for capacity checks.
-        var reqGroupSize = reqs.Select(r => groups.Where(g => r.GroupIds.Contains(g.Id)).Sum(g => g.StudentCount)).ToArray();
+        // Subgroup sessions carry an explicit per-session headcount override.
+        var reqGroupSize = reqs.Select(r => r.HeadcountOverride ?? groups.Where(g => r.GroupIds.Contains(g.Id)).Sum(g => g.StudentCount)).ToArray();
 
         progress?.Report("Ограничение H4: конфликты аудиторий (по преподавателям)...");
         // H4: at most one TEACHER per room per slot.
@@ -133,6 +139,10 @@ public class OrToolsSchedulerService : ISchedulerService
         //     (combined / flow lecture). Different teachers cannot share a room.
         // H4-cap: total headcount of all concurrent requirements ≤ room capacity.
         for (int rmi = 0; rmi < rooms.Count; rmi++)
+        {
+            // The distributed sentinel room is a placeholder for classes with no fixed location:
+            // many teachers may "share" it at once, and it has no capacity — skip H4 entirely.
+            if (rooms[rmi].IsDistributed) continue;
         for (int d = 0; d < NumDays; d++)
         for (int p = 0; p < numPairs; p++)
         for (int wi = 0; wi < 2; wi++)
@@ -163,6 +173,7 @@ public class OrToolsSchedulerService : ISchedulerService
             if (teacherPresences.Count > 1) model.AddAtMostOne(teacherPresences);
             if (capVars.Count > 0 && rooms[rmi].Capacity > 0)
                 model.Add(LinearExpr.WeightedSum(capVars.ToArray(), capSizes.ToArray()) <= rooms[rmi].Capacity);
+        }
         }
 
         progress?.Report("Ограничение H5: конфликты преподавателей (по аудиториям)...");
@@ -200,22 +211,70 @@ public class OrToolsSchedulerService : ISchedulerService
         var groupReqs = groups.ToDictionary(g => g.Id, g =>
             reqs.Select((r, i) => (r, i)).Where(x => x.r.GroupIds.Contains(g.Id)).Select(x => x.i).ToList());
 
-        foreach (var (_, grIdxs) in groupReqs)
+        foreach (var (gKey, grIdxs) in groupReqs)
         {
             if (grIdxs.Count <= 1) continue;
             for (int d = 0; d < NumDays; d++)
             for (int p = 0; p < numPairs; p++)
             for (int wi = 0; wi < 2; wi++)
             {
-                var cell = new List<BoolVar>();
+                // Parallel sessions of one logical class (same ParallelKey) all occupy this group's
+                // slot by design, so they count as a SINGLE occupant — collapse them via an OR.
+                var occupants = new List<BoolVar>();
+                var parallelCellVars = new Dictionary<int, List<BoolVar>>();
                 foreach (int ri in grIdxs)
                 {
                     if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
                     int varWi = VarWeekIndex(reqs[ri].WeekType);
-                    foreach (var kv in vars.Where(x => x.Key.ri == ri && x.Key.d == d && x.Key.p == p && x.Key.wi == varWi))
-                        cell.Add(kv.Value);
+                    var riVars = vars.Where(x => x.Key.ri == ri && x.Key.d == d && x.Key.p == p && x.Key.wi == varWi)
+                                     .Select(x => x.Value).ToList();
+                    if (riVars.Count == 0) continue;
+                    if (reqs[ri].ParallelKey is int pk)
+                    {
+                        if (!parallelCellVars.TryGetValue(pk, out var lst)) parallelCellVars[pk] = lst = new List<BoolVar>();
+                        lst.AddRange(riVars);
+                    }
+                    else
+                    {
+                        occupants.AddRange(riVars);
+                    }
                 }
-                if (cell.Count > 1) model.AddAtMostOne(cell);
+                foreach (var (pk, lst) in parallelCellVars)
+                {
+                    if (lst.Count == 1) { occupants.Add(lst[0]); continue; }
+                    var pres = model.NewBoolVar($"gpar_{gKey}_{d}_{p}_{wi}_{pk}");
+                    model.AddMaxEquality(pres, lst.Select(v => (IntVar)v).ToArray());
+                    occupants.Add(pres);
+                }
+                if (occupants.Count > 1) model.AddAtMostOne(occupants);
+            }
+        }
+
+        progress?.Report("Ограничение H_par: параллельные сессии в одном слоте...");
+        // Co-schedule parallel siblings: every member of a ParallelKey group lands on the SAME
+        // (day, pair) as the anchor, so a class taught in parallel streams happens at one time.
+        foreach (var pg in reqs.Select((r, i) => (r, i))
+                                .Where(x => x.r.ParallelKey.HasValue)
+                                .GroupBy(x => x.r.ParallelKey!.Value)
+                                .Where(g => g.Count() > 1))
+        {
+            var members = pg.Select(x => x.i).ToList();
+            int anchor = members[0];
+            int anchorWi = VarWeekIndex(reqs[anchor].WeekType);
+            for (int mi = 1; mi < members.Count; mi++)
+            {
+                int m = members[mi];
+                int mWi = VarWeekIndex(reqs[m].WeekType);
+                for (int d = 0; d < NumDays; d++)
+                for (int p = 0; p < numPairs; p++)
+                {
+                    var anchorVars = vars.Where(kv => kv.Key.ri == anchor && kv.Key.d == d && kv.Key.p == p && kv.Key.wi == anchorWi)
+                                         .Select(kv => (IntVar)kv.Value).ToList();
+                    var memberVars = vars.Where(kv => kv.Key.ri == m && kv.Key.d == d && kv.Key.p == p && kv.Key.wi == mWi)
+                                         .Select(kv => (IntVar)kv.Value).ToList();
+                    if (anchorVars.Count == 0 && memberVars.Count == 0) continue;
+                    model.Add(LinearExpr.Sum(anchorVars) == LinearExpr.Sum(memberVars));
+                }
             }
         }
 
@@ -232,6 +291,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
                 for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
                 {
+                    if (rooms[rmi1].IsDistributed || rooms[rmi2].IsDistributed) continue;
                     int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
                     if (dist / WalkSpeedMperMin <= allowedTravelMin) continue;
 
@@ -384,6 +444,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
                 for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
                 {
+                    if (rooms[rmi1].IsDistributed || rooms[rmi2].IsDistributed) continue;
                     int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
                     if (dist == 0) continue;
                     double walkMins = dist / WalkSpeedMperMin;
@@ -660,6 +721,11 @@ public class OrToolsSchedulerService : ISchedulerService
 
     private static bool IsCompatible(SchedulerRequirement req, SchedulerRoom room, List<SchedulerGroup> groups)
     {
+        // Distributed sentinel room: only no-fixed-location requirements (language streams) may use
+        // it, and they may use nothing else. It has no capacity/equipment constraints.
+        if (req.RequiresDistributedRoom) return room.IsDistributed;
+        if (room.IsDistributed) return false;
+
         if (req.IsOnline) return room.IsOnline;
         if (room.IsOnline) return false;
         if (req.NeedsProjector && !room.HasProjector) return false;
@@ -667,7 +733,8 @@ public class OrToolsSchedulerService : ISchedulerService
         if (req.NeedsLab && !room.HasLab) return false;
         if (room.AllowedLessonTypes is { Count: > 0 } allowed && !allowed.Contains(req.LessonType)) return false;
 
-        int total = groups.Where(g => req.GroupIds.Contains(g.Id)).Sum(g => g.StudentCount);
+        // Subgroup sessions only seat a fraction of the group, so HeadcountOverride takes precedence.
+        int total = req.HeadcountOverride ?? groups.Where(g => req.GroupIds.Contains(g.Id)).Sum(g => g.StudentCount);
         if (room.Capacity < total) return false;
 
         // An explicit AllowedLessonTypes is the admin's deliberate opt-in and overrides the

@@ -8,6 +8,8 @@ export interface Subject {
   term: Term;
   departmentId?: string | null;
   departmentName?: string | null;
+  allowsSubgroups: boolean;
+  subgroupCount: number;
 }
 
 export interface CreateSubjectDto {
@@ -16,6 +18,8 @@ export interface CreateSubjectDto {
   academicYear: number;
   term: Term;
   departmentId?: string | null;
+  allowsSubgroups: boolean;
+  subgroupCount: number;
 }
 
 export interface UpdateSubjectDto extends CreateSubjectDto {}

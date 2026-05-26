@@ -68,6 +68,7 @@ public class ScheduleEntriesController : ControllerBase
         [FromQuery] WeekType weekType,
         [FromQuery] bool isOnline,
         [FromQuery] Guid? excludeEntryId,
+        [FromQuery] Guid? parallelGroupId,
         CancellationToken ct)
     {
         var existing = await _db.ScheduleEntries
@@ -75,9 +76,12 @@ public class ScheduleEntriesController : ControllerBase
             .Where(e => e.ScheduleId == scheduleId)
             .ToListAsync(ct);
 
+        bool roomIsDistributed = roomId.HasValue
+            && await _db.Rooms.AnyAsync(r => r.Id == roomId && r.IsDistributed, ct);
+
         var conflicts = _conflictDetector.DetectConflicts(
             excludeEntryId ?? Guid.Empty, scheduleId, roomId, teacherId, groupIds,
-            dayOfWeek, pairNumber, weekType, isOnline, existing);
+            dayOfWeek, pairNumber, weekType, isOnline, existing, parallelGroupId, roomIsDistributed);
 
         return Ok(conflicts);
     }

@@ -16,5 +16,7 @@ public interface IConflictDetector
         int pairNumber,
         WeekType weekType,
         bool isOnline,
-        IEnumerable<ScheduleEntry> existingEntries);
+        IEnumerable<ScheduleEntry> existingEntries,
+        Guid? parallelGroupId = null,
+        bool roomIsDistributed = false);
 }

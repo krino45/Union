@@ -41,7 +41,8 @@ public class GetScheduleEntriesQueryHandler : IRequestHandler<GetScheduleEntries
             e.TeacherId, e.Teacher.DisplayName,
             e.RoomId, e.Room?.Number, e.Room?.Building?.ShortCode,
             e.DayOfWeek, e.PairNumber, e.WeekType, e.LessonType, e.IsOnline,
-            e.StudentGroups.Select(sg => new GroupRefDto(sg.StudentGroupId, sg.StudentGroup.Name)).ToList()
+            e.StudentGroups.Select(sg => new GroupRefDto(sg.StudentGroupId, sg.StudentGroup.Name)).ToList(),
+            e.ParallelGroupId, e.SubgroupLabel
         )).OrderBy(e => e.DayOfWeek).ThenBy(e => e.PairNumber).ToList();
     }
 }

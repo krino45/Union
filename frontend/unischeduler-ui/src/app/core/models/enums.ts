@@ -10,7 +10,8 @@ export enum LessonType {
   Lecture = 'Lecture',
   Practical = 'Practical',
   Lab = 'Lab',
-  Seminar = 'Seminar'
+  Seminar = 'Seminar',
+  Language = 'Language'
 }
 
 export enum WeekType {

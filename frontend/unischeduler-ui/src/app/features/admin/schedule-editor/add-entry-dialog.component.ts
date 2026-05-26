@@ -65,6 +65,7 @@ export type AddEntryDialogResult =
               <mat-option value="Practical">Практика</mat-option>
               <mat-option value="Lab">Лаборатория</mat-option>
               <mat-option value="Seminar">Семинар</mat-option>
+              <mat-option value="Language">Ин. язык</mat-option>
             </mat-select>
           </mat-form-field>
           <mat-form-field appearance="outline" class="flex1">

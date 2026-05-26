@@ -11,7 +11,9 @@ namespace UniScheduler.Application.Features.Subjects.Commands;
 public record UpdateSubjectCommand(
     Guid Id, string Name, string ShortName,
     int AcademicYear, Term Term,
-    Guid? DepartmentId = null) : IRequest<SubjectDto>;
+    Guid? DepartmentId = null,
+    bool AllowsSubgroups = false,
+    int SubgroupCount = 2) : IRequest<SubjectDto>;
 
 public class UpdateSubjectCommandHandler : IRequestHandler<UpdateSubjectCommand, SubjectDto>
 {
@@ -26,8 +28,10 @@ public class UpdateSubjectCommandHandler : IRequestHandler<UpdateSubjectCommand,
         subject.Name = r.Name; subject.ShortName = r.ShortName;
         subject.AcademicYear = r.AcademicYear; subject.Term = r.Term;
         subject.DepartmentId = r.DepartmentId;
+        subject.AllowsSubgroups = r.AllowsSubgroups;
+        subject.SubgroupCount = r.SubgroupCount < 2 ? 2 : r.SubgroupCount;
         await db.SaveChangesAsync(cancellationToken);
         return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term,
-            subject.DepartmentId, subject.Department?.Name);
+            subject.DepartmentId, subject.Department?.Name, subject.AllowsSubgroups, subject.SubgroupCount);
     }
 }

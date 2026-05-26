@@ -37,7 +37,9 @@ public record ScheduleEntryDto(
     WeekType WeekType,
     LessonType LessonType,
     bool IsOnline,
-    List<GroupRefDto> StudentGroups
+    List<GroupRefDto> StudentGroups,
+    Guid? ParallelGroupId = null,
+    string? SubgroupLabel = null
 );
 
 public record GroupRefDto(Guid Id, string Name);

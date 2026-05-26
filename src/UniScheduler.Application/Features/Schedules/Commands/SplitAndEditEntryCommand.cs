@@ -89,9 +89,13 @@ public class SplitAndEditEntryCommandHandler : IRequestHandler<SplitAndEditEntry
             .Where(e => e.ScheduleId == entry.ScheduleId && e.Id != entry.Id)
             .ToListAsync(cancellationToken);
 
+        bool roomIsDistributed = r.RoomId.HasValue
+            && await _db.Rooms.AnyAsync(rm => rm.Id == r.RoomId && rm.IsDistributed, cancellationToken);
+
         var conflicts = _conflict.DetectConflicts(
             entry.Id, entry.ScheduleId, r.RoomId, r.TeacherId, r.GroupIds,
-            r.DayOfWeek, r.PairNumber, entry.WeekType, r.IsOnline, allOtherEntries);
+            r.DayOfWeek, r.PairNumber, entry.WeekType, r.IsOnline, allOtherEntries,
+            entry.ParallelGroupId, roomIsDistributed);
         if (conflicts.Count > 0) throw new ConflictException(conflicts);
 
         entry.SubjectId = r.SubjectId;

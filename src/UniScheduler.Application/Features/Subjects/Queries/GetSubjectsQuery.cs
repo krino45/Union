@@ -22,6 +22,6 @@ public class GetSubjectsQueryHandler : IRequestHandler<GetSubjectsQuery, List<Su
         var subjects = await query.OrderBy(s => s.AcademicYear).ThenBy(s => s.Term).ThenBy(s => s.Name)
             .ToListAsync(cancellationToken);
         return subjects.Select(s => new SubjectDto(s.Id, s.Name, s.ShortName, s.AcademicYear, s.Term,
-            s.DepartmentId, s.Department?.Name)).ToList();
+            s.DepartmentId, s.Department?.Name, s.AllowsSubgroups, s.SubgroupCount)).ToList();
     }
 }
