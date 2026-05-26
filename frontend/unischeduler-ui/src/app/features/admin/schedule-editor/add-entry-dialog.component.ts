@@ -16,6 +16,7 @@ import { RussianDayOfWeek, WeekType, LessonType } from '../../../core/models/enu
 import { ValidationIssue, SplitEditBody, ValidateEditBody } from '../../../core/models';
 import { DayOfWeekPipe } from '../../../shared/pipes/day-of-week.pipe';
 import { ApiService } from '../../../core/services/api.service';
+import { SearchSelectComponent } from '../../../shared/components/search-select.component';
 
 export interface AddEntryDialogData {
   scheduleId: string;
@@ -42,7 +43,7 @@ export type AddEntryDialogResult =
     CommonModule, ReactiveFormsModule,
     MatDialogModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatRadioModule, MatChipsModule,
-    DayOfWeekPipe
+    DayOfWeekPipe, SearchSelectComponent
   ],
   template: `
     <h2 mat-dialog-title>{{ isEdit ? 'Редактировать занятие' : 'Добавить занятие' }}</h2>
@@ -52,12 +53,8 @@ export type AddEntryDialogResult =
         ({{ weekLabel }})
       </div>
       <form [formGroup]="form" class="form">
-        <mat-form-field appearance="outline" class="full">
-          <mat-label>Дисциплина</mat-label>
-          <mat-select formControlName="subjectId">
-            <mat-option *ngFor="let s of data.subjects" [value]="s.id">{{ s.name }}</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <app-search-select class="full" label="Дисциплина" formControlName="subjectId"
+          [options]="data.subjects" displayField="name"></app-search-select>
 
         <div class="row">
           <mat-form-field appearance="outline" class="flex1">
@@ -115,12 +112,8 @@ export type AddEntryDialogResult =
           </mat-select>
         </mat-form-field>
 
-        <mat-form-field appearance="outline" class="full">
-          <mat-label>Группы</mat-label>
-          <mat-select formControlName="groupIds" multiple>
-            <mat-option *ngFor="let g of data.groups" [value]="g.id">{{ g.name }}</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <app-search-select class="full" label="Группы" formControlName="groupIds"
+          [options]="data.groups" displayField="name" [multiple]="true"></app-search-select>
 
         <div class="blocked-warn" *ngIf="hasBlockedDayWarning">
           ⚠ Одна или несколько выбранных групп заблокированы в этот день
@@ -129,15 +122,10 @@ export type AddEntryDialogResult =
         <mat-checkbox formControlName="isOnline" class="online-check">Онлайн занятие</mat-checkbox>
 
         <!-- Single-teacher room -->
-        <mat-form-field appearance="outline" class="full" *ngIf="!parallelMode && !form.value.isOnline">
-          <mat-label>Аудитория (необязательно)</mat-label>
-          <mat-select formControlName="roomId">
-            <mat-option [value]="null">Не указано</mat-option>
-            <mat-option *ngFor="let r of data.rooms" [value]="r.id">
-              {{ r.buildingShortCode ? r.buildingShortCode + '-' : '' }}{{ r.number }} (вм. {{ r.capacity }})
-            </mat-option>
-          </mat-select>
-        </mat-form-field>
+        <app-search-select class="full" *ngIf="!parallelMode && !form.value.isOnline"
+          label="Аудитория (необязательно)" formControlName="roomId"
+          [options]="data.rooms" [displayWith]="roomLabel"
+          [allowNull]="true" nullLabel="Не указано"></app-search-select>
 
         <!-- Subgroup label — single-entry mode. Lets several subgroups share a slot (lab «Подгр. 1/2»). -->
         <mat-form-field appearance="outline" class="full" *ngIf="!parallelMode">
@@ -150,21 +138,11 @@ export type AddEntryDialogResult =
         <div class="sessions" *ngIf="parallelMode" formArrayName="sessions">
           <div class="sessions-hdr">Сессии: каждая ведётся отдельным преподавателем одновременно</div>
           <div class="session-row" *ngFor="let s of sessions.controls; let i = index" [formGroupName]="i">
-            <mat-form-field appearance="outline" class="s-teacher">
-              <mat-label>Преподаватель</mat-label>
-              <mat-select formControlName="teacherId">
-                <mat-option *ngFor="let t of data.teachers" [value]="t.id">{{ t.displayName }}</mat-option>
-              </mat-select>
-            </mat-form-field>
-            <mat-form-field appearance="outline" class="s-room" *ngIf="!form.value.isOnline">
-              <mat-label>Ауд.</mat-label>
-              <mat-select formControlName="roomId">
-                <mat-option [value]="null">—</mat-option>
-                <mat-option *ngFor="let r of data.rooms" [value]="r.id">
-                  {{ r.buildingShortCode ? r.buildingShortCode + '-' : '' }}{{ r.number }}
-                </mat-option>
-              </mat-select>
-            </mat-form-field>
+            <app-search-select class="s-teacher" label="Преподаватель" formControlName="teacherId"
+              [options]="data.teachers" displayField="displayName"></app-search-select>
+            <app-search-select class="s-room" *ngIf="!form.value.isOnline" label="Ауд."
+              formControlName="roomId" [options]="data.rooms" [displayWith]="roomLabelShort"
+              [allowNull]="true" nullLabel="—"></app-search-select>
             <mat-form-field appearance="outline" class="s-label">
               <mat-label>Метка</mat-label>
               <input matInput formControlName="label" placeholder="Поток 1">
@@ -225,6 +203,11 @@ export class AddEntryDialogComponent implements OnInit {
   isEdit: boolean;
   canSplit: boolean;
   issues: ValidationIssue[] = [];
+
+  roomLabel = (r: Room): string =>
+    `${r.buildingShortCode ? r.buildingShortCode + '-' : ''}${r.number} (вм. ${r.capacity})`;
+  roomLabelShort = (r: Room): string =>
+    `${r.buildingShortCode ? r.buildingShortCode + '-' : ''}${r.number}`;
 
   get weekLabel(): string {
     const wt = this.form.value.weekType ?? this.data.weekType;

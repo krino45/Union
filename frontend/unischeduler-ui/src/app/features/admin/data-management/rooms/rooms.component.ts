@@ -1,6 +1,6 @@
 import { Component, OnInit, Inject, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
@@ -20,12 +20,13 @@ import { Room, Building, Department } from '../../../../core/models';
 import { LessonType, RoomType } from '../../../../core/models/enums';
 import { RoomTypePipe } from '../../../../shared/pipes/room-type.pipe';
 import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
+import { SearchSelectComponent } from '../../../../shared/components/search-select.component';
 
 @Component({
   selector: 'app-rooms',
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule,
+    CommonModule, ReactiveFormsModule, FormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatCheckboxModule, MatSnackBarModule, MatTooltipModule, MatChipsModule,
@@ -40,9 +41,15 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     </div>
 
     <mat-card>
+      <mat-form-field appearance="outline" class="search-field" *ngIf="!loading">
+        <mat-icon matPrefix>search</mat-icon>
+        <mat-label>Поиск по номеру или корпусу</mat-label>
+        <input matInput [(ngModel)]="search" placeholder="101, А-...">
+        <button mat-icon-button matSuffix *ngIf="search" (click)="search = ''"><mat-icon>close</mat-icon></button>
+      </mat-form-field>
       <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
       <div class="table-scroll" *ngIf="!loading">
-      <table mat-table [dataSource]="rooms" class="full-width">
+      <table mat-table [dataSource]="filteredRooms" class="full-width">
         <ng-container matColumnDef="number">
           <th mat-header-cell *matHeaderCellDef>Аудитория</th>
           <td mat-cell *matCellDef="let r">
@@ -129,6 +136,7 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     h1 { margin: 0; }
     .table-scroll { overflow-x: auto; }
+    .search-field { width: 100%; max-width: 420px; margin-bottom: 8px; }
     .full-width { width: 100%; min-width: 920px; }
     mat-chip { font-size: 11px; margin: 1px; }
     .type-chip { background: #e3f2fd; color: #1565c0; font-size: 11px; margin: 1px; }
@@ -157,7 +165,16 @@ export class RoomsComponent implements OnInit {
   buildings: Building[] = [];
   departments: Department[] = [];
   loading = true;
+  search = '';
   columns = ['number', 'building', 'location', 'type', 'capacity', 'features', 'department', 'enabled', 'utilization', 'allowedTypes', 'actions'];
+
+  get filteredRooms(): Room[] {
+    const q = this.search.trim().toLowerCase();
+    if (!q) return this.rooms;
+    return this.rooms.filter(r =>
+      (r.number ?? '').toLowerCase().includes(q) ||
+      (r.buildingShortCode ?? '').toLowerCase().includes(q));
+  }
 
   utilizationBand(pct: number | undefined): 'empty' | 'low' | 'medium' | 'high' {
     const p = pct ?? 0;
@@ -223,18 +240,14 @@ export class RoomsComponent implements OnInit {
   imports: [
     CommonModule, ReactiveFormsModule,
     MatButtonModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatCheckboxModule, MatDialogModule, MatIconModule
+    MatSelectModule, MatCheckboxModule, MatDialogModule, MatIconModule, SearchSelectComponent
   ],
   template: `
     <h2 mat-dialog-title>{{ data.room ? 'Редактировать' : 'Добавить' }} аудиторию</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="dialog-form">
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Корпус</mat-label>
-          <mat-select formControlName="buildingId">
-            <mat-option *ngFor="let b of data.buildings" [value]="b.id">{{ b.shortCode }} — {{ b.address }}</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <app-search-select class="full-width" label="Корпус" formControlName="buildingId"
+          [options]="data.buildings" [displayWith]="buildingLabel"></app-search-select>
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Номер аудитории</mat-label>
           <input matInput formControlName="number" placeholder="101, А-203...">
@@ -274,13 +287,9 @@ export class RoomsComponent implements OnInit {
           </mat-select>
           <mat-hint>Оставьте пустым — допускаются все типы</mat-hint>
         </mat-form-field>
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Кафедра (необязательно)</mat-label>
-          <mat-select formControlName="departmentId">
-            <mat-option [value]="null">— Без кафедры —</mat-option>
-            <mat-option *ngFor="let d of data.departments" [value]="d.id">{{ d.shortCode }} — {{ d.name }}</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <app-search-select class="full-width" label="Кафедра (необязательно)" formControlName="departmentId"
+          [options]="data.departments" [displayWith]="departmentLabel"
+          [allowNull]="true" nullLabel="— Без кафедры —"></app-search-select>
         <div class="checkboxes">
           <mat-checkbox formControlName="isEnabled">Аудитория активна (доступна для расписания)</mat-checkbox>
         </div>
@@ -309,6 +318,9 @@ export class RoomsComponent implements OnInit {
 export class RoomDialogComponent implements OnDestroy {
   form: FormGroup;
   private sub: Subscription;
+
+  buildingLabel = (b: Building): string => `${b.shortCode} — ${b.address}`;
+  departmentLabel = (d: Department): string => `${d.shortCode} — ${d.name}`;
 
   private static suggestForType(rt: RoomType): LessonType[] {
     switch (rt) {

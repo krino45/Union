@@ -17,6 +17,8 @@ import { Schedule, ScheduleEntry, MoveEntryDto, StudentGroup, Teacher, Subject, 
 import { RussianDayOfWeek, WeekType } from '../../../core/models/enums';
 import { ScheduleGridComponent } from './schedule-grid/schedule-grid.component';
 import { AddEntryDialogComponent, AddEntryDialogData, AddEntryDialogResult } from './add-entry-dialog.component';
+import { BackfillDialogComponent } from './backfill-dialog.component';
+import { SearchSelectComponent } from '../../../shared/components/search-select.component';
 
 interface AuditResult {
   conflicts: { type: string; description: string }[];
@@ -35,7 +37,7 @@ interface AuditResult {
     MatButtonModule, MatButtonToggleModule, MatIconModule,
     MatSelectModule, MatFormFieldModule, MatSnackBarModule,
     MatProgressSpinnerModule, MatExpansionModule, MatDialogModule,
-    ScheduleGridComponent
+    ScheduleGridComponent, SearchSelectComponent
   ],
   template: `
     <div class="editor-header">
@@ -59,20 +61,12 @@ interface AuditResult {
       </div>
       <div class="header-right">
         <div class="header-filters">
-          <mat-form-field appearance="outline" class="filter-field">
-            <mat-label>Группа</mat-label>
-            <mat-select [(ngModel)]="selectedGroupId" (ngModelChange)="onFilterChange()">
-              <mat-option [value]="null">Все</mat-option>
-              <mat-option *ngFor="let g of groups" [value]="g.id">{{ g.name }}</mat-option>
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="filter-field">
-            <mat-label>Преподаватель</mat-label>
-            <mat-select [(ngModel)]="selectedTeacherId" (ngModelChange)="onFilterChange()">
-              <mat-option [value]="null">Все</mat-option>
-              <mat-option *ngFor="let t of teachers" [value]="t.id">{{ t.displayName }}</mat-option>
-            </mat-select>
-          </mat-form-field>
+          <app-search-select class="filter-field" label="Группа" [options]="groups"
+            [allowNull]="true" nullLabel="Все"
+            [(ngModel)]="selectedGroupId" (ngModelChange)="onFilterChange()"></app-search-select>
+          <app-search-select class="filter-field" label="Преподаватель" [options]="teachers"
+            displayField="displayName" [allowNull]="true" nullLabel="Все"
+            [(ngModel)]="selectedTeacherId" (ngModelChange)="onFilterChange()"></app-search-select>
         </div>
         <mat-button-toggle-group [(ngModel)]="weekFilter" class="week-toggle">
           <mat-button-toggle value="Both">Обе</mat-button-toggle>
@@ -90,6 +84,9 @@ interface AuditResult {
             <mat-icon>upload</mat-icon> JSON
           </button>
           <input #jsonFileInput type="file" accept=".json" style="display:none" (change)="importJson($event)">
+          <button mat-stroked-button (click)="openBackfill()" [disabled]="!schedule || isArchived" title="Заполнить справочники (аудитории, дисциплины, часы) из этого расписания">
+            <mat-icon>auto_fix_high</mat-icon> Заполнить
+          </button>
           <button mat-stroked-button color="primary" (click)="publishSchedule()" *ngIf="schedule?.status === 'Draft'">
             <mat-icon>publish</mat-icon> Опубликовать
           </button>
@@ -346,6 +343,20 @@ export class ScheduleEditorComponent implements OnInit {
   }
 
   onFilterChange(): void { this.loadEntries(); }
+
+  openBackfill(): void {
+    if (!this.schedule) return;
+    this.dialog.open(BackfillDialogComponent, {
+      data: { scheduleId: this.schedule.id }, width: '660px'
+    }).afterClosed().subscribe((applied: boolean | undefined) => {
+      if (!applied || !this.schedule) return;
+      // Reload reference data the backfill may have changed.
+      this.api.getTeachers().subscribe(t => this.teachers = t);
+      this.api.getRooms().subscribe(r => this.rooms = r);
+      this.api.getSubjects(this.schedule.academicYear, this.schedule.term).subscribe(s => this.subjects = s);
+      this.loadPlanProgress();
+    });
+  }
 
   onEntryMoved(event: { entryId: string; dto: MoveEntryDto }): void {
     const movedEntry = this.entries.find(e => e.id === event.entryId);

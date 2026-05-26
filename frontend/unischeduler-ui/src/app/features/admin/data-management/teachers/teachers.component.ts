@@ -17,12 +17,13 @@ import { ApiService } from '../../../../core/services/api.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import { Teacher, Subject } from '../../../../core/models';
 import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
+import { SearchSelectComponent } from '../../../../shared/components/search-select.component';
 
 @Component({
   selector: 'app-teachers',
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule,
+    CommonModule, ReactiveFormsModule, FormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSnackBarModule, MatTooltipModule, LessonTypePipe, MatProgressSpinnerModule
@@ -36,8 +37,14 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     </div>
 
     <mat-card>
+      <mat-form-field appearance="outline" class="search-field" *ngIf="!loading">
+        <mat-icon matPrefix>search</mat-icon>
+        <mat-label>Поиск по ФИО или email</mat-label>
+        <input matInput [(ngModel)]="search" placeholder="Иванов...">
+        <button mat-icon-button matSuffix *ngIf="search" (click)="search = ''"><mat-icon>close</mat-icon></button>
+      </mat-form-field>
       <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
-      <table mat-table [dataSource]="teachers" class="full-width" *ngIf="!loading">
+      <table mat-table [dataSource]="filteredTeachers" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>ФИО</th>
           <td mat-cell *matCellDef="let t">{{ t.displayName }}</td>
@@ -87,6 +94,7 @@ import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     h1 { margin: 0; }
     .full-width { width: 100%; }
+    .search-field { width: 100%; max-width: 420px; margin-bottom: 8px; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
     .load-cell { font-weight: 500; }
   `]
@@ -95,7 +103,15 @@ export class TeachersComponent implements OnInit {
   teachers: Teacher[] = [];
   subjects: Subject[] = [];
   loading = true;
+  search = '';
   columns = ['name', 'email', 'subjects', 'load', 'actions'];
+
+  get filteredTeachers(): Teacher[] {
+    const q = this.search.trim().toLowerCase();
+    if (!q) return this.teachers;
+    return this.teachers.filter(t =>
+      t.displayName.toLowerCase().includes(q) || (t.email ?? '').toLowerCase().includes(q));
+  }
 
   loadTooltip(hours: number | undefined): string {
     const h = hours ?? 0;
@@ -236,17 +252,13 @@ export class TeacherDialogComponent {
 @Component({
   selector: 'app-teacher-subjects-dialog',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, MatButtonModule, MatSelectModule, MatFormFieldModule, MatIconModule, MatDialogModule],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MatButtonModule, MatSelectModule, MatFormFieldModule, MatIconModule, MatDialogModule, SearchSelectComponent],
   template: `
     <h2 mat-dialog-title>Дисциплины: {{ data.teacher.displayName }}</h2>
     <mat-dialog-content>
       <div *ngFor="let row of rows; let i = index" class="subject-row">
-        <mat-form-field appearance="outline" class="subject-field">
-          <mat-label>Дисциплина</mat-label>
-          <mat-select [(ngModel)]="row.subjectId">
-            <mat-option *ngFor="let s of data.subjects" [value]="s.id">{{ s.name }}</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <app-search-select class="subject-field" label="Дисциплина"
+          [options]="data.subjects" displayField="name" [(ngModel)]="row.subjectId"></app-search-select>
         <mat-form-field appearance="outline" class="type-field">
           <mat-label>Тип</mat-label>
           <mat-select [(ngModel)]="row.lessonType">

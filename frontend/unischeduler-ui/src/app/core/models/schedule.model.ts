@@ -83,6 +83,56 @@ export interface InvitationInfo {
   mode: 'register' | 'accept' | 'wrong-account' | 'invalid';
 }
 
+export interface BackfillTargets {
+  rooms: boolean;
+  teachers: boolean;
+  studyPlans: boolean;
+}
+
+export interface RoomBackfillChange {
+  roomId: string;
+  roomLabel: string;
+  addedTypes: string[];
+}
+
+export interface TeacherSubjectAdd {
+  subjectId: string;
+  subjectName: string;
+  lessonType: string;
+}
+
+export interface TeacherBackfillChange {
+  teacherId: string;
+  teacherName: string;
+  added: TeacherSubjectAdd[];
+}
+
+export interface StudyPlanHourChange {
+  subjectId: string;
+  subjectName: string;
+  field: string;
+  fieldLabel: string;
+  newHours: number;
+}
+
+export interface StudyPlanBackfillChange {
+  studyPlanId: string;
+  planName: string;
+  changes: StudyPlanHourChange[];
+}
+
+export interface BackfillPreview {
+  rooms: RoomBackfillChange[];
+  teachers: TeacherBackfillChange[];
+  studyPlans: StudyPlanBackfillChange[];
+}
+
+export interface BackfillResult {
+  roomsUpdated: number;
+  teacherLinksAdded: number;
+  studyPlanFieldsUpdated: number;
+}
+
 export interface GenerationJobStatus {
   scheduleId: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'not_found';

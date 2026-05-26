@@ -170,6 +170,18 @@ public class SchedulesController : ControllerBase
     }
 
     [Authorize(Roles = AdminOnly)]
+    [HttpPost("{id:guid}/backfill/preview")]
+    public async Task<ActionResult<BackfillPreviewDto>> BackfillPreview(
+        Guid id, [FromBody] BackfillTargets? targets, CancellationToken ct)
+        => Ok(await mediator.Send(new PreviewBackfillQuery(id, targets ?? new BackfillTargets()), ct));
+
+    [Authorize(Roles = AdminOnly)]
+    [HttpPost("{id:guid}/backfill/apply")]
+    public async Task<ActionResult<BackfillResultDto>> BackfillApply(
+        Guid id, [FromBody] BackfillTargets? targets, CancellationToken ct)
+        => Ok(await mediator.Send(new ApplyBackfillCommand(id, targets ?? new BackfillTargets()), ct));
+
+    [Authorize(Roles = AdminOnly)]
     [HttpPost("{id:guid}/import/json")]
     [RequestSizeLimit(5 * 1024 * 1024)]
     public async Task<ActionResult<ImportFromJsonResult>> ImportJson(

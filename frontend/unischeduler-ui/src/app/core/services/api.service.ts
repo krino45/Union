@@ -18,7 +18,7 @@ import {
   FloorPlan, SaveFloorPlanRequest,
   FloorPlanDraftSummary, FloorPlanDraft, FloorPlanSummary,
   ValidationIssue, ValidateEditBody, SplitEditBody, InvitationDto,
-  InvitationInfo
+  InvitationInfo, BackfillTargets, BackfillPreview, BackfillResult
 } from '../models';
 import { RussianDayOfWeek, WeekType } from '../models/enums';
 
@@ -449,6 +449,14 @@ export class ApiService {
   //  Plan progress
   getPlanProgress(scheduleId: string): Observable<PlanProgressItem[]> {
     return this.http.get<PlanProgressItem[]>(`${this.base}/schedules/${scheduleId}/plan-progress`);
+  }
+
+  //  Backfill catalog settings from a schedule
+  previewBackfill(scheduleId: string, targets: BackfillTargets): Observable<BackfillPreview> {
+    return this.http.post<BackfillPreview>(`${this.base}/schedules/${scheduleId}/backfill/preview`, targets);
+  }
+  applyBackfill(scheduleId: string, targets: BackfillTargets): Observable<BackfillResult> {
+    return this.http.post<BackfillResult>(`${this.base}/schedules/${scheduleId}/backfill/apply`, targets);
   }
 
   //  JSON Export / Import

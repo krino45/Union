@@ -1,6 +1,6 @@
 import { Component, OnInit, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -16,6 +16,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
 import { Subject, Department } from '../../../../core/models';
 import { Term } from '../../../../core/models/enums';
+import { SearchSelectComponent } from '../../../../shared/components/search-select.component';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -23,7 +24,7 @@ const CURRENT_YEAR = new Date().getFullYear();
   selector: 'app-subjects',
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule,
+    CommonModule, ReactiveFormsModule, FormsModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSnackBarModule, MatTooltipModule, MatProgressSpinnerModule
@@ -37,8 +38,14 @@ const CURRENT_YEAR = new Date().getFullYear();
     </div>
 
     <mat-card>
+      <mat-form-field appearance="outline" class="search-field" *ngIf="!loading">
+        <mat-icon matPrefix>search</mat-icon>
+        <mat-label>Поиск по названию</mat-label>
+        <input matInput [(ngModel)]="search" placeholder="Матанализ...">
+        <button mat-icon-button matSuffix *ngIf="search" (click)="search = ''"><mat-icon>close</mat-icon></button>
+      </mat-form-field>
       <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="40"></mat-spinner></div>
-      <table mat-table [dataSource]="subjects" class="full-width" *ngIf="!loading">
+      <table mat-table [dataSource]="filteredSubjects" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Название</th>
           <td mat-cell *matCellDef="let s">{{ s.name }} <span class="short">({{ s.shortName }})</span>
