@@ -149,7 +149,7 @@ export class SubjectsComponent implements OnInit {
 @Component({
   selector: 'app-subject-dialog',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatDialogModule],
+  imports: [CommonModule, ReactiveFormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatDialogModule, SearchSelectComponent],
   template: `
     <h2 mat-dialog-title>{{ data.subject ? 'Редактировать' : 'Добавить' }} дисциплину</h2>
     <mat-dialog-content>
@@ -177,13 +177,9 @@ export class SubjectsComponent implements OnInit {
             </mat-select>
           </mat-form-field>
         </div>
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Кафедра (необязательно)</mat-label>
-          <mat-select formControlName="departmentId">
-            <mat-option [value]="null">— Без кафедры —</mat-option>
-            <mat-option *ngFor="let d of data.departments" [value]="d.id">{{ d.shortCode }} — {{ d.name }}</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <app-search-select class="full-width" label="Кафедра (необязательно)" formControlName="departmentId"
+          [options]="data.departments" [displayWith]="departmentLabel"
+          [allowNull]="true" nullLabel="— Без кафедры —"></app-search-select>
         <div class="subgroup-row">
           <mat-checkbox formControlName="allowsSubgroups">Лабораторные по подгруппам</mat-checkbox>
           <mat-form-field appearance="outline" class="sub-count" *ngIf="form.value.allowsSubgroups">
@@ -203,6 +199,8 @@ export class SubjectsComponent implements OnInit {
 })
 export class SubjectDialogComponent {
   form: FormGroup;
+
+  departmentLabel = (d: Department): string => `${d.shortCode} — ${d.name}`;
 
   constructor(
     private dialogRef: MatDialogRef<SubjectDialogComponent>,

@@ -226,7 +226,8 @@ interface AuditResult {
     .action-buttons { display: flex; gap: 6px; align-items: center; }
     .loading-state { display: flex; justify-content: center; padding: 64px; }
     .audit-panel { margin-bottom: 12px; border-radius: 6px !important; }
-    .conflict-title { display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; }
+    .conflict-title { display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; overflow: hidden; }
+    .conflict-title > span { flex-shrink: 0; }
     .icon-ok { color: #2e7d32; font-size: 18px; }
     .icon-err { color: #c62828; font-size: 18px; }
     .icon-warn { color: #e65100; font-size: 18px; }
@@ -242,7 +243,8 @@ interface AuditResult {
     .ii { font-size: 15px; color: #c62828; flex-shrink: 0; margin-top: 1px; }
     .warn-ii { color: #e65100; }
     .no-issues { font-size: 13px; color: #2e7d32; padding: 4px 8px; }
-    .plan-names { font-size: 12px; color: #888; margin-left: 8px; }
+    .plan-names { font-size: 12px; color: #888; margin-left: 8px; flex: 1 1 auto; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .progress-panel { margin-bottom: 12px; border-radius: 6px !important; }
     .progress-table-wrap { overflow-x: auto; padding: 4px 0; }
     .progress-table { width: 100%; border-collapse: collapse; font-size: 12px; }

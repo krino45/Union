@@ -13,7 +13,7 @@ public record BackfillTargets(bool Rooms = true, bool Teachers = true, bool Stud
 public record RoomBackfillChange(Guid RoomId, string RoomLabel, List<LessonType> AddedTypes);
 public record TeacherSubjectAddDto(Guid SubjectId, string SubjectName, LessonType LessonType);
 public record TeacherBackfillChange(Guid TeacherId, string TeacherName, List<TeacherSubjectAddDto> Added);
-public record StudyPlanHourChangeDto(Guid SubjectId, string SubjectName, string Field, string FieldLabel, double NewHours);
+public record StudyPlanHourChangeDto(Guid SubjectId, string SubjectName, string Field, string FieldLabel, double OldHours, double NewHours);
 public record StudyPlanBackfillChange(Guid StudyPlanId, string PlanName, List<StudyPlanHourChangeDto> Changes);
 
 public record BackfillPreviewDto(
@@ -129,47 +129,51 @@ internal static class BackfillEngine
                 .Where(sp => sp.AcademicYear == schedule.AcademicYear && sp.Term == schedule.Term)
                 .ToListAsync(ct);
 
-            var planByGroup = studyPlans
-                .SelectMany(sp => sp.Groups.Select(g => (g.StudentGroupId, sp)))
-                .GroupBy(x => x.StudentGroupId)
-                .ToDictionary(g => g.Key, g => g.First().sp);
-
-            var hours = new Dictionary<(Guid Plan, Guid Subj, LessonType Lt), double>();
-            var seenSlots = new HashSet<(Guid, Guid, LessonType, RussianDayOfWeek, int, WeekType)>();
-
+            // entries indexed by the group that attends them
+            var entriesByGroup = new Dictionary<Guid, List<ScheduleEntry>>();
             foreach (var e in entries)
-            {
-                var plans = e.StudentGroups
-                    .Select(sg => planByGroup.GetValueOrDefault(sg.StudentGroupId))
-                    .Where(sp => sp != null).Select(sp => sp!).Distinct();
-
-                foreach (var sp in plans)
+                foreach (var sg in e.StudentGroups)
                 {
-                    if (!seenSlots.Add((sp.Id, e.SubjectId, e.LessonType, e.DayOfWeek, e.PairNumber, e.WeekType)))
-                        continue;
-                    int weeks = StudyPlanQ.StudyWeeksFromPlan(sp.CalendarPlan);
-                    int occ = e.WeekType == WeekType.Both ? weeks : (weeks + 1) / 2;
-                    var key = (sp.Id, e.SubjectId, e.LessonType);
-                    hours[key] = hours.GetValueOrDefault(key) + HoursPerPair * occ;
+                    if (!entriesByGroup.TryGetValue(sg.StudentGroupId, out var list))
+                        entriesByGroup[sg.StudentGroupId] = list = new();
+                    list.Add(e);
                 }
-            }
 
-            var planById = studyPlans.ToDictionary(sp => sp.Id);
-            foreach (var byPlan in hours.GroupBy(kv => kv.Key.Plan))
+            foreach (var sp in studyPlans)
             {
-                var sp = planById[byPlan.Key];
+                int weeks = StudyPlanQ.StudyWeeksFromPlan(sp.CalendarPlan);
+
+                // Hours are per-student, so we measure each group separately and take the fullest
+                // group as the plan figure — never the sum across groups (labs/practicals are taught
+                // group-by-group, which would multiply the curriculum hours by the group count).
+                var computed = new Dictionary<(Guid Subj, LessonType Lt), double>();
+                foreach (var g in sp.Groups)
+                {
+                    if (!entriesByGroup.TryGetValue(g.StudentGroupId, out var ge)) continue;
+                    var perGroup = ge
+                        .GroupBy(e => (e.SubjectId, e.LessonType))
+                        .ToDictionary(
+                            grp => grp.Key,
+                            // Distinct weekly slots: parallel siblings / subgroups share a slot and
+                            // collapse here. Both = 1 pair/week, Odd|Even = 0.5 — the plan-progress metric.
+                            grp => grp.Select(e => (e.DayOfWeek, e.PairNumber, e.WeekType)).Distinct()
+                                      .Sum(s => s.WeekType == WeekType.Both ? 1.0 : 0.5));
+                    foreach (var kv in perGroup)
+                        computed[kv.Key] = Math.Max(computed.GetValueOrDefault(kv.Key), kv.Value * weeks * HoursPerPair);
+                }
+                if (computed.Count == 0) continue;
+
                 var entryBySubj = sp.Entries.ToDictionary(en => en.SubjectId);
                 var changes = new List<StudyPlanHourChangeDto>();
-
-                foreach (var kv in byPlan)
+                foreach (var kv in computed)
                 {
-                    var (_, subjId, lt) = kv.Key;
+                    var (subjId, lt) = kv.Key;
                     var (field, label) = FieldFor(lt);
                     if (field.Length == 0 || kv.Value <= 0) continue;
                     double current = entryBySubj.TryGetValue(subjId, out var en) ? GetField(en, lt) : 0;
-                    if (current > 0) continue;
+                    if (Math.Abs(kv.Value - current) < 0.01) continue; // already matches the schedule
                     changes.Add(new StudyPlanHourChangeDto(
-                        subjId, subjectNames.GetValueOrDefault(subjId, "?"), field, label, kv.Value));
+                        subjId, subjectNames.GetValueOrDefault(subjId, "?"), field, label, current, kv.Value));
                 }
                 if (changes.Count == 0) continue;
                 changes = changes.OrderBy(c => c.SubjectName).ThenBy(c => c.FieldLabel).ToList();

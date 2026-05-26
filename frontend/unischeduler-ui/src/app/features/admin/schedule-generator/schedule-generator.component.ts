@@ -456,16 +456,19 @@ export class CreateScheduleDialogComponent {
         <p class="section-label">Предпочтительное время занятий (S7) — штраф за слот</p>
         <div class="row">
           <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Ранние пары (пары 1–2, /шаг)</mat-label>
+            <mat-label>Ранние (1–2)</mat-label>
             <input matInput type="number" formControlName="earlyPair" min="0">
+            <mat-hint>/шаг</mat-hint>
           </mat-form-field>
           <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Средние пары (пары 3–4, фикс.)</mat-label>
+            <mat-label>Средние (3–4)</mat-label>
             <input matInput type="number" formControlName="middlePair" min="0">
+            <mat-hint>фикс.</mat-hint>
           </mat-form-field>
           <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Поздние пары (пары 5+, /шаг)</mat-label>
+            <mat-label>Поздние (5+)</mat-label>
             <input matInput type="number" formControlName="latePair" min="0">
+            <mat-hint>/шаг</mat-hint>
           </mat-form-field>
         </div>
 
@@ -487,12 +490,12 @@ export class CreateScheduleDialogComponent {
           <mat-form-field appearance="outline" class="flex1">
             <mat-label>Макс. штраф за ходьбу (S4)</mat-label>
             <input matInput type="number" formControlName="walkingPenaltyMax" min="1">
-            <mat-hint>Штраф при walkMins / break ≈ 1.0</mat-hint>
+            <mat-hint>при ходьбе ≈ перемене</mat-hint>
           </mat-form-field>
           <mat-form-field appearance="outline" class="flex1">
             <mat-label>Метров на этаж (лестница)</mat-label>
             <input matInput type="number" formControlName="stairFloorMeters" min="0">
-            <mat-hint>Эквивалент ходьбы за подъём на 1 этаж</mat-hint>
+            <mat-hint>= ходьба за 1 этаж</mat-hint>
           </mat-form-field>
         </div>
         <div class="row">
@@ -513,11 +516,14 @@ export class CreateScheduleDialogComponent {
   `,
   styles: [`
     .settings-form { display: flex; flex-direction: column; padding-top: 4px; min-width: 440px; }
-    .row { display: flex; gap: 8px; }
-    .flex1 { flex: 1; }
+    .row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
+    .flex1 { flex: 1; min-width: 0; }
     .half-width { width: calc(50% - 4px); }
-    .section-label { margin: 8px 0 4px; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.4px; }
+    .section-label { margin: 14px 0 6px; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.4px; }
     .spinner-wrap { display: flex; justify-content: center; padding: 32px; }
+    /* Let multi-line hints push the field taller instead of overlapping the row below. */
+    ::ng-deep .settings-form .mat-mdc-form-field-subscript-wrapper,
+    ::ng-deep .settings-form .mat-mdc-form-field-hint-wrapper { position: static; }
   `]
 })
 export class SolverSettingsDialogComponent implements OnInit {

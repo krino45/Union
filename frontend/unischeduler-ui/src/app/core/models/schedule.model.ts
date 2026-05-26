@@ -112,6 +112,7 @@ export interface StudyPlanHourChange {
   subjectName: string;
   field: string;
   fieldLabel: string;
+  oldHours: number;
   newHours: number;
 }
 

@@ -25,8 +25,9 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
     <h2 mat-dialog-title>Заполнить настройки из расписания</h2>
     <mat-dialog-content>
       <p class="hint">
-        Анализирует занятия текущего расписания и достает из них информацию.
-        Не изменяет уже существующую информацию
+        Анализирует занятия текущего расписания и достаёт из них информацию.
+        Аудитории и дисциплины дополняются; часы учебных планов приводятся
+        к расписанию (могут быть перезаписаны).
       </p>
 
       <div class="targets">
@@ -83,7 +84,11 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
               <div class="change-row" *ngFor="let c of p.changes">
                 <span class="entity">{{ c.subjectName }}</span>
                 <span class="adds">
-                  <mat-chip class="add-chip">{{ c.fieldLabel }}: {{ c.newHours }} ч</mat-chip>
+                  <mat-chip class="add-chip">
+                    {{ c.fieldLabel }}:
+                    <span class="old-h" *ngIf="c.oldHours > 0">{{ c.oldHours }} →</span>
+                    {{ c.newHours }} ч
+                  </mat-chip>
                 </span>
               </div>
             </div>
@@ -104,6 +109,7 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
   `,
   styles: [`
     .hint { color: #666; font-size: 13px; margin: 0 0 12px; }
+    .old-h { color: #b71c1c; text-decoration: line-through; opacity: 0.7; margin-right: 2px; }
     .targets { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
     .note { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: #1565c0;
       background: #e3f2fd; border-radius: 4px; padding: 6px 8px; margin-bottom: 12px; }
