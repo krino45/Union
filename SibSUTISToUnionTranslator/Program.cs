@@ -135,10 +135,11 @@ AppDomain.CurrentDomain.ProcessExit += (_, _) => SaveEmptyGroups();
 
 var knownGroupNames = new HashSet<string>(groupIds.Keys, StringComparer.OrdinalIgnoreCase);
 
-// Key: canonical entry identity (ignores which week it was seen in, ignores group combination)
-// Groups are tracked separately so the same physical slot seen from different group pages merges correctly.
-var entryMap    = new Dictionary<EntryKey, (bool w1, bool w2, EntryData d)>();
-var entryGroups = new Dictionary<EntryKey, HashSet<string>>();
+// Key: canonical entry identity (ignores which week it was seen in, ignores group combination).
+// Week parity is tracked PER GROUP, not per key: two groups that share an identical slot but on
+// opposite week parities (A odd-only, B even-only) must stay separate, not collapse into one "Both".
+var entryData       = new Dictionary<EntryKey, EntryData>();
+var entryGroupWeeks = new Dictionary<EntryKey, Dictionary<string, (bool w1, bool w2)>>();
 
 using var playwright = await Playwright.CreateAsync();
 await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
@@ -257,21 +258,22 @@ foreach (var (groupName, groupId) in groupIds)
                         lastName, firstName,
                         building ?? "", room ?? "", isOnline, lessonType, subgroup);
 
-                    // Merge groups across pages — the same physical slot may appear on multiple group pages
-                    if (!entryGroups.TryGetValue(key, out var groupSet))
+                    if (!entryData.ContainsKey(key))
+                        entryData[key] = new EntryData(relevantGroups, discipline, lastName, firstName,
+                            building, room, isOnline, lessonType, subgroup, parallel);
+
+                    // Track week parity per group so the same physical slot seen on multiple group
+                    // pages merges correctly, but groups on opposite parities don't fuse into "Both".
+                    if (!entryGroupWeeks.TryGetValue(key, out var groupWeeks))
                     {
-                        groupSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                        entryGroups[key] = groupSet;
+                        groupWeeks = new Dictionary<string, (bool, bool)>(StringComparer.OrdinalIgnoreCase);
+                        entryGroupWeeks[key] = groupWeeks;
                     }
-                    foreach (var g in relevantGroups) groupSet.Add(g);
-
-                    if (!entryMap.TryGetValue(key, out var existing))
-                        existing = (false, false, new EntryData(relevantGroups, discipline, lastName, firstName,
-                            building, room, isOnline, lessonType, subgroup, parallel));
-
-                    entryMap[key] = isWeek2
-                        ? (existing.w1, true, existing.d)
-                        : (true, existing.w2, existing.d);
+                    foreach (var g in relevantGroups)
+                    {
+                        groupWeeks.TryGetValue(g, out var wk);
+                        groupWeeks[g] = isWeek2 ? (wk.w1, true) : (true, wk.w2);
+                    }
                 }
 
                 groupHadEntries = true;
@@ -289,45 +291,52 @@ foreach (var (groupName, groupId) in groupIds)
 SaveEmptyGroups();
 Console.WriteLine($"Saved {emptyGroups.Count} empty groups to {emptyGroupsPath}.");
 
-var result = entryMap.Select(kvp =>
+static WeekType ToWeekType(bool w1, bool w2) => (w1, w2) switch
 {
-    var (w1, w2, d) = kvp.Value;
-    var weekType = (w1, w2) switch
+    (true, true)  => WeekType.Both,
+    (true, false) => WeekType.Odd,
+    _             => WeekType.Even
+};
+
+var result = new List<JsonEntryImport>();
+foreach (var (key, groupWeeks) in entryGroupWeeks)
+{
+    var d = entryData[key];
+
+    // Split the key's groups by week parity: groups sharing the same parity become one entry,
+    // groups on different parities become separate entries (the merge bug this fixes).
+    foreach (var weekGroup in groupWeeks.GroupBy(kv => ToWeekType(kv.Value.w1, kv.Value.w2)))
     {
-        (true, true)  => WeekType.Both,
-        (true, false) => WeekType.Odd,
-        _             => WeekType.Even
-    };
-    var groups = entryGroups.TryGetValue(kvp.Key, out var gs)
-        ? gs.OrderBy(x => x).ToList()
-        : d.Groups.ToList();
+        var weekType = weekGroup.Key;
+        var groups = weekGroup.Select(kv => kv.Key).OrderBy(x => x).ToList();
 
-    // Parallel sessions of one logical class share a key so the importer links them as siblings.
-    // Streams/subgroups group by their slot+discipline+groups; each carries a display label.
-    bool hasSubgroup = !string.IsNullOrEmpty(d.Subgroup);
-    string? parallelKey = (hasSubgroup || d.Parallel)
-        ? $"{kvp.Key.DayOfWeek}|{kvp.Key.PairNumber}|{weekType}|{d.Discipline}|{string.Join(",", groups)}"
-        : null;
-    string? subgroupLabel = hasSubgroup ? $"Подгр. {d.Subgroup}"
-        : d.Parallel ? d.LastName
-        : null;
+        // Parallel sessions of one logical class share a key so the importer links them as siblings.
+        // Streams/subgroups group by their slot+discipline+groups; each carries a display label.
+        bool hasSubgroup = !string.IsNullOrEmpty(d.Subgroup);
+        string? parallelKey = (hasSubgroup || d.Parallel)
+            ? $"{key.DayOfWeek}|{key.PairNumber}|{weekType}|{d.Discipline}|{string.Join(",", groups)}"
+            : null;
+        string? subgroupLabel = hasSubgroup ? $"Подгр. {d.Subgroup}"
+            : d.Parallel ? d.LastName
+            : null;
 
-    return new JsonEntryImport(
-        SubjectShortName: d.Discipline,
-        TeacherLastName:  d.LastName,
-        TeacherFirstName: d.FirstName,
-        GroupNames:       groups,
-        BuildingShortCode: d.BuildingShortCode,
-        RoomNumber:       d.RoomNumber,
-        DayOfWeek:        kvp.Key.DayOfWeek,
-        PairNumber:       kvp.Key.PairNumber,
-        WeekType:         weekType,
-        LessonType:       d.LessonType,
-        IsOnline:         d.IsOnline,
-        ParallelGroupKey: parallelKey,
-        SubgroupLabel:    subgroupLabel
-    );
-}).ToList();
+        result.Add(new JsonEntryImport(
+            SubjectShortName: d.Discipline,
+            TeacherLastName:  d.LastName,
+            TeacherFirstName: d.FirstName,
+            GroupNames:       groups,
+            BuildingShortCode: d.BuildingShortCode,
+            RoomNumber:       d.RoomNumber,
+            DayOfWeek:        key.DayOfWeek,
+            PairNumber:       key.PairNumber,
+            WeekType:         weekType,
+            LessonType:       d.LessonType,
+            IsOnline:         d.IsOnline,
+            ParallelGroupKey: parallelKey,
+            SubgroupLabel:    subgroupLabel
+        ));
+    }
+}
 
 var json = JsonSerializer.Serialize(result, new JsonSerializerOptions
 {

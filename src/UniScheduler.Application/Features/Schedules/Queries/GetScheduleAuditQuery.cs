@@ -69,6 +69,10 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             var a = entries[i]; var b = entries[j];
             if (!SlotsOverlap(a, b)) continue;
 
+            // Parallel sessions of one logical class (language streams / lab subgroups) share the
+            // group/teacher/room slot by design — never a real conflict.
+            if (a.ParallelGroupId.HasValue && a.ParallelGroupId == b.ParallelGroupId) continue;
+
             // Same teacher + same physical room = same combined lecture split across week types by the scraper.
             // Not a real conflict — the teacher is in one place teaching one session.
             bool samePhysicalSession = a.TeacherId == b.TeacherId
@@ -111,7 +115,9 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
 
         foreach (var group in groups)
         {
-            var groupEntries = entriesByGroup.TryGetValue(group.Id, out var ge) ? ge : new();
+            var rawGroupEntries = entriesByGroup.TryGetValue(group.Id, out var ge) ? ge : new();
+            // Parallel siblings (same ParallelGroupId) are one logical class occupying one slot
+            var groupEntries = CollapseParallel(rawGroupEntries);
 
             //  Hours check: study plan only 
             if (planByGroup.TryGetValue(group.Id, out var plan))
@@ -220,6 +226,19 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             AddUnique(warnings, seen, "Window",
                 $"Окно: {group.Name} — {DayLabel(day)} ({wk}): {windows} пустых пар между {pairs[0]} и {pairs[^1]}");
         }
+    }
+
+    // Keeps one representative per parallel group; entries without a ParallelGroupId pass through.
+    private static List<ScheduleEntry> CollapseParallel(List<ScheduleEntry> source)
+    {
+        var result = new List<ScheduleEntry>(source.Count);
+        var seenGroups = new HashSet<Guid>();
+        foreach (var e in source)
+        {
+            if (e.ParallelGroupId is { } pg && !seenGroups.Add(pg)) continue;
+            result.Add(e);
+        }
+        return result;
     }
 
     private static bool SlotsOverlap(ScheduleEntry a, ScheduleEntry b)
