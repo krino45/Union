@@ -113,14 +113,28 @@ public static class ScheduleScoreCalculator
                 .ToList();
             if (slot.Count == 0) continue;
 
-            var pairs = slot.Select(e => e.PairNumber).Distinct().OrderBy(p => p).ToList();
+            // A pair counts as online only if every class at that pair is online.
+            var onlineByPair = slot.GroupBy(e => e.PairNumber).ToDictionary(g => g.Key, g => g.All(e => e.IsOnline));
+            var pairs = onlineByPair.Keys.OrderBy(p => p).ToList();
 
             // S3: active group-day  (+60)
             score += penalties.ActiveDay;
 
-            // S1: student windows  (+100 per gap)
-            if (pairs.Count >= 2)
-                score += (pairs[^1] - pairs[0] + 1 - pairs.Count) * penalties.StudentWindow;
+            // S1: student windows. A gap is only penalised between two on-campus pairs; a gap next to
+            // an online pair is fine. A zero-gap online<->campus transition is penalised like a window.
+            for (int i = 0; i + 1 < pairs.Count; i++)
+            {
+                int a = pairs[i], b = pairs[i + 1];
+                int gap = b - a - 1;
+                if (gap > 0)
+                {
+                    if (!onlineByPair[a] && !onlineByPair[b]) score += gap * penalties.StudentWindow;
+                }
+                else if (onlineByPair[a] != onlineByPair[b])
+                {
+                    score += penalties.StudentWindow;
+                }
+            }
 
             // S5: SanPIN daily overload  (+300 per pair over 4)
             score += Math.Max(0, pairs.Count - 4) * penalties.SanPinOverload;

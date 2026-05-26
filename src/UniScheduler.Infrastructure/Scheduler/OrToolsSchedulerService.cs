@@ -365,11 +365,43 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
+        // Per-slot group occupancy split by campus vs online — drives the online-aware window penalty.
+        var isGroupCampus = new BoolVar[groups.Count, NumDays, numPairs, 2];
+        var isGroupOnline = new BoolVar[groups.Count, NumDays, numPairs, 2];
+        for (int gi = 0; gi < groups.Count; gi++)
+        {
+            var grIdxs = groupReqs[groups[gi].Id];
+            for (int d = 0; d < NumDays; d++)
+            for (int p = 0; p < numPairs; p++)
+            for (int wi = 0; wi < 2; wi++)
+            {
+                var campusVars = new List<BoolVar>();
+                var onlineVars = new List<BoolVar>();
+                foreach (int ri in grIdxs)
+                {
+                    if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
+                    int varWi = VarWeekIndex(reqs[ri].WeekType);
+                    foreach (var kv in vars.Where(x => x.Key.ri == ri && x.Key.d == d && x.Key.p == p && x.Key.wi == varWi))
+                        (reqs[ri].IsOnline ? onlineVars : campusVars).Add(kv.Value);
+                }
+
+                var bc = model.NewBoolVar($"gcamp_{gi}_{d}_{p}_{wi}");
+                if (campusVars.Count > 0) model.AddMaxEquality(bc, campusVars.Select(v => (IntVar)v).ToArray());
+                else model.Add(bc == 0);
+                isGroupCampus[gi, d, p, wi] = bc;
+
+                var bo = model.NewBoolVar($"gonl_{gi}_{d}_{p}_{wi}");
+                if (onlineVars.Count > 0) model.AddMaxEquality(bo, onlineVars.Select(v => (IntVar)v).ToArray());
+                else model.Add(bo == 0);
+                isGroupOnline[gi, d, p, wi] = bo;
+            }
+        }
+
         progress?.Report("Построение целевой функции (S1–S6)...");
         var objVars = new List<IntVar>();
         var objCoeffs = new List<long>();
 
-        // S1: Student windows (weight 100)
+        // S1: Student windows
         for (int gi = 0; gi < groups.Count; gi++)
         for (int d = 0; d < NumDays; d++)
         for (int wi = 0; wi < 2; wi++)
@@ -378,8 +410,8 @@ public class OrToolsSchedulerService : ISchedulerService
             {
                 var before = model.NewBoolVar($"bef_{gi}_{d}_{wi}_{pm}");
                 var after = model.NewBoolVar($"aft_{gi}_{d}_{wi}_{pm}");
-                var beforeVars = Enumerable.Range(0, pm).Select(pp => (IntVar)isGroupUsed[gi, d, pp, wi]).ToArray();
-                var afterVars = Enumerable.Range(pm + 1, numPairs - pm - 1).Select(pp => (IntVar)isGroupUsed[gi, d, pp, wi]).ToArray();
+                var beforeVars = Enumerable.Range(0, pm).Select(pp => (IntVar)isGroupCampus[gi, d, pp, wi]).ToArray();
+                var afterVars = Enumerable.Range(pm + 1, numPairs - pm - 1).Select(pp => (IntVar)isGroupCampus[gi, d, pp, wi]).ToArray();
 
                 model.AddMaxEquality(before, beforeVars);
                 model.AddMaxEquality(after, afterVars);
@@ -390,6 +422,22 @@ public class OrToolsSchedulerService : ISchedulerService
                     LinearExpr.Sum(new LinearExpr[] { before, after }) - (LinearExpr)isGroupUsed[gi, d, pm, wi] - 1);
 
                 objVars.Add(windowVar);
+                objCoeffs.Add(w.StudentWindow);
+            }
+
+            // Discourage a zero-gap online-to-campus transition (no time to move between home and campus)
+            for (int p = 0; p < numPairs - 1; p++)
+            {
+                var co = model.NewBoolVar($"trCO_{gi}_{d}_{wi}_{p}");
+                model.Add((LinearExpr)co >=
+                    LinearExpr.Sum(new[] { (IntVar)isGroupCampus[gi, d, p, wi], (IntVar)isGroupOnline[gi, d, p + 1, wi] }) - 1);
+                objVars.Add(co);
+                objCoeffs.Add(w.StudentWindow);
+
+                var oc = model.NewBoolVar($"trOC_{gi}_{d}_{wi}_{p}");
+                model.Add((LinearExpr)oc >=
+                    LinearExpr.Sum(new[] { (IntVar)isGroupOnline[gi, d, p, wi], (IntVar)isGroupCampus[gi, d, p + 1, wi] }) - 1);
+                objVars.Add(oc);
                 objCoeffs.Add(w.StudentWindow);
             }
         }

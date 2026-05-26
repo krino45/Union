@@ -69,7 +69,9 @@ public class SplitAndEditEntryCommandHandler : IRequestHandler<SplitAndEditEntry
                 PairNumber = entry.PairNumber,
                 WeekType = siblingWeek,
                 LessonType = entry.LessonType,
-                IsOnline = entry.IsOnline
+                IsOnline = entry.IsOnline,
+                ParallelGroupId = entry.ParallelGroupId,
+                SubgroupLabel = entry.SubgroupLabel
             };
             _db.ScheduleEntries.Add(sibling);
             foreach (var g in entry.StudentGroups)
@@ -95,7 +97,7 @@ public class SplitAndEditEntryCommandHandler : IRequestHandler<SplitAndEditEntry
         var conflicts = _conflict.DetectConflicts(
             entry.Id, entry.ScheduleId, r.RoomId, r.TeacherId, r.GroupIds,
             r.DayOfWeek, r.PairNumber, entry.WeekType, r.IsOnline, allOtherEntries,
-            entry.ParallelGroupId, roomIsDistributed);
+            entry.ParallelGroupId, roomIsDistributed, entry.SubgroupLabel);
         if (conflicts.Count > 0) throw new ConflictException(conflicts);
 
         entry.SubjectId = r.SubjectId;
@@ -133,6 +135,6 @@ public class SplitAndEditEntryCommandHandler : IRequestHandler<SplitAndEditEntry
             entry.TeacherId, teacher!.DisplayName,
             entry.RoomId, room?.Number, room?.Building?.ShortCode,
             entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.LessonType, entry.IsOnline,
-            groups.Select(g => new GroupRefDto(g.Id, g.Name)).ToList());
+            groups.Select(g => new GroupRefDto(g.Id, g.Name)).ToList(), entry.ParallelGroupId, entry.SubgroupLabel);
     }
 }

@@ -45,7 +45,7 @@ public class ScheduleEntriesController : ControllerBase
     public async Task<ActionResult<ScheduleEntryDto>> Update(Guid id, [FromBody] UpdateRequest req, CancellationToken ct)
         => Ok(await _mediator.Send(new UpdateEntryCommand(id,
             req.SubjectId, req.TeacherId, req.RoomId, req.GroupIds,
-            req.DayOfWeek, req.PairNumber, req.WeekType, req.LessonType, req.IsOnline), ct));
+            req.DayOfWeek, req.PairNumber, req.WeekType, req.LessonType, req.IsOnline, req.SubgroupLabel), ct));
 
     /// <summary>Edits one half of a Both-week lesson, splitting it into Odd + Even rows if needed.</summary>
     [HttpPost("{id:guid}/split-edit")]
@@ -74,6 +74,7 @@ public class ScheduleEntriesController : ControllerBase
         [FromQuery] bool isOnline,
         [FromQuery] Guid? excludeEntryId,
         [FromQuery] Guid? parallelGroupId,
+        [FromQuery] string? subgroupLabel,
         CancellationToken ct)
     {
         var existing = await _db.ScheduleEntries
@@ -86,7 +87,7 @@ public class ScheduleEntriesController : ControllerBase
 
         var conflicts = _conflictDetector.DetectConflicts(
             excludeEntryId ?? Guid.Empty, scheduleId, roomId, teacherId, groupIds,
-            dayOfWeek, pairNumber, weekType, isOnline, existing, parallelGroupId, roomIsDistributed);
+            dayOfWeek, pairNumber, weekType, isOnline, existing, parallelGroupId, roomIsDistributed, subgroupLabel);
 
         return Ok(conflicts);
     }
@@ -98,7 +99,8 @@ public record UpdateRequest(
     Guid SubjectId, Guid TeacherId, Guid? RoomId,
     List<Guid> GroupIds,
     RussianDayOfWeek DayOfWeek, int PairNumber, WeekType WeekType,
-    LessonType LessonType, bool IsOnline);
+    LessonType LessonType, bool IsOnline,
+    string? SubgroupLabel = null);
 
 public record SplitEditRequest(
     WeekType TargetWeek,

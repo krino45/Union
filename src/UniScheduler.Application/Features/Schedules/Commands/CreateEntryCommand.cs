@@ -12,7 +12,8 @@ public record CreateEntryCommand(
     Guid ScheduleId, Guid SubjectId, Guid TeacherId, Guid? RoomId,
     List<Guid> GroupIds,
     RussianDayOfWeek DayOfWeek, int PairNumber, WeekType WeekType,
-    LessonType LessonType, bool IsOnline) : IRequest<ScheduleEntryDto>;
+    LessonType LessonType, bool IsOnline,
+    string? SubgroupLabel = null) : IRequest<ScheduleEntryDto>;
 
 public class CreateEntryCommandHandler : IRequestHandler<CreateEntryCommand, ScheduleEntryDto>
 {
@@ -41,8 +42,14 @@ public class CreateEntryCommandHandler : IRequestHandler<CreateEntryCommand, Sch
             .Where(e => e.ScheduleId == r.ScheduleId)
             .ToListAsync(cancellationToken);
 
+        bool roomIsDistributed = r.RoomId.HasValue
+            && await _db.Rooms.AnyAsync(rm => rm.Id == r.RoomId && rm.IsDistributed, cancellationToken);
+
+        var subgroupLabel = string.IsNullOrWhiteSpace(r.SubgroupLabel) ? null : r.SubgroupLabel.Trim();
+
         var conflicts = _conflict.DetectConflicts(Guid.Empty, r.ScheduleId, r.RoomId, r.TeacherId, r.GroupIds,
-            r.DayOfWeek, r.PairNumber, r.WeekType, r.IsOnline, allEntries);
+            r.DayOfWeek, r.PairNumber, r.WeekType, r.IsOnline, allEntries,
+            parallelGroupId: null, roomIsDistributed: roomIsDistributed, subgroupLabel: subgroupLabel);
 
         if (conflicts.Count > 0) throw new ConflictException(conflicts);
 
@@ -50,7 +57,8 @@ public class CreateEntryCommandHandler : IRequestHandler<CreateEntryCommand, Sch
         {
             ScheduleId = r.ScheduleId, SubjectId = r.SubjectId, TeacherId = r.TeacherId,
             RoomId = r.RoomId, DayOfWeek = r.DayOfWeek, PairNumber = r.PairNumber,
-            WeekType = r.WeekType, LessonType = r.LessonType, IsOnline = r.IsOnline
+            WeekType = r.WeekType, LessonType = r.LessonType, IsOnline = r.IsOnline,
+            SubgroupLabel = subgroupLabel
         };
         _db.ScheduleEntries.Add(entry);
         foreach (var gid in r.GroupIds)
@@ -72,6 +80,6 @@ public class CreateEntryCommandHandler : IRequestHandler<CreateEntryCommand, Sch
         return new ScheduleEntryDto(entry.Id, entry.ScheduleId, entry.SubjectId, subject!.Name, subject.ShortName,
             entry.TeacherId, teacher!.DisplayName, entry.RoomId, room?.Number, room?.Building?.ShortCode,
             entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.LessonType, entry.IsOnline,
-            groups.Select(g => new GroupRefDto(g.Id, g.Name)).ToList());
+            groups.Select(g => new GroupRefDto(g.Id, g.Name)).ToList(), entry.ParallelGroupId, entry.SubgroupLabel);
     }
 }

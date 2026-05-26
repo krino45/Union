@@ -19,7 +19,8 @@ public class ConflictDetector : IConflictDetector
         bool isOnline,
         IEnumerable<ScheduleEntry> existingEntries,
         Guid? parallelGroupId = null,
-        bool roomIsDistributed = false)
+        bool roomIsDistributed = false,
+        string? subgroupLabel = null)
     {
         var conflicts = new List<ConflictInfo>();
         var groupIdSet = groupIds.ToHashSet();
@@ -57,7 +58,7 @@ public class ConflictDetector : IConflictDetector
             // Group double-booking
             var entryGroupIds = entry.StudentGroups.Select(sg => sg.StudentGroupId).ToHashSet();
             var sharedGroups = groupIdSet.Intersect(entryGroupIds).ToList();
-            if (sharedGroups.Any())
+            if (sharedGroups.Any() && !AreDistinctSubgroups(subgroupLabel, entry.SubgroupLabel))
             {
                 conflicts.Add(new ConflictInfo(ConflictType.GroupDoubleBooked,
                     $"Student group(s) already have a class at {dayOfWeek} pair {pairNumber} ({weekType})"));
@@ -66,6 +67,13 @@ public class ConflictDetector : IConflictDetector
 
         return conflicts;
     }
+
+    // True when both entries are explicitly labelled subgroups with different labels — they may
+    // legitimately occupy the same group + slot simultaneously.
+    private static bool AreDistinctSubgroups(string? a, string? b)
+        => !string.IsNullOrWhiteSpace(a)
+           && !string.IsNullOrWhiteSpace(b)
+           && !string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     private static bool SlotsOverlapWeekType(WeekType a, WeekType b)
     {

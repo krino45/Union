@@ -13,7 +13,8 @@ public record UpdateEntryCommand(
     Guid SubjectId, Guid TeacherId, Guid? RoomId,
     List<Guid> GroupIds,
     RussianDayOfWeek DayOfWeek, int PairNumber, WeekType WeekType,
-    LessonType LessonType, bool IsOnline) : IRequest<ScheduleEntryDto>;
+    LessonType LessonType, bool IsOnline,
+    string? SubgroupLabel = null) : IRequest<ScheduleEntryDto>;
 
 public class UpdateEntryCommandHandler : IRequestHandler<UpdateEntryCommand, ScheduleEntryDto>
 {
@@ -53,10 +54,12 @@ public class UpdateEntryCommandHandler : IRequestHandler<UpdateEntryCommand, Sch
         bool roomIsDistributed = r.RoomId.HasValue
             && await _db.Rooms.AnyAsync(rm => rm.Id == r.RoomId && rm.IsDistributed, cancellationToken);
 
+        var subgroupLabel = string.IsNullOrWhiteSpace(r.SubgroupLabel) ? null : r.SubgroupLabel.Trim();
+
         var conflicts = _conflict.DetectConflicts(
             r.EntryId, entry.ScheduleId, r.RoomId, r.TeacherId, r.GroupIds,
             r.DayOfWeek, r.PairNumber, r.WeekType, r.IsOnline, allOtherEntries,
-            entry.ParallelGroupId, roomIsDistributed);
+            entry.ParallelGroupId, roomIsDistributed, subgroupLabel);
 
         if (conflicts.Count > 0) throw new ConflictException(conflicts);
 
@@ -68,6 +71,7 @@ public class UpdateEntryCommandHandler : IRequestHandler<UpdateEntryCommand, Sch
         entry.WeekType   = r.WeekType;
         entry.LessonType = r.LessonType;
         entry.IsOnline   = r.IsOnline;
+        entry.SubgroupLabel = subgroupLabel;
 
         var existingGroupIds = entry.StudentGroups.Select(sg => sg.StudentGroupId).ToHashSet();
         var newGroupIds      = r.GroupIds.ToHashSet();
@@ -99,6 +103,6 @@ public class UpdateEntryCommandHandler : IRequestHandler<UpdateEntryCommand, Sch
             entry.TeacherId, teacher!.DisplayName,
             entry.RoomId, room?.Number, room?.Building?.ShortCode,
             entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.LessonType, entry.IsOnline,
-            groups.Select(g => new GroupRefDto(g.Id, g.Name)).ToList());
+            groups.Select(g => new GroupRefDto(g.Id, g.Name)).ToList(), entry.ParallelGroupId, entry.SubgroupLabel);
     }
 }

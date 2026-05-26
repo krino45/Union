@@ -18,7 +18,8 @@ public record ValidateEditQuery(
     int PairNumber,
     WeekType WeekType,
     LessonType LessonType,
-    bool IsOnline) : IRequest<List<ValidationIssue>>;
+    bool IsOnline,
+    string? SubgroupLabel = null) : IRequest<List<ValidationIssue>>;
 
 public class ValidateEditQueryHandler : IRequestHandler<ValidateEditQuery, List<ValidationIssue>>
 {
@@ -37,9 +38,20 @@ public class ValidateEditQueryHandler : IRequestHandler<ValidateEditQuery, List<
             .Where(e => e.ScheduleId == r.ScheduleId && (r.EntryId == null || e.Id != r.EntryId))
             .ToListAsync(cancellationToken);
 
+        // When editing, inherit the entry's parallel-group link so its own siblings aren't flagged.
+        Guid? parallelGroupId = r.EntryId.HasValue
+            ? await _db.ScheduleEntries.Where(e => e.Id == r.EntryId).Select(e => e.ParallelGroupId).FirstOrDefaultAsync(cancellationToken)
+            : null;
+
+        bool roomIsDistributed = r.RoomId.HasValue
+            && await _db.Rooms.AnyAsync(rm => rm.Id == r.RoomId && rm.IsDistributed, cancellationToken);
+
+        var subgroupLabel = string.IsNullOrWhiteSpace(r.SubgroupLabel) ? null : r.SubgroupLabel.Trim();
+
         var conflicts = _conflict.DetectConflicts(
             r.EntryId ?? Guid.Empty, r.ScheduleId, r.RoomId, r.TeacherId, r.GroupIds,
-            r.DayOfWeek, r.PairNumber, r.WeekType, r.IsOnline, allOtherEntries);
+            r.DayOfWeek, r.PairNumber, r.WeekType, r.IsOnline, allOtherEntries,
+            parallelGroupId, roomIsDistributed, subgroupLabel);
 
         foreach (var c in conflicts)
             issues.Add(new ValidationIssue("error", c.Type.ToString(), c.Description));

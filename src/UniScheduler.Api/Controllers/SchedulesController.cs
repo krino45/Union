@@ -105,7 +105,8 @@ public class SchedulesController : ControllerBase
     public async Task<ActionResult<List<ValidationIssue>>> ValidateEdit(Guid id, [FromBody] ValidateEditBody body, CancellationToken ct)
     {
         var q = new ValidateEditQuery(id, body.EntryId, body.SubjectId, body.TeacherId, body.RoomId,
-            body.GroupIds, body.DayOfWeek, body.PairNumber, body.WeekType, body.LessonType, body.IsOnline);
+            body.GroupIds, body.DayOfWeek, body.PairNumber, body.WeekType, body.LessonType, body.IsOnline,
+            body.SubgroupLabel);
         return Ok(await mediator.Send(q, ct));
     }
 
@@ -194,4 +195,5 @@ public record ValidateEditBody(
     int PairNumber,
     WeekType WeekType,
     LessonType LessonType,
-    bool IsOnline);
+    bool IsOnline,
+    string? SubgroupLabel = null);

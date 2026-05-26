@@ -55,7 +55,7 @@ public class MoveEntryCommandHandler : IRequestHandler<MoveEntryCommand, Schedul
         var conflicts = _conflict.DetectConflicts(
             entry.Id, entry.ScheduleId, newRoomId, entry.TeacherId, groupIds,
             request.NewDayOfWeek, request.NewPairNumber, request.NewWeekType, isOnline,
-            allEntries, entry.ParallelGroupId, roomIsDistributed);
+            allEntries, entry.ParallelGroupId, roomIsDistributed, entry.SubgroupLabel);
 
         if (conflicts.Count > 0)
             throw new ConflictException(conflicts);
@@ -85,6 +85,7 @@ public class MoveEntryCommandHandler : IRequestHandler<MoveEntryCommand, Schedul
             entry.TeacherId, entry.Teacher.DisplayName,
             entry.RoomId, entry.Room?.Number, entry.Room?.Building?.ShortCode,
             entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.LessonType, entry.IsOnline,
-            entry.StudentGroups.Select(sg => new GroupRefDto(sg.StudentGroupId, sg.StudentGroup.Name)).ToList());
+            entry.StudentGroups.Select(sg => new GroupRefDto(sg.StudentGroupId, sg.StudentGroup.Name)).ToList(),
+            entry.ParallelGroupId, entry.SubgroupLabel);
     }
 }

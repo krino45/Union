@@ -45,6 +45,7 @@ export interface CreateScheduleEntryDto {
   lessonType: LessonType;
   isOnline: boolean;
   groupIds: string[];
+  subgroupLabel?: string | null;
 }
 
 export interface UpdateScheduleEntryDto {
@@ -57,6 +58,7 @@ export interface UpdateScheduleEntryDto {
   lessonType: LessonType;
   isOnline: boolean;
   groupIds: string[];
+  subgroupLabel?: string | null;
 }
 
 export interface ParallelSessionInput {

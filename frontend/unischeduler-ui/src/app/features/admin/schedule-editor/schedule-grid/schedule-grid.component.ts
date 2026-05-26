@@ -46,7 +46,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                   <div class="week-half" *ngIf="weekFilter === 'Both' || weekFilter === 'Odd'">
                     <div class="half-header">
                       <span class="week-label num-label" *ngIf="weekFilter === 'Both'">Неч.</span>
-                      <button class="add-btn num-add" *ngIf="!readonly" (click)="requestAdd(d, p, 'Odd', getCellNum(d, p)[0])" [title]="getCellNum(d, p).length > 0 ? 'Изменить занятие' : 'Добавить занятие'">{{ getCellNum(d, p).length > 0 ? '✎' : '+' }}</button>
+                      <button class="add-btn num-add" *ngIf="!readonly" (click)="requestAdd(d, p, 'Odd')" title="Добавить занятие">+</button>
                     </div>
                     <div
                       cdkDropList
@@ -63,7 +63,9 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                         class="entry-card"
                         [class.online]="entry.isOnline"
                         [class.both-weeks]="entry.weekType === 'Both'"
-                        [class.readonly]="readonly">
+                        [class.readonly]="readonly"
+                        [class.clickable]="!readonly"
+                        (click)="editEntry(d, p, 'Odd', entry)">
                         <div class="entry-header">
                           <span class="lt-badge">{{ entry.lessonType | lessonType }}</span>
                           <button class="delete-btn" *ngIf="!readonly" (click)="$event.stopPropagation(); deleteEntry(entry)" title="Удалить">×</button>
@@ -85,7 +87,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                   <div class="week-half" *ngIf="weekFilter === 'Both' || weekFilter === 'Even'">
                     <div class="half-header">
                       <span class="week-label den-label" *ngIf="weekFilter === 'Both'">Чёт.</span>
-                      <button class="add-btn den-add" *ngIf="!readonly" (click)="requestAdd(d, p, 'Even', getCellDen(d, p)[0])" [title]="getCellDen(d, p).length > 0 ? 'Изменить занятие' : 'Добавить занятие'">{{ getCellDen(d, p).length > 0 ? '✎' : '+' }}</button>
+                      <button class="add-btn den-add" *ngIf="!readonly" (click)="requestAdd(d, p, 'Even')" title="Добавить занятие">+</button>
                     </div>
                     <div
                       cdkDropList
@@ -102,7 +104,9 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
                         class="entry-card den"
                         [class.online]="entry.isOnline"
                         [class.both-weeks]="entry.weekType === 'Both'"
-                        [class.readonly]="readonly">
+                        [class.readonly]="readonly"
+                        [class.clickable]="!readonly"
+                        (click)="editEntry(d, p, 'Even', entry)">
                         <div class="entry-header">
                           <span class="lt-badge">{{ entry.lessonType | lessonType }}</span>
                           <button class="delete-btn" *ngIf="!readonly" (click)="$event.stopPropagation(); deleteEntry(entry)" title="Удалить">×</button>
@@ -174,6 +178,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
     .entry-card.both-weeks { border-left-style: dashed; }
     .entry-card:active { cursor: grabbing; }
     .entry-card.readonly { cursor: default; }
+    .entry-card.clickable:hover { outline: 2px solid rgba(25,118,210,0.5); outline-offset: -1px; }
     .entry-card.cdk-drag-dragging { opacity: 0.85; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
     .entry-header { display: flex; align-items: center; margin-bottom: 2px; }
     .lt-badge { font-size: 9px; color: #666; flex: 1; }
@@ -276,6 +281,12 @@ export class ScheduleGridComponent implements OnChanges {
 
   requestAdd(day: RussianDayOfWeek, pair: number, weekType: string, existingEntry?: ScheduleEntry): void {
     this.addRequested.emit({ day, pair, weekType, existingEntry });
+  }
+
+  // Click a card to edit that specific entry (so subgroups sharing a slot are each reachable).
+  editEntry(day: RussianDayOfWeek, pair: number, weekType: string, entry: ScheduleEntry): void {
+    if (this.readonly) return;
+    this.addRequested.emit({ day, pair, weekType, existingEntry: entry });
   }
 
   deleteEntry(entry: ScheduleEntry): void {

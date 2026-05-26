@@ -46,6 +46,7 @@ export interface ValidateEditBody {
   weekType: string;
   lessonType: string;
   isOnline: boolean;
+  subgroupLabel?: string | null;
 }
 
 export interface SplitEditBody {

@@ -18,5 +18,6 @@ public interface IConflictDetector
         bool isOnline,
         IEnumerable<ScheduleEntry> existingEntries,
         Guid? parallelGroupId = null,
-        bool roomIsDistributed = false);
+        bool roomIsDistributed = false,
+        string? subgroupLabel = null);
 }

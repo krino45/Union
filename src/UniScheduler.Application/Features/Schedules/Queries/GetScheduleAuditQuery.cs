@@ -92,7 +92,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             var aGroups = a.StudentGroups.Select(sg => sg.StudentGroupId).ToHashSet();
             var bGroups = b.StudentGroups.Select(sg => sg.StudentGroupId).ToHashSet();
             var sharedGroupIds = aGroups.Intersect(bGroups).ToHashSet();
-            if (!samePhysicalSession && sharedGroupIds.Count > 0)
+            if (!samePhysicalSession && sharedGroupIds.Count > 0 && !AreDistinctSubgroups(a.SubgroupLabel, b.SubgroupLabel))
             {
                 var names = a.StudentGroups
                     .Where(sg => sharedGroupIds.Contains(sg.StudentGroupId))
@@ -215,18 +215,41 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         StudentGroup group, List<ScheduleEntry> groupEntries,
         RussianDayOfWeek day, WeekType weekVariant)
     {
-        var pairs = groupEntries
+        var dayEntries = groupEntries
             .Where(e => e.DayOfWeek == day && (e.WeekType == WeekType.Both || e.WeekType == weekVariant))
-            .Select(e => e.PairNumber).OrderBy(p => p).ToList();
-        if (pairs.Count < 2) return;
-        int windows = pairs[^1] - pairs[0] + 1 - pairs.Count;
-        if (windows > 0)
+            .ToList();
+        if (dayEntries.Count < 2) return;
+
+        // A pair is "online" for the group only if every class at that pair is online (no campus presence).
+        var onlineByPair = dayEntries.GroupBy(e => e.PairNumber).ToDictionary(g => g.Key, g => g.All(e => e.IsOnline));
+        var pairs = onlineByPair.Keys.OrderBy(p => p).ToList();
+        string wk = weekVariant == WeekType.Odd ? "нечётная" : "чётная";
+
+        int badWindowPairs = 0;
+        for (int i = 0; i + 1 < pairs.Count; i++)
         {
-            string wk = weekVariant == WeekType.Odd ? "нечётная" : "чётная";
-            AddUnique(warnings, seen, "Window",
-                $"Окно: {group.Name} — {DayLabel(day)} ({wk}): {windows} пустых пар между {pairs[0]} и {pairs[^1]}");
+            int a = pairs[i], b = pairs[i + 1];
+            int gap = b - a - 1;
+            if (gap > 0)
+            {
+                if (!onlineByPair[a] && !onlineByPair[b]) badWindowPairs += gap;
+            }
+            else if (onlineByPair[a] != onlineByPair[b])
+            {
+                AddUnique(warnings, seen, "OnlineTransition",
+                    $"Нет окна между онлайн и очной парой: {group.Name} — {DayLabel(day)} ({wk}), пары {a}–{b}");
+            }
         }
+
+        if (badWindowPairs > 0)
+            AddUnique(warnings, seen, "Window",
+                $"Окно: {group.Name} — {DayLabel(day)} ({wk}): {badWindowPairs} пустых пар");
     }
+
+    private static bool AreDistinctSubgroups(string? a, string? b)
+        => !string.IsNullOrWhiteSpace(a)
+           && !string.IsNullOrWhiteSpace(b)
+           && !string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     // Keeps one representative per parallel group; entries without a ParallelGroupId pass through.
     private static List<ScheduleEntry> CollapseParallel(List<ScheduleEntry> source)

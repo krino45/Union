@@ -139,6 +139,13 @@ export type AddEntryDialogResult =
           </mat-select>
         </mat-form-field>
 
+        <!-- Subgroup label — single-entry mode. Lets several subgroups share a slot (lab «Подгр. 1/2»). -->
+        <mat-form-field appearance="outline" class="full" *ngIf="!parallelMode">
+          <mat-label>Метка подгруппы (необязательно)</mat-label>
+          <input matInput formControlName="subgroupLabel" placeholder="Напр. Подгр. 1">
+          <mat-hint>Разные метки позволяют нескольким подгруппам стоять в одном слоте.</mat-hint>
+        </mat-form-field>
+
         <!-- Parallel-sessions editor -->
         <div class="sessions" *ngIf="parallelMode" formArrayName="sessions">
           <div class="sessions-hdr">Сессии: каждая ведётся отдельным преподавателем одновременно</div>
@@ -276,6 +283,7 @@ export class AddEntryDialogComponent implements OnInit {
       groupIds:   [e?.studentGroups?.map(g => g.id) ?? [], Validators.required],
       isOnline:   [e?.isOnline   ?? false],
       roomId:     [e?.roomId     ?? null],
+      subgroupLabel: [e?.subgroupLabel ?? ''],
       parallelMode: [false],
       sessions:   this.fb.array([])
     });
@@ -341,7 +349,8 @@ export class AddEntryDialogComponent implements OnInit {
       pairNumber: this.data.pair,
       weekType: v.weekType,
       lessonType: v.lessonType,
-      isOnline: v.isOnline
+      isOnline: v.isOnline,
+      subgroupLabel: v.subgroupLabel?.trim() || null
     };
     this.api.validateScheduleEdit(this.data.scheduleId, body).subscribe({
       next: list => this.issues = list,
@@ -400,7 +409,8 @@ export class AddEntryDialogComponent implements OnInit {
         pairNumber: this.data.pair,
         weekType:   v.weekType as WeekType,
         lessonType: v.lessonType as LessonType,
-        isOnline:   v.isOnline
+        isOnline:   v.isOnline,
+        subgroupLabel: v.subgroupLabel?.trim() || null
       };
       const result: AddEntryDialogResult = { mode: 'update', entryId: this.data.existingEntry!.id, dto };
       this.dialogRef.close(result);
@@ -415,7 +425,8 @@ export class AddEntryDialogComponent implements OnInit {
         pairNumber: this.data.pair,
         weekType:   v.weekType as WeekType,
         lessonType: v.lessonType as LessonType,
-        isOnline:   v.isOnline
+        isOnline:   v.isOnline,
+        subgroupLabel: v.subgroupLabel?.trim() || null
       };
       const result: AddEntryDialogResult = { mode: 'create', dto };
       this.dialogRef.close(result);
