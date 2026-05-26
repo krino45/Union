@@ -141,34 +141,49 @@ var knownGroupNames = new HashSet<string>(groupIds.Keys, StringComparer.OrdinalI
 var entryData       = new Dictionary<EntryKey, EntryData>();
 var entryGroupWeeks = new Dictionary<EntryKey, Dictionary<string, (bool w1, bool w2)>>();
 
-using var playwright = await Playwright.CreateAsync();
-await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
-{
-    Headless = true,
-    Args = ["--no-sandbox", "--disable-dev-shm-usage"]
-});
-var page = await browser.NewPageAsync();
-
 // SibSUTIS requires auth; credentials come from env vars SIBSUTIS_USER / SIBSUTIS_PASS.
 var sibUser = Environment.GetEnvironmentVariable("SIBSUTIS_USER") ?? "";
 var sibPass = Environment.GetEnvironmentVariable("SIBSUTIS_PASS") ?? "";
 
-// Navigate once to trigger auth redirect if needed
-var firstGroupId = groupIds.Values.FirstOrDefault() ?? "1";
-await page.GotoAsync($"https://sibsutis.ru/students/schedule/?type=student&month=2&group={firstGroupId}");
+var rawCacheDir = Environment.GetEnvironmentVariable("SIBSUTIS_RAW_CACHE") ?? "raw_pages";
+Directory.CreateDirectory(rawCacheDir);
+Console.WriteLine($"Raw page cache: {Path.GetFullPath(rawCacheDir)}");
 
-if (page.Url.Contains("auth"))
+IPlaywright? playwright = null;
+IBrowser? browser = null;
+IPage? page = null;
+
+async Task<IPage?> EnsureBrowserAsync()
 {
-    if (string.IsNullOrEmpty(sibUser) || string.IsNullOrEmpty(sibPass))
+    if (page != null) return page;
+
+    playwright = await Playwright.CreateAsync();
+    browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
     {
-        Console.Error.WriteLine("Site requires login. Set SIBSUTIS_USER and SIBSUTIS_PASS env vars.");
-        return 1;
+        Headless = true,
+        Args = ["--no-sandbox", "--disable-dev-shm-usage"]
+    });
+    page = await browser.NewPageAsync();
+
+    // Navigate once to trigger auth redirect if needed.
+    var firstGroupId = groupIds.Values.FirstOrDefault() ?? "1";
+    await page.GotoAsync($"https://sibsutis.ru/students/schedule/?type=student&month=2&group={firstGroupId}");
+
+    if (page.Url.Contains("auth"))
+    {
+        if (string.IsNullOrEmpty(sibUser) || string.IsNullOrEmpty(sibPass))
+        {
+            Console.Error.WriteLine("Site requires login. Set SIBSUTIS_USER and SIBSUTIS_PASS env vars.");
+            return null;
+        }
+        await page.FillAsync("input[name=USER_LOGIN]", sibUser);
+        await page.FillAsync("input[name=USER_PASSWORD]", sibPass);
+        await page.ClickAsync("input[name=Login]");
+        await page.WaitForURLAsync("https://sibsutis.ru/students/schedule/**");
+        Console.WriteLine("Logged in.");
     }
-    await page.FillAsync("input[name=USER_LOGIN]", sibUser);
-    await page.FillAsync("input[name=USER_PASSWORD]", sibPass);
-    await page.ClickAsync("input[name=Login]");
-    await page.WaitForURLAsync("https://sibsutis.ru/students/schedule/**");
-    Console.WriteLine("Logged in.");
+
+    return page;
 }
 
 foreach (var (groupName, groupId) in groupIds)
@@ -179,22 +194,36 @@ foreach (var (groupName, groupId) in groupIds)
         continue;
     }
 
-    Console.WriteLine($"Scraping group {groupName} (id={groupId})...");
-
-    await page.GotoAsync($"https://sibsutis.ru/students/schedule/?type=student&month=2&group={groupId}");
-    try
+    string daysJson;
+    var cachePath = Path.Combine(rawCacheDir, $"{groupId}.json");
+    if (File.Exists(cachePath))
     {
-        await page.WaitForSelectorAsync("a[class=calendar__cell]", new() { Timeout = 15_000 });
-        await Task.Delay(TimeSpan.FromSeconds(Random.Shared.NextDouble()));
+        Console.WriteLine($"Group {groupName} (id={groupId}) — loaded from cache.");
+        daysJson = await File.ReadAllTextAsync(cachePath, Encoding.UTF8);
     }
-    catch
+    else
     {
-        Console.Error.WriteLine($"  Timed out waiting for calendar — marking as empty and skipping.");
-        emptyGroups.Add(groupName);
-        continue;
+        Console.WriteLine($"Scraping group {groupName} (id={groupId})...");
+        var pg = await EnsureBrowserAsync();
+        if (pg == null) return 1;
+
+        await pg.GotoAsync($"https://sibsutis.ru/students/schedule/?type=student&month=2&group={groupId}");
+        try
+        {
+            await pg.WaitForSelectorAsync("a[class=calendar__cell]", new() { Timeout = 15_000 });
+            await Task.Delay(TimeSpan.FromSeconds(Random.Shared.NextDouble()));
+        }
+        catch
+        {
+            Console.Error.WriteLine($"  Timed out waiting for calendar — marking as empty and skipping.");
+            emptyGroups.Add(groupName);
+            continue;
+        }
+
+        daysJson = await pg.EvaluateAsync<string>("() => JSON.stringify(days)");
+        await File.WriteAllTextAsync(cachePath, daysJson, Encoding.UTF8);
     }
 
-    var daysJson = await page.EvaluateAsync<string>("() => JSON.stringify(days)");
     string[]? days;
     try { days = JsonSerializer.Deserialize<string[]>(daysJson); }
     catch { Console.Error.WriteLine($"  Failed to parse days JSON — skipping."); continue; }
@@ -287,6 +316,9 @@ foreach (var (groupName, groupId) in groupIds)
         Console.WriteLine($"  No entries found — marked as empty.");
     }
 }
+
+if (browser != null) await browser.DisposeAsync();
+playwright?.Dispose();
 
 SaveEmptyGroups();
 Console.WriteLine($"Saved {emptyGroups.Count} empty groups to {emptyGroupsPath}.");
