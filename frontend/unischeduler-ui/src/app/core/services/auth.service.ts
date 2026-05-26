@@ -121,13 +121,19 @@ export class AuthService {
 
   private storeUser(response: AuthResponse, keepSelected = false): void {
     const existing = this.currentUser;
+    const universities = response.universities ?? [];
+    let selectedUniversity: UniversityAccess | undefined;
+    if (keepSelected && existing?.selectedUniversity) {
+      selectedUniversity = universities.find(u => u.universityId === existing.selectedUniversity!.universityId)
+        ?? existing.selectedUniversity;
+    }
     const user: CurrentUser = {
       username: response.username,
       role: response.role,
       teacherId: response.teacherId,
       email: response.email,
-      universities: response.universities ?? [],
-      selectedUniversity: keepSelected ? existing?.selectedUniversity : undefined
+      universities,
+      selectedUniversity
     };
     this.persist(user);
   }

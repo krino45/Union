@@ -67,6 +67,10 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
         modelBuilder.Entity<SolverSettings>()
             .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<Subject>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<StudyPlan>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
 
         base.OnModelCreating(modelBuilder);
     }

@@ -14,6 +14,11 @@ public class SubjectConfiguration : IEntityTypeConfiguration<Subject>
         builder.Property(s => s.AcademicYear).IsRequired();
         builder.Property(s => s.Term).IsRequired();
 
+        builder.HasOne(s => s.University)
+            .WithMany()
+            .HasForeignKey(s => s.UniversityId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         builder.HasOne(s => s.Department)
             .WithMany(d => d.Subjects)
             .HasForeignKey(s => s.DepartmentId)

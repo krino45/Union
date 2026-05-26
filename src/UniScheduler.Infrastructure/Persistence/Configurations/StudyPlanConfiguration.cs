@@ -13,6 +13,11 @@ public class StudyPlanConfiguration : IEntityTypeConfiguration<StudyPlan>
         builder.Property(sp => sp.AcademicYear).IsRequired();
         builder.Property(sp => sp.Term).IsRequired();
 
+        builder.HasOne(sp => sp.University)
+               .WithMany()
+               .HasForeignKey(sp => sp.UniversityId)
+               .OnDelete(DeleteBehavior.Cascade);
+
         builder.HasMany(sp => sp.Entries)
                .WithOne(e => e.StudyPlan)
                .HasForeignKey(e => e.StudyPlanId)
