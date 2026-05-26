@@ -170,26 +170,3 @@ public enum ConflictType
     GroupDoubleBooked,
     TravelTimeExceeded
 }
-
-//  Excel import 
-
-public class ImportPreviewDto
-{
-    public List<ImportEntryDto> ValidEntries { get; set; } = new();
-    public List<ImportErrorDto> Errors { get; set; } = new();
-    public List<string> Warnings { get; set; } = new();
-    public bool HasErrors => Errors.Any();
-}
-
-public record ImportEntryDto(
-    string GroupName,
-    string SubjectName,
-    string TeacherName,
-    string RoomNumber,
-    RussianDayOfWeek DayOfWeek,
-    int PairNumber,
-    WeekType WeekType,
-    LessonType LessonType
-);
-
-public record ImportErrorDto(int Row, int Col, string Message);

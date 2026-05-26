@@ -32,6 +32,11 @@ public class ScheduleEntriesController : ControllerBase
         return CreatedAtAction(nameof(CheckConflicts), result);
     }
 
+    /// <summary>Creates one class as several parallel sessions (language streams / lab subgroups).</summary>
+    [HttpPost("parallel")]
+    public async Task<ActionResult<List<ScheduleEntryDto>>> CreateParallel([FromBody] CreateParallelEntriesCommand cmd, CancellationToken ct)
+        => Ok(await _mediator.Send(cmd, ct));
+
     [HttpPost("{id:guid}/move")]
     public async Task<ActionResult<ScheduleEntryDto>> Move(Guid id, [FromBody] MoveRequest req, CancellationToken ct)
         => Ok(await _mediator.Send(new MoveEntryCommand(id, req.DayOfWeek, req.PairNumber, req.WeekType, req.RoomId), ct));

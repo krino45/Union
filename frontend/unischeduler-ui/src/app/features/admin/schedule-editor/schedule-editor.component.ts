@@ -429,6 +429,14 @@ export class ScheduleEditorComponent implements OnInit {
             },
             error: (e) => this.snackBar.open(e.error?.title || 'Конфликт при добавлении', 'OK', { duration: 4000 })
           });
+        } else if (result.mode === 'create-parallel') {
+          this.api.createParallelEntries(result.dto).subscribe({
+            next: (entries) => {
+              this.snackBar.open(`Добавлено параллельных сессий: ${entries.length}`, 'OK', { duration: 2500 });
+              this.refreshAfterMutation();
+            },
+            error: (e) => this.snackBar.open(e.error?.title || 'Конфликт при добавлении', 'OK', { duration: 4000 })
+          });
         } else if (result.mode === 'update') {
           this.api.updateEntry(result.entryId, result.dto).subscribe({
             next: () => {

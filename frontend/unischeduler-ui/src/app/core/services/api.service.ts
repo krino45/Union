@@ -11,7 +11,7 @@ import {
   Subject, CreateSubjectDto, UpdateSubjectDto,
   StudentGroup, CreateStudentGroupDto, UpdateStudentGroupDto,
   Schedule, CreateScheduleDto, GenerationJobStatus, GenerateScheduleRequest, SolverWeights,
-  ScheduleEntry, MoveEntryDto, ConflictInfo, CreateScheduleEntryDto, UpdateScheduleEntryDto,
+  ScheduleEntry, MoveEntryDto, ConflictInfo, CreateScheduleEntryDto, UpdateScheduleEntryDto, CreateParallelEntriesDto,
   TeacherAvailability, CreateTeacherAvailabilityDto, UpdateTeacherAvailabilityDto,
   RescheduleRequest, CreateRescheduleRequestDto, ResolveRescheduleDto,
   StudyPlan, CalendarPlan, UpsertStudyPlanDto, UpsertCalendarPlanDto, PlanProgressItem,
@@ -351,6 +351,9 @@ export class ApiService {
   createEntry(dto: CreateScheduleEntryDto): Observable<ScheduleEntry> {
     return this.http.post<ScheduleEntry>(`${this.base}/schedule-entries`, dto);
   }
+  createParallelEntries(dto: CreateParallelEntriesDto): Observable<ScheduleEntry[]> {
+    return this.http.post<ScheduleEntry[]>(`${this.base}/schedule-entries/parallel`, dto);
+  }
   updateEntry(id: string, dto: UpdateScheduleEntryDto): Observable<ScheduleEntry> {
     return this.http.post<ScheduleEntry>(`${this.base}/schedule-entries/${id}/update`, dto);
   }
@@ -468,14 +471,5 @@ export class ApiService {
       params,
       responseType: 'blob'
     });
-  }
-  previewImport(scheduleId: string, file: File): Observable<any> {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('scheduleId', scheduleId);
-    return this.http.post<any>(`${this.base}/excel/import`, formData);
-  }
-  confirmImport(scheduleId: string, preview: any): Observable<{ committed: number }> {
-    return this.http.post<{ committed: number }>(`${this.base}/excel/import/confirm`, { scheduleId, preview });
   }
 }

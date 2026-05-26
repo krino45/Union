@@ -58,3 +58,21 @@ export interface UpdateScheduleEntryDto {
   isOnline: boolean;
   groupIds: string[];
 }
+
+export interface ParallelSessionInput {
+  teacherId: string;
+  roomId?: string | null;
+  label?: string | null;
+}
+
+export interface CreateParallelEntriesDto {
+  scheduleId: string;
+  subjectId: string;
+  lessonType: LessonType;
+  weekType: WeekType;
+  dayOfWeek: RussianDayOfWeek;
+  pairNumber: number;
+  groupIds: string[];
+  isOnline: boolean;
+  sessions: ParallelSessionInput[];
+}

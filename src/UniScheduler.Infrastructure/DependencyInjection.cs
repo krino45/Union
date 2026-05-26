@@ -27,7 +27,6 @@ public static class DependencyInjection
         services.AddSingleton<IJwtService>(sp =>
             new JwtService(configuration.GetSection("JwtSettings")));
         services.AddScoped<IExcelExportService, ExcelExportService>();
-        services.AddScoped<IExcelImportService, ExcelImportService>();
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<ICurrentUniversityService, CurrentUniversityService>();

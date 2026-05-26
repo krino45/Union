@@ -1,16 +1,17 @@
 import { Component, Inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatRadioModule } from '@angular/material/radio';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { debounceTime } from 'rxjs/operators';
-import { Subject, Teacher, StudentGroup, Room, ScheduleEntry, CreateScheduleEntryDto, UpdateScheduleEntryDto } from '../../../core/models';
+import { Subject, Teacher, StudentGroup, Room, ScheduleEntry, CreateScheduleEntryDto, UpdateScheduleEntryDto, CreateParallelEntriesDto } from '../../../core/models';
 import { RussianDayOfWeek, WeekType, LessonType } from '../../../core/models/enums';
 import { ValidationIssue, SplitEditBody, ValidateEditBody } from '../../../core/models';
 import { DayOfWeekPipe } from '../../../shared/pipes/day-of-week.pipe';
@@ -30,6 +31,7 @@ export interface AddEntryDialogData {
 
 export type AddEntryDialogResult =
   | { mode: 'create'; dto: CreateScheduleEntryDto }
+  | { mode: 'create-parallel'; dto: CreateParallelEntriesDto }
   | { mode: 'update'; entryId: string; dto: UpdateScheduleEntryDto }
   | { mode: 'split-edit'; entryId: string; dto: SplitEditBody };
 
@@ -39,7 +41,7 @@ export type AddEntryDialogResult =
   imports: [
     CommonModule, ReactiveFormsModule,
     MatDialogModule, MatButtonModule, MatIconModule,
-    MatFormFieldModule, MatSelectModule, MatCheckboxModule, MatRadioModule, MatChipsModule,
+    MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatRadioModule, MatChipsModule,
     DayOfWeekPipe
   ],
   template: `
@@ -92,7 +94,13 @@ export type AddEntryDialogResult =
           </div>
         </div>
 
-        <mat-form-field appearance="outline" class="full">
+        <!-- Parallel sessions toggle — create mode only (language streams / lab subgroups) -->
+        <mat-checkbox formControlName="parallelMode" class="parallel-check" *ngIf="!isEdit">
+          Параллельные сессии (языковые потоки / подгруппы)
+        </mat-checkbox>
+
+        <!-- Single-teacher mode -->
+        <mat-form-field appearance="outline" class="full" *ngIf="!parallelMode">
           <mat-label>Преподаватель</mat-label>
           <mat-select formControlName="teacherId">
             <mat-optgroup label="Назначены" *ngIf="primaryTeachers.length > 0">
@@ -120,7 +128,8 @@ export type AddEntryDialogResult =
 
         <mat-checkbox formControlName="isOnline" class="online-check">Онлайн занятие</mat-checkbox>
 
-        <mat-form-field appearance="outline" class="full" *ngIf="!form.value.isOnline">
+        <!-- Single-teacher room -->
+        <mat-form-field appearance="outline" class="full" *ngIf="!parallelMode && !form.value.isOnline">
           <mat-label>Аудитория (необязательно)</mat-label>
           <mat-select formControlName="roomId">
             <mat-option [value]="null">Не указано</mat-option>
@@ -129,6 +138,36 @@ export type AddEntryDialogResult =
             </mat-option>
           </mat-select>
         </mat-form-field>
+
+        <!-- Parallel-sessions editor -->
+        <div class="sessions" *ngIf="parallelMode" formArrayName="sessions">
+          <div class="sessions-hdr">Сессии: каждая ведётся отдельным преподавателем одновременно</div>
+          <div class="session-row" *ngFor="let s of sessions.controls; let i = index" [formGroupName]="i">
+            <mat-form-field appearance="outline" class="s-teacher">
+              <mat-label>Преподаватель</mat-label>
+              <mat-select formControlName="teacherId">
+                <mat-option *ngFor="let t of data.teachers" [value]="t.id">{{ t.displayName }}</mat-option>
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="s-room" *ngIf="!form.value.isOnline">
+              <mat-label>Ауд.</mat-label>
+              <mat-select formControlName="roomId">
+                <mat-option [value]="null">—</mat-option>
+                <mat-option *ngFor="let r of data.rooms" [value]="r.id">
+                  {{ r.buildingShortCode ? r.buildingShortCode + '-' : '' }}{{ r.number }}
+                </mat-option>
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="s-label">
+              <mat-label>Метка</mat-label>
+              <input matInput formControlName="label" placeholder="Поток 1">
+            </mat-form-field>
+            <button mat-icon-button type="button" color="warn" (click)="removeSession(i)" [disabled]="sessions.length <= 2">
+              <mat-icon>remove_circle</mat-icon>
+            </button>
+          </div>
+          <button mat-stroked-button type="button" (click)="addSession()"><mat-icon>add</mat-icon> Добавить сессию</button>
+        </div>
 
         <!-- Validation warnings — live from backend -->
         <div class="issues" *ngIf="issues.length > 0">
@@ -141,7 +180,7 @@ export type AddEntryDialogResult =
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Отмена</button>
-      <button mat-raised-button color="primary" [disabled]="form.invalid" (click)="submit()">
+      <button mat-raised-button color="primary" [disabled]="!canSubmit" (click)="submit()">
         {{ isEdit ? 'Сохранить' : 'Добавить' }}
       </button>
     </mat-dialog-actions>
@@ -165,6 +204,13 @@ export type AddEntryDialogResult =
     .issue.warn  { background: #fff3e0; color: #e65100; }
     .issue.info  { background: #e3f2fd; color: #1565c0; }
     .issue mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .parallel-check { margin: 4px 0 8px; }
+    .sessions { border: 1px solid #ba68c8; border-radius: 4px; padding: 10px 12px; margin: 4px 0 8px; background: #faf5fc; }
+    .sessions-hdr { font-size: 12px; color: #6a1b9a; margin-bottom: 8px; }
+    .session-row { display: flex; gap: 6px; align-items: center; }
+    .s-teacher { flex: 2; }
+    .s-room { flex: 1; }
+    .s-label { flex: 1; }
   `]
 })
 export class AddEntryDialogComponent implements OnInit {
@@ -229,14 +275,57 @@ export class AddEntryDialogComponent implements OnInit {
       teacherId:  [e?.teacherId  ?? '',        Validators.required],
       groupIds:   [e?.studentGroups?.map(g => g.id) ?? [], Validators.required],
       isOnline:   [e?.isOnline   ?? false],
-      roomId:     [e?.roomId     ?? null]
+      roomId:     [e?.roomId     ?? null],
+      parallelMode: [false],
+      sessions:   this.fb.array([])
     });
   }
 
+  get sessions(): FormArray {
+    return this.form.get('sessions') as FormArray;
+  }
+
+  get parallelMode(): boolean {
+    return !!this.form.get('parallelMode')?.value;
+  }
+
+  // The submit button can't rely on form.invalid because teacherId/roomId requirements differ
+  // between single and parallel modes.
+  get canSubmit(): boolean {
+    const v = this.form.value;
+    if (!v.subjectId || !v.lessonType || !v.weekType || !(v.groupIds?.length)) return false;
+    if (this.parallelMode) {
+      const rows = this.sessions.value as { teacherId: string }[];
+      return rows.length >= 2 && rows.every(r => !!r.teacherId);
+    }
+    return !!v.teacherId;
+  }
+
   ngOnInit(): void {
+    // Language is inherently multi-stream — default to parallel mode when creating one.
+    this.form.get('lessonType')!.valueChanges.subscribe(lt => {
+      if (!this.isEdit && lt === 'Language' && !this.parallelMode) this.form.get('parallelMode')!.setValue(true);
+    });
+    // Seed two session rows the first time parallel mode is turned on.
+    this.form.get('parallelMode')!.valueChanges.subscribe(on => {
+      if (on && this.sessions.length === 0) { this.addSession(); this.addSession(); }
+    });
+
     // Live-validate on form changes (debounced)
     this.form.valueChanges.pipe(debounceTime(400)).subscribe(() => this.validate());
     this.validate();
+  }
+
+  addSession(): void {
+    this.sessions.push(this.fb.group({
+      teacherId: ['', Validators.required],
+      roomId: [null],
+      label: ['']
+    }));
+  }
+
+  removeSession(i: number): void {
+    if (this.sessions.length > 2) this.sessions.removeAt(i);
   }
 
   private validate(): void {
@@ -261,9 +350,27 @@ export class AddEntryDialogComponent implements OnInit {
   }
 
   submit(): void {
-    if (this.form.invalid) return;
+    if (!this.canSubmit) return;
     const v = this.form.value;
     const roomId = v.isOnline ? undefined : (v.roomId ?? undefined);
+
+    // Parallel-sessions path (create only): one class, many simultaneous teacher/room sessions.
+    if (!this.isEdit && this.parallelMode) {
+      const dto: CreateParallelEntriesDto = {
+        scheduleId: this.data.scheduleId,
+        subjectId:  v.subjectId,
+        lessonType: v.lessonType as LessonType,
+        weekType:   v.weekType as WeekType,
+        dayOfWeek:  this.data.day,
+        pairNumber: this.data.pair,
+        groupIds:   v.groupIds,
+        isOnline:   v.isOnline,
+        sessions:   (this.sessions.value as { teacherId: string; roomId: string | null; label: string }[])
+          .map(s => ({ teacherId: s.teacherId, roomId: v.isOnline ? null : (s.roomId ?? null), label: s.label?.trim() || null }))
+      };
+      this.dialogRef.close({ mode: 'create-parallel', dto } as AddEntryDialogResult);
+      return;
+    }
 
     // Both-week split-edit path
     if (this.isEdit && this.canSplit && v.applyTo !== 'Both') {

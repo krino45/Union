@@ -45,9 +45,10 @@ if (args.Length >= 2 && args[0].Equals("merge", StringComparison.OrdinalIgnoreCa
     foreach (var entry in entries)
     {
         bool hasRoom = !string.IsNullOrWhiteSpace(entry.RoomNumber) && !entry.IsOnline;
+        string parallelTag = $"{entry.TeacherLastName}|{entry.TeacherFirstName}|{entry.SubgroupLabel}|{entry.ParallelGroupKey}";
         string key = hasRoom
-            ? $"{entry.BuildingShortCode ?? ""}|{entry.RoomNumber}|{entry.DayOfWeek}|{entry.PairNumber}|{entry.WeekType}"
-            : $"online|{entry.TeacherLastName}|{entry.TeacherFirstName}|{entry.SubjectShortName}|{entry.DayOfWeek}|{entry.PairNumber}|{entry.WeekType}";
+            ? $"{entry.BuildingShortCode ?? ""}|{entry.RoomNumber}|{entry.DayOfWeek}|{entry.PairNumber}|{entry.WeekType}|{parallelTag}"
+            : $"online|{entry.SubjectShortName}|{entry.DayOfWeek}|{entry.PairNumber}|{entry.WeekType}|{parallelTag}";
 
         if (slotMap.TryGetValue(key, out var existing))
         {
@@ -232,30 +233,46 @@ foreach (var (groupName, groupId) in groupIds)
                 if (relevantGroups.Length == 0) continue;
 
                 var (room, building, isOnline) = ParseClassroom(sub.CLASSROOM);
-                var (lastName, firstName) = SplitTeacher(sub.TEACHER?.FirstOrDefault());
-                var lessonType = MapLessonType(sub.TYPE_LESSON);
+                var discipline = sub.DISCIPLINE ?? "";
+                var lessonType = MapLessonType(sub.TYPE_LESSON, discipline);
+                var isLanguage = lessonType == lessonType;
+                var subgroup = NormalizeSubgroup(sub.SUBGROUP);
 
-                var key = new EntryKey(
-                    dayOfWeek, pairNumber,
-                    sub.DISCIPLINE ?? "",
-                    lastName, firstName,
-                    building ?? "", room ?? "", isOnline, lessonType);
+                var teacherNames = (sub.TEACHER ?? Array.Empty<string>())
+                    .Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+                if (teacherNames.Count == 0) teacherNames.Add("");
+                bool emptyRoom = string.IsNullOrWhiteSpace(sub.CLASSROOM);
+                bool parallel = teacherNames.Count > 1 && (isLanguage || emptyRoom);
+                var streams = parallel ? teacherNames : teacherNames.Take(1).ToList();
 
-                // Merge groups across pages — the same physical slot may appear on multiple group pages
-                if (!entryGroups.TryGetValue(key, out var groupSet))
+                if (isLanguage || parallel) { room = null; building = null; isOnline = false; }
+
+                foreach (var teacherFull in streams)
                 {
-                    groupSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    entryGroups[key] = groupSet;
+                    var (lastName, firstName) = SplitTeacher(teacherFull);
+
+                    var key = new EntryKey(
+                        dayOfWeek, pairNumber,
+                        discipline,
+                        lastName, firstName,
+                        building ?? "", room ?? "", isOnline, lessonType, subgroup);
+
+                    // Merge groups across pages — the same physical slot may appear on multiple group pages
+                    if (!entryGroups.TryGetValue(key, out var groupSet))
+                    {
+                        groupSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        entryGroups[key] = groupSet;
+                    }
+                    foreach (var g in relevantGroups) groupSet.Add(g);
+
+                    if (!entryMap.TryGetValue(key, out var existing))
+                        existing = (false, false, new EntryData(relevantGroups, discipline, lastName, firstName,
+                            building, room, isOnline, lessonType, subgroup, parallel));
+
+                    entryMap[key] = isWeek2
+                        ? (existing.w1, true, existing.d)
+                        : (true, existing.w2, existing.d);
                 }
-                foreach (var g in relevantGroups) groupSet.Add(g);
-
-                if (!entryMap.TryGetValue(key, out var existing))
-                    existing = (false, false, new EntryData(relevantGroups, sub.DISCIPLINE ?? "", lastName, firstName,
-                        building, room, isOnline, lessonType));
-
-                entryMap[key] = isWeek2
-                    ? (existing.w1, true, existing.d)
-                    : (true, existing.w2, existing.d);
 
                 groupHadEntries = true;
             }
@@ -284,6 +301,17 @@ var result = entryMap.Select(kvp =>
     var groups = entryGroups.TryGetValue(kvp.Key, out var gs)
         ? gs.OrderBy(x => x).ToList()
         : d.Groups.ToList();
+
+    // Parallel sessions of one logical class share a key so the importer links them as siblings.
+    // Streams/subgroups group by their slot+discipline+groups; each carries a display label.
+    bool hasSubgroup = !string.IsNullOrEmpty(d.Subgroup);
+    string? parallelKey = (hasSubgroup || d.Parallel)
+        ? $"{kvp.Key.DayOfWeek}|{kvp.Key.PairNumber}|{weekType}|{d.Discipline}|{string.Join(",", groups)}"
+        : null;
+    string? subgroupLabel = hasSubgroup ? $"Подгр. {d.Subgroup}"
+        : d.Parallel ? d.LastName
+        : null;
+
     return new JsonEntryImport(
         SubjectShortName: d.Discipline,
         TeacherLastName:  d.LastName,
@@ -295,7 +323,9 @@ var result = entryMap.Select(kvp =>
         PairNumber:       kvp.Key.PairNumber,
         WeekType:         weekType,
         LessonType:       d.LessonType,
-        IsOnline:         d.IsOnline
+        IsOnline:         d.IsOnline,
+        ParallelGroupKey: parallelKey,
+        SubgroupLabel:    subgroupLabel
     );
 }).ToList();
 
@@ -384,22 +414,41 @@ static (string lastName, string firstName) SplitTeacher(string? fullName)
     };
 }
 
-static LessonType MapLessonType(string? type) => type switch
+static LessonType MapLessonType(string? type, string? discipline)
 {
-    var t when t?.Contains("Лекц")  == true => LessonType.Lecture,
-    var t when t?.Contains("Практ") == true => LessonType.Practical,
-    var t when t?.Contains("Лаб")   == true => LessonType.Lab,
-    var t when t?.Contains("Семин") == true => LessonType.Seminar,
-    _                                        => LessonType.Lecture
-};
+    if (IsLanguageDiscipline(discipline))
+        return LessonType.Language;
+    return type switch
+    {
+        var t when t?.Contains("Лекц") == true => LessonType.Lecture,
+        var t when t?.Contains("Практ") == true => LessonType.Practical,
+        var t when t?.Contains("Лаб") == true => LessonType.Lab,
+        var t when t?.Contains("Семин") == true => LessonType.Seminar,
+        var t when t?.Contains("ин.яз") == true => LessonType.Language,
+        _ => LessonType.Lecture
+    };
+}
+
+static bool IsLanguageDiscipline(string? discipline)
+{
+    if (string.IsNullOrWhiteSpace(discipline)) return false;
+    var d = discipline.ToLowerInvariant();
+    return d.Contains("иностранн") || d.Contains("ин.яз") || d.Contains("ин. яз");
+}
+
+static string NormalizeSubgroup(string? subgroup)
+{
+    var s = subgroup?.Trim();
+    return string.IsNullOrEmpty(s) || s == "0" ? "" : s;
+}
 
 //  enums (mirror UniScheduler.Domain.Enums) 
 
 enum RussianDayOfWeek { Monday = 1, Tuesday, Wednesday, Thursday, Friday, Saturday }
 enum WeekType         { Both = 0, Odd = 1, Even = 2 }
-enum LessonType       { Lecture = 1, Practical = 2, Lab = 3, Seminar = 4 }
+enum LessonType       { Lecture = 1, Practical = 2, Lab = 3, Seminar = 4, Language = 5 }
 
-//  output record (mirror JsonEntryImport) 
+//  output record (mirror JsonEntryImport)
 
 record JsonEntryImport(
     string SubjectShortName,
@@ -412,7 +461,9 @@ record JsonEntryImport(
     int PairNumber,
     WeekType WeekType,
     LessonType LessonType,
-    bool IsOnline
+    bool IsOnline,
+    string? ParallelGroupKey = null,
+    string? SubgroupLabel = null
 );
 
 // internal types
@@ -426,7 +477,8 @@ record EntryKey(
     string BuildingShortCode,
     string RoomNumber,
     bool IsOnline,
-    LessonType LessonType
+    LessonType LessonType,
+    string Subgroup
 );
 
 record EntryData(
@@ -437,7 +489,9 @@ record EntryData(
     string? BuildingShortCode,
     string? RoomNumber,
     bool IsOnline,
-    LessonType LessonType
+    LessonType LessonType,
+    string Subgroup,
+    bool Parallel
 );
 
 // group discovery models

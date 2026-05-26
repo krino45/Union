@@ -17,7 +17,9 @@ public record JsonEntryImport(
     int PairNumber,
     WeekType WeekType,
     LessonType LessonType,
-    bool IsOnline
+    bool IsOnline,
+    string? ParallelGroupKey = null,
+    string? SubgroupLabel = null
 );
 
 public record ImportFromJsonCommand(
@@ -166,6 +168,7 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
         }
 
         int committed = 0;
+        var parallelGuids = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
         foreach (var (item, idx) in req.Entries.Select((x, i) => (x, i + 1)))
         {
             if (string.IsNullOrWhiteSpace(item.SubjectShortName))
@@ -206,6 +209,22 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
                 }
             }
 
+            Guid? parallelGroupId = null;
+            string? subgroupLabel = item.SubgroupLabel;
+            string? parallelKey = !string.IsNullOrWhiteSpace(item.ParallelGroupKey)
+                ? "k:" + item.ParallelGroupKey.Trim()
+                : item.LessonType == LessonType.Language
+                    ? "lang:" + subject.Id + "|" + item.DayOfWeek + "|" + item.PairNumber + "|" + item.WeekType + "|" +
+                      string.Join(",", resolvedGroups.Select(g => g.Id).OrderBy(x => x))
+                    : null;
+            if (parallelKey != null)
+            {
+                if (!parallelGuids.TryGetValue(parallelKey, out var pg)) parallelGuids[parallelKey] = pg = Guid.NewGuid();
+                parallelGroupId = pg;
+                if (string.IsNullOrWhiteSpace(subgroupLabel) && item.LessonType == LessonType.Language)
+                    subgroupLabel = teacher.LastName;
+            }
+
             var entry = new ScheduleEntry
             {
                 ScheduleId = req.ScheduleId,
@@ -216,7 +235,9 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
                 PairNumber = item.PairNumber,
                 WeekType = item.WeekType,
                 LessonType = item.LessonType,
-                IsOnline = item.IsOnline
+                IsOnline = item.IsOnline,
+                ParallelGroupId = parallelGroupId,
+                SubgroupLabel = subgroupLabel
             };
             _db.ScheduleEntries.Add(entry);
             foreach (var g in resolvedGroups)
