@@ -286,6 +286,88 @@ public static class ScheduleScoreCalculator
         return result;
     }
 
+    public static IReadOnlyDictionary<Guid, int> ComputeRoomEntryDistances(
+        IEnumerable<FloorPlanNode> nodes, IEnumerable<FloorPlanEdge> edges, int stairFloorMeters = 20)
+    {
+        var nodeList = nodes.ToList();
+        if (nodeList.Count == 0) return new Dictionary<Guid, int>();
+
+        var floorById = nodeList.ToDictionary(n => n.Id, n => n.Floor);
+        var adj = nodeList.ToDictionary(n => n.Id, _ => new List<(Guid, int)>());
+        foreach (var e in edges)
+        {
+            if (!adj.ContainsKey(e.FromNodeId) || !adj.ContainsKey(e.ToNodeId)) continue;
+            int floorDiff = Math.Abs(floorById[e.FromNodeId] - floorById[e.ToNodeId]);
+            int weight = floorDiff > 0 ? floorDiff * stairFloorMeters : e.DistanceMeters;
+            adj[e.FromNodeId].Add((e.ToNodeId, weight));
+            adj[e.ToNodeId].Add((e.FromNodeId, weight));
+        }
+
+        var entrancesByBuilding = nodeList
+            .Where(n => n.NodeType == FloorPlanNodeType.Entrance)
+            .GroupBy(n => n.BuildingId)
+            .ToDictionary(g => g.Key, g => g.Select(n => n.Id).ToList());
+
+        var result = new Dictionary<Guid, int>();
+        var allIds = nodeList.Select(n => n.Id).ToArray();
+
+        foreach (var (buildingId, entranceIds) in entrancesByBuilding)
+        {
+            var roomNodes = nodeList
+                .Where(n => n.BuildingId == buildingId
+                            && n.NodeType == FloorPlanNodeType.Room
+                            && n.RoomId.HasValue)
+                .ToList();
+            if (roomNodes.Count == 0) continue;
+
+            foreach (var entranceId in entranceIds)
+            {
+                var dist = Dijkstra(entranceId, adj, allIds);
+                foreach (var rn in roomNodes)
+                {
+                    if (!dist.TryGetValue(rn.Id, out int d) || d >= int.MaxValue / 2) continue;
+                    var rid = rn.RoomId!.Value;
+                    if (!result.TryGetValue(rid, out int cur) || d < cur)
+                        result[rid] = d;
+                }
+            }
+        }
+        return result;
+    }
+
+    public static IReadOnlyDictionary<(Guid, Guid), int> ComputeAllPairsBuildingDistances(
+        IEnumerable<BuildingDistance> directEdges)
+    {
+        var edges = directEdges.ToList();
+        if (edges.Count == 0) return new Dictionary<(Guid, Guid), int>();
+
+        var adj = new Dictionary<Guid, List<(Guid, int)>>();
+        void AddEdge(Guid a, Guid b, int d)
+        {
+            if (!adj.TryGetValue(a, out var lst)) adj[a] = lst = new List<(Guid, int)>();
+            lst.Add((b, d));
+        }
+        foreach (var e in edges)
+        {
+            AddEdge(e.FromBuildingId, e.ToBuildingId, e.DistanceMeters);
+            AddEdge(e.ToBuildingId, e.FromBuildingId, e.DistanceMeters);
+        }
+
+        var allBuildings = adj.Keys.ToArray();
+        var result = new Dictionary<(Guid, Guid), int>();
+        foreach (var src in allBuildings)
+        {
+            var dist = Dijkstra(src, adj, allBuildings);
+            foreach (var tgt in allBuildings)
+            {
+                if (tgt == src) continue;
+                if (dist.TryGetValue(tgt, out int d) && d < int.MaxValue / 2)
+                    result[(src, tgt)] = d;
+            }
+        }
+        return result;
+    }
+
     // Returns break[i] = minutes between pair i+1 and pair i+2 (pairs are 1-indexed).
     internal static List<int> ComputeBreakMinutes(IEnumerable<PairTimeSlot> pairSlots)
     {

@@ -15,6 +15,11 @@ public class OrToolsSchedulerService : ISchedulerService
 
     private SchedulerOutput Solve(SchedulerInput input, IProgress<string>? progress)
     {
+        const int TotalStages = 26;
+        int stage = 0;
+        void Report(string msg) => progress?.Report($"[{++stage}/{TotalStages}] {msg}");
+        void ReportSub(string msg) => progress?.Report($"[{stage}/{TotalStages}] {msg}");
+
         int numPairs = input.PairsPerDay;
         int[] breakMinutes = BuildBreakArray(input.BreakMinutesBetweenPairs, numPairs);
         var w = input.Weights ?? new SolverWeights();
@@ -34,15 +39,20 @@ public class OrToolsSchedulerService : ISchedulerService
         var reqGroupSize = reqs.Select(r => r.HeadcountOverride
             ?? r.GroupIds.Sum(gid => groupSizeById.TryGetValue(gid, out var sz) ? sz : 0)).ToArray();
 
-        progress?.Report($"Подсчёт совместимости ({reqs.Count} занятий,  {rooms.Count} аудиторий)...");
+        Report($"Совместимость аудиторий ({reqs.Count} занятий × {rooms.Count} аудиторий)...");
         var compatibleRooms = new int[reqs.Count][];
-        for (int ri = 0; ri < reqs.Count; ri++)
         {
-            var list = new List<int>(rooms.Count);
-            for (int rmi = 0; rmi < rooms.Count; rmi++)
-                if (IsCompatible(reqs[ri], rooms[rmi], reqGroupSize[ri]))
-                    list.Add(rmi);
-            compatibleRooms[ri] = list.ToArray();
+            int reportEvery = Math.Max(1, reqs.Count / 20);
+            for (int ri = 0; ri < reqs.Count; ri++)
+            {
+                if (ri % reportEvery == 0)
+                    ReportSub($"Совместимость: {ri}/{reqs.Count} ({100 * ri / Math.Max(1, reqs.Count)}%)");
+                var list = new List<int>(rooms.Count);
+                for (int rmi = 0; rmi < rooms.Count; rmi++)
+                    if (IsCompatible(reqs[ri], rooms[rmi], reqGroupSize[ri]))
+                        list.Add(rmi);
+                compatibleRooms[ri] = list.ToArray();
+            }
         }
 
         // key: (reqIdx, day, pair, weekTypeIdx, roomIdx)  value: BoolVar
@@ -50,9 +60,13 @@ public class OrToolsSchedulerService : ISchedulerService
         // WeekType.Odd > wi=0, WeekType.Even > wi=1.
         var vars = new Dictionary<(int ri, int d, int p, int wi, int rmi), BoolVar>();
 
-        progress?.Report($"Создание переменных ({reqs.Count} занятий, {rooms.Count} аудиторий)...");
+        Report($"Создание переменных ({reqs.Count} занятий)...");
+        {
+            int reportEvery = Math.Max(1, reqs.Count / 20);
         for (int ri = 0; ri < reqs.Count; ri++)
         {
+            if (ri % reportEvery == 0)
+                ReportSub($"Переменные: занятие {ri}/{reqs.Count} ({100 * ri / Math.Max(1, reqs.Count)}%), создано {vars.Count} перем.");
             var req = reqs[ri];
             int varWi = VarWeekIndex(req.WeekType);
             var compatRmis = compatibleRooms[ri];
@@ -76,8 +90,9 @@ public class OrToolsSchedulerService : ISchedulerService
                     vars[(ri, d, p, varWi, rmi)] = model.NewBoolVar($"a_{ri}_{d}_{p}_{varWi}_{rmi}");
             }
         }
+        }
 
-        progress?.Report($"Построение индекса переменных ({vars.Count} шт.)...");
+        Report($"Индекс переменных ({vars.Count} шт.)...");
         var varsByReqWi = new Dictionary<(int ri, int wi), List<BoolVar>>();
         var varsByReqCell = new Dictionary<(int ri, int d, int p, int wi), List<(int rmi, BoolVar v)>>();
         foreach (var ((ri, d, p, wi, rmi), v) in vars)
@@ -91,7 +106,7 @@ public class OrToolsSchedulerService : ISchedulerService
             l2.Add((rmi, v));
         }
 
-        progress?.Report($"Проверка совместимости ({vars.Count} переменных)...");
+        Report($"Проверка осуществимости ({vars.Count} переменных)...");
         var noRoomLines = new List<string>();
         var noSlotLines = new List<string>();
         for (int ri = 0; ri < reqs.Count; ri++)
@@ -116,7 +131,7 @@ public class OrToolsSchedulerService : ISchedulerService
             return new SchedulerOutput(SolverStatus.Infeasible, string.Join(" | ", parts), Array.Empty<SchedulerAssignment>());
         }
 
-        progress?.Report("Ограничение H1: у группы один учитель");
+        Report("H1: один учитель на группу/предмет/тип занятия");
         {
             var gstTeachers = new Dictionary<(Guid grp, Guid subj, LessonType lt), HashSet<Guid>>();
             foreach (var req in reqs)
@@ -142,7 +157,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     Array.Empty<SchedulerAssignment>());
         }
 
-        progress?.Report("Ограничение H2: каждое занятие ровно один раз");
+        Report("H2: каждое занятие ровно один раз");
         //  H2: Each requirement scheduled exactly once
         for (int ri = 0; ri < reqs.Count; ri++)
         {
@@ -156,13 +171,17 @@ public class OrToolsSchedulerService : ISchedulerService
             reqs.Select((r, i) => (r, i)).Where(x => x.r.TeacherId == t.Id).Select(x => x.i).ToList());
         var teacherIdxMap = teachers.Select((t, i) => (t.Id, i)).ToDictionary(x => x.Id, x => x.i);
 
-        progress?.Report("Ограничение H4: конфликты аудиторий (по преподавателям)...");
+        Report($"H4: один преподаватель в аудитории за слот ({rooms.Count} ауд.)...");
         // H4: at most one TEACHER per room per slot.
         //     Multiple requirements of the SAME teacher are allowed in the same room at the same time
         //     (combined / flow lecture). Different teachers cannot share a room.
         // H4-cap: total headcount of all concurrent requirements ≤ room capacity.
+        {
+            int h4Report = Math.Max(1, rooms.Count / 20);
         for (int rmi = 0; rmi < rooms.Count; rmi++)
         {
+            if (rmi % h4Report == 0)
+                ReportSub($"H4: аудитория {rmi}/{rooms.Count} ({100 * rmi / Math.Max(1, rooms.Count)}%)");
             // The distributed sentinel room is a placeholder for classes with no fixed location:
             // many teachers may "share" it at once, and it has no capacity — skip H4 entirely.
             if (rooms[rmi].IsDistributed) continue;
@@ -198,12 +217,19 @@ public class OrToolsSchedulerService : ISchedulerService
                 model.Add(LinearExpr.WeightedSum(capVars.ToArray(), capSizes.ToArray()) <= rooms[rmi].Capacity);
         }
         }
+        }
 
-        progress?.Report("Ограничение H5: конфликты преподавателей (по аудиториям)...");
+        Report($"H5: преподаватель в одной аудитории за слот ({teachers.Count} преп.)...");
         // H5: each teacher can be in at most one ROOM per slot.
         //     Being in the same room for multiple requirements is fine (H4 already enforces same-teacher-same-room).
+        {
+            int h5done = 0, h5total = teacherReqs.Count;
+            int h5Report = Math.Max(1, h5total / 20);
         foreach (var (tId, trIdxs) in teacherReqs)
         {
+            if (h5done % h5Report == 0)
+                ReportSub($"H5: преподаватель {h5done}/{h5total} ({100 * h5done / Math.Max(1, h5total)}%)");
+            h5done++;
             if (trIdxs.Count <= 1) continue;
             int ti = teacherIdxMap[tId];
             for (int d = 0; d < NumDays; d++)
@@ -229,13 +255,20 @@ public class OrToolsSchedulerService : ISchedulerService
                 if (roomPresences.Count > 1) model.AddAtMostOne(roomPresences);
             }
         }
+        }
 
-        progress?.Report("Ограничение H6: конфликты групп...");
+        Report($"H6: конфликты групп ({groups.Count} групп)...");
         var groupReqs = groups.ToDictionary(g => g.Id, g =>
             reqs.Select((r, i) => (r, i)).Where(x => x.r.GroupIds.Contains(g.Id)).Select(x => x.i).ToList());
 
+        {
+            int h6done = 0, h6total = groupReqs.Count;
+            int h6Report = Math.Max(1, h6total / 20);
         foreach (var (gKey, grIdxs) in groupReqs)
         {
+            if (h6done % h6Report == 0)
+                ReportSub($"H6: группа {h6done}/{h6total} ({100 * h6done / Math.Max(1, h6total)}%)");
+            h6done++;
             if (grIdxs.Count <= 1) continue;
             for (int d = 0; d < NumDays; d++)
             for (int p = 0; p < numPairs; p++)
@@ -270,8 +303,9 @@ public class OrToolsSchedulerService : ISchedulerService
                 if (occupants.Count > 1) model.AddAtMostOne(occupants);
             }
         }
+        }
 
-        progress?.Report("Ограничение H_par: параллельные сессии в одном слоте...");
+        Report("H_par: параллельные сессии в одном слоте...");
         // Co-schedule parallel siblings: every member of a ParallelKey group lands on the SAME
         // (day, pair) as the anchor, so a class taught in parallel streams happens at one time.
         foreach (var pg in reqs.Select((r, i) => (r, i))
@@ -299,13 +333,14 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        progress?.Report("Предрасчёт расстояний между аудиториями...");
-        var tooFarByBreak = new HashSet<(int, int)>[numPairs - 1];
-        var walkPenByBreak = new Dictionary<(int, int), long>[numPairs - 1];
+        Report($"Расстояния между аудиториями ({rooms.Count}**2 пар)...");
+        var tooFarByBreak = new Dictionary<int, HashSet<int>>[numPairs - 1];
+        var walkPenByBreak = new Dictionary<int, Dictionary<int, long>>[numPairs - 1];
+        long tooFarPairCount = 0, walkPenPairCount = 0;
         for (int p = 0; p < numPairs - 1; p++)
         {
-            var tooFar = new HashSet<(int, int)>();
-            var walkPen = new Dictionary<(int, int), long>();
+            var tooFar = new Dictionary<int, HashSet<int>>();
+            var walkPen = new Dictionary<int, Dictionary<int, long>>();
             double allowedTravelMin = breakMinutes[p];
             for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
             {
@@ -314,23 +349,99 @@ public class OrToolsSchedulerService : ISchedulerService
                 {
                     if (rooms[rmi2].IsDistributed) continue;
                     int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
-                    if (dist < 0) continue; // unknown → no constraint
                     double walkMins = dist / WalkSpeedMperMin;
                     if (walkMins > allowedTravelMin)
-                        tooFar.Add((rmi1, rmi2));
+                    {
+                        if (!tooFar.TryGetValue(rmi1, out var s)) tooFar[rmi1] = s = new HashSet<int>();
+                        s.Add(rmi2);
+                        tooFarPairCount++;
+                    }
                     else if (dist > 0)
-                        walkPen[(rmi1, rmi2)] = Math.Max(1L, (long)(walkMins / allowedTravelMin * w.WalkingPenaltyMax));
+                    {
+                        if (!walkPen.TryGetValue(rmi1, out var m)) walkPen[rmi1] = m = new Dictionary<int, long>();
+                        m[rmi2] = Math.Max(1L, (long)(walkMins / allowedTravelMin * w.WalkingPenaltyMax));
+                        walkPenPairCount++;
+                    }
                 }
             }
             tooFarByBreak[p] = tooFar;
             walkPenByBreak[p] = walkPen;
         }
+        ReportSub($"Расстояния: {tooFarPairCount} запрещённых пар, {walkPenPairCount} штрафных пар");
 
-        progress?.Report("Ограничение H_travel: нарушение перемены...");
-        if (tooFarByBreak.Any(s => s.Count > 0))
+        bool hasTravelData = tooFarPairCount > 0 || walkPenPairCount > 0;
+
+        // gruVars: per (group, day, pair, wi, room) occupancy - 1 if ANY req of group gi uses
+        // room rmi at slot (d, p, wi). Collapses ri1-ri2-rmi1-rmi2 in H_travel/S4
+        // into rmi1-rmi2 per group/slot.
+        Report(hasTravelData
+            ? $"Занятость аудиторий по группам (для H_travel/S4)..."
+            : $"Занятость аудиторий по группам — пропуск (нет данных о расстояниях)");
+        var gruVars = new Dictionary<(int gi, int d, int p, int wi, int rmi), BoolVar>();
+        var gruByCell = new Dictionary<(int gi, int d, int p, int wi), List<(int rmi, BoolVar v)>>();
+        if (hasTravelData)
         {
-            foreach (var grIdxs in groups.Select(group => groupReqs[group.Id]))
+            int gruReport = Math.Max(1, groups.Count / 20);
+            var temp = new Dictionary<(int d, int p, int wi, int rmi), List<BoolVar>>();
+            for (int gi = 0; gi < groups.Count; gi++)
             {
+                if (gi % gruReport == 0)
+                    ReportSub($"Занятость по группам: {gi}/{groups.Count} ({100 * gi / Math.Max(1, groups.Count)}%), {gruVars.Count} перем.");
+                var grIdxs = groupReqs[groups[gi].Id];
+                if (grIdxs.Count <= 1) continue;
+                temp.Clear();
+                foreach (int ri in grIdxs)
+                {
+                    int varWi = VarWeekIndex(reqs[ri].WeekType);
+                    // Both-type vars belong to BOTH calendar weeks for travel-conflict purposes
+                    var wis = reqs[ri].WeekType == WeekType.Both ? new[] { 0, 1 } : new[] { varWi };
+                    for (int d = 0; d < NumDays; d++)
+                    for (int p = 0; p < numPairs; p++)
+                    {
+                        if (!varsByReqCell.TryGetValue((ri, d, p, varWi), out var cell)) continue;
+                        foreach (int wi in wis)
+                        foreach (var (rmi, v) in cell)
+                        {
+                            if (rooms[rmi].IsDistributed) continue;
+                            var key = (d, p, wi, rmi);
+                            if (!temp.TryGetValue(key, out var lst)) temp[key] = lst = new List<BoolVar>();
+                            lst.Add(v);
+                        }
+                    }
+                }
+                foreach (var ((d, p, wi, rmi), lst) in temp)
+                {
+                    BoolVar bv;
+                    if (lst.Count == 1)
+                    {
+                        // No new var needed — the single req var IS the occupancy indicator.
+                        bv = lst[0];
+                    }
+                    else
+                    {
+                        bv = model.NewBoolVar($"gru_{gi}_{d}_{p}_{wi}_{rmi}");
+                        model.AddMaxEquality(bv, lst.Select(v => (IntVar)v).ToArray());
+                    }
+                    gruVars[(gi, d, p, wi, rmi)] = bv;
+                    var ck = (gi, d, p, wi);
+                    if (!gruByCell.TryGetValue(ck, out var clist)) gruByCell[ck] = clist = new List<(int, BoolVar)>();
+                    clist.Add((rmi, bv));
+                }
+            }
+            ReportSub($"Занятость по группам: создано {gruVars.Count} переменных");
+        }
+
+        Report(tooFarPairCount > 0
+            ? $"H_travel: невозможно дойти за перемену ({groups.Count} групп)..."
+            : "H_travel: пропуск (нет запрещённых пар)");
+        if (tooFarPairCount > 0)
+        {
+            int htReport = Math.Max(1, groups.Count / 20);
+            long htConstraints = 0;
+            for (int gi = 0; gi < groups.Count; gi++)
+            {
+                if (gi % htReport == 0)
+                    ReportSub($"H_travel: группа {gi}/{groups.Count} ({100 * gi / Math.Max(1, groups.Count)}%), {htConstraints} огр.");
                 for (int d = 0; d < NumDays; d++)
                 for (int p = 0; p < numPairs - 1; p++)
                 {
@@ -338,35 +449,32 @@ public class OrToolsSchedulerService : ISchedulerService
                     if (tooFar.Count == 0) continue;
                     for (int wi = 0; wi < 2; wi++)
                     {
-                        foreach (int ri1 in grIdxs)
+                        if (!gruByCell.TryGetValue((gi, d, p, wi), out var cellP)) continue;
+                        if (!gruByCell.TryGetValue((gi, d, p + 1, wi), out var cellP1)) continue;
+                        foreach (var (rmi1, bv1) in cellP)
                         {
-                            if (!AffectsWeekIndex(reqs[ri1].WeekType, wi)) continue;
-                            int wi1 = VarWeekIndex(reqs[ri1].WeekType);
-                            if (!varsByReqCell.TryGetValue((ri1, d, p, wi1), out var cell1)) continue;
-
-                            foreach (int ri2 in grIdxs)
+                            if (!tooFar.TryGetValue(rmi1, out var rmi2Set)) continue;
+                            foreach (var (rmi2, bv2) in cellP1)
                             {
-                                if (!AffectsWeekIndex(reqs[ri2].WeekType, wi)) continue;
-                                int wi2 = VarWeekIndex(reqs[ri2].WeekType);
-                                if (!varsByReqCell.TryGetValue((ri2, d, p + 1, wi2), out var cell2)) continue;
-
-                                foreach (var (rmi1, v1) in cell1)
-                                foreach (var (rmi2, v2) in cell2)
-                                {
-                                    if (!tooFar.Contains((rmi1, rmi2))) continue;
-                                    model.Add(LinearExpr.Sum(new BoolVar[] { v1, v2 }) <= 1);
-                                }
+                                if (!rmi2Set.Contains(rmi2)) continue;
+                                model.Add(LinearExpr.Sum(new BoolVar[] { bv1, bv2 }) <= 1);
+                                htConstraints++;
                             }
                         }
                     }
                 }
             }
+            ReportSub($"H_travel: создано {htConstraints} ограничений");
         }
 
-        progress?.Report("Создание вспомогательных переменных...");
+        Report($"Вспомогательные переменные занятости ({groups.Count} групп, {teachers.Count} преп.)...");
         var isGroupUsed = new BoolVar[groups.Count, NumDays, numPairs, 2];
+        {
+            int gReport = Math.Max(1, groups.Count / 20);
         for (int gi = 0; gi < groups.Count; gi++)
         {
+            if (gi % gReport == 0)
+                ReportSub($"isGroupUsed: группа {gi}/{groups.Count} ({100 * gi / Math.Max(1, groups.Count)}%)");
             var grIdxs = groupReqs[groups[gi].Id];
             for (int d = 0; d < NumDays; d++)
             for (int p = 0; p < numPairs; p++)
@@ -390,11 +498,15 @@ public class OrToolsSchedulerService : ISchedulerService
                     model.Add(bv == 0);
             }
         }
-
+        }
 
         var isTeacherUsed = new BoolVar[teachers.Count, NumDays, numPairs, 2];
+        {
+            int tReport = Math.Max(1, teachers.Count / 20);
         for (int ti = 0; ti < teachers.Count; ti++)
         {
+            if (ti % tReport == 0)
+                ReportSub($"isTeacherUsed: преп. {ti}/{teachers.Count} ({100 * ti / Math.Max(1, teachers.Count)}%)");
             var trIdxs = teacherReqs[teachers[ti].Id];
             for (int d = 0; d < NumDays; d++)
             for (int p = 0; p < numPairs; p++)
@@ -418,12 +530,17 @@ public class OrToolsSchedulerService : ISchedulerService
                     model.Add(bv == 0);
             }
         }
+        }
 
         // Per-slot group occupancy split by campus vs online — drives the online-aware window penalty.
         var isGroupCampus = new BoolVar[groups.Count, NumDays, numPairs, 2];
         var isGroupOnline = new BoolVar[groups.Count, NumDays, numPairs, 2];
+        {
+            int gcReport = Math.Max(1, groups.Count / 20);
         for (int gi = 0; gi < groups.Count; gi++)
         {
+            if (gi % gcReport == 0)
+                ReportSub($"isGroupCampus/Online: группа {gi}/{groups.Count} ({100 * gi / Math.Max(1, groups.Count)}%)");
             var grIdxs = groupReqs[groups[gi].Id];
             for (int d = 0; d < NumDays; d++)
             for (int p = 0; p < numPairs; p++)
@@ -451,13 +568,18 @@ public class OrToolsSchedulerService : ISchedulerService
                 isGroupOnline[gi, d, p, wi] = bo;
             }
         }
+        }
 
-        progress?.Report("Построение целевой функции (S1–S6)...");
         var objVars = new List<IntVar>();
         var objCoeffs = new List<long>();
 
-        // S1: Student windows
+        Report($"S1: окна у студентов ({groups.Count} групп)...");
+        {
+            int s1Report = Math.Max(1, groups.Count / 20);
         for (int gi = 0; gi < groups.Count; gi++)
+        {
+            if (gi % s1Report == 0)
+                ReportSub($"S1: группа {gi}/{groups.Count} ({100 * gi / Math.Max(1, groups.Count)}%), {objVars.Count} слаг.");
         for (int d = 0; d < NumDays; d++)
         for (int wi = 0; wi < 2; wi++)
         {
@@ -496,9 +618,16 @@ public class OrToolsSchedulerService : ISchedulerService
                 objCoeffs.Add(w.StudentWindow);
             }
         }
+        }
+        }
 
-        // S2: Teacher windows
+        Report($"S2: окна у преподавателей ({teachers.Count} преп.)...");
+        {
+            int s2Report = Math.Max(1, teachers.Count / 20);
         for (int ti = 0; ti < teachers.Count; ti++)
+        {
+            if (ti % s2Report == 0)
+                ReportSub($"S2: преп. {ti}/{teachers.Count} ({100 * ti / Math.Max(1, teachers.Count)}%), {objVars.Count} слаг.");
         for (int d = 0; d < NumDays; d++)
         for (int wi = 0; wi < 2; wi++)
         {
@@ -521,8 +650,10 @@ public class OrToolsSchedulerService : ISchedulerService
                 objCoeffs.Add(w.TeacherWindow);
             }
         }
+        }
+        }
 
-        // S3: Penalize each active group-day
+        Report($"S3: штраф за активные дни группы ({groups.Count} групп)...");
         for (int gi = 0; gi < groups.Count; gi++)
         for (int d = 0; d < NumDays; d++)
         for (int wi = 0; wi < 2; wi++)
@@ -534,12 +665,18 @@ public class OrToolsSchedulerService : ISchedulerService
             objCoeffs.Add(w.ActiveDay);
         }
 
-        // S4: Walking penalty for adjacent pairs (uses precomputed walkPenByBreak)
-        if (walkPenByBreak.Any(d => d.Count > 0))
+        // S4: Walking penalty for adjacent pairs — uses gru vars (one walkPen per group/slot/rmi1/rmi2)
+        Report(walkPenPairCount > 0
+            ? $"S4: штраф за ходьбу между аудиториями ({groups.Count} групп)..."
+            : "S4: пропуск (нет штрафных пар расстояний)");
+        if (walkPenPairCount > 0)
         {
+            int s4Report = Math.Max(1, groups.Count / 20);
+            long s4Added = 0;
             for (int gi = 0; gi < groups.Count; gi++)
             {
-                var grIdxs = groupReqs[groups[gi].Id];
+                if (gi % s4Report == 0)
+                    ReportSub($"S4: группа {gi}/{groups.Count} ({100 * gi / Math.Max(1, groups.Count)}%), {s4Added} штраф. перем.");
                 for (int d = 0; d < NumDays; d++)
                 for (int p = 0; p < numPairs - 1; p++)
                 {
@@ -547,36 +684,33 @@ public class OrToolsSchedulerService : ISchedulerService
                     if (penMap.Count == 0) continue;
                     for (int wi = 0; wi < 2; wi++)
                     {
-                        foreach (int ri1 in grIdxs)
+                        if (!gruByCell.TryGetValue((gi, d, p, wi), out var cellP)) continue;
+                        if (!gruByCell.TryGetValue((gi, d, p + 1, wi), out var cellP1)) continue;
+                        foreach (var (rmi1, bv1) in cellP)
                         {
-                            if (!AffectsWeekIndex(reqs[ri1].WeekType, wi)) continue;
-                            int wi1 = VarWeekIndex(reqs[ri1].WeekType);
-                            if (!varsByReqCell.TryGetValue((ri1, d, p, wi1), out var cell1)) continue;
-
-                            foreach (int ri2 in grIdxs)
+                            if (!penMap.TryGetValue(rmi1, out var innerPens)) continue;
+                            foreach (var (rmi2, bv2) in cellP1)
                             {
-                                if (!AffectsWeekIndex(reqs[ri2].WeekType, wi)) continue;
-                                int wi2 = VarWeekIndex(reqs[ri2].WeekType);
-                                if (!varsByReqCell.TryGetValue((ri2, d, p + 1, wi2), out var cell2)) continue;
-
-                                foreach (var (rmi1, v1) in cell1)
-                                foreach (var (rmi2, v2) in cell2)
-                                {
-                                    if (!penMap.TryGetValue((rmi1, rmi2), out long penalty)) continue;
-                                    var walkPen = model.NewBoolVar($"walk_{gi}_{d}_{p}_{wi}_{rmi1}_{rmi2}_{ri1}_{ri2}");
-                                    model.Add(LinearExpr.Sum([v1, v2]) <= 1 + walkPen);
-                                    model.Add(walkPen <= LinearExpr.Sum([v1, v2]));
-                                    objVars.Add(walkPen);
-                                    objCoeffs.Add(penalty);
-                                }
+                                if (!innerPens.TryGetValue(rmi2, out long penalty)) continue;
+                                // walkPen = 1 iff both group-uses-room indicators are 1.
+                                // Only the lower-bound constraint is needed: since walkPen is in the
+                                // minimised objective with positive coefficient, the solver pushes it
+                                // to 0 unless this constraint forces it.
+                                var walkPen = model.NewBoolVar($"walk_{gi}_{d}_{p}_{wi}_{rmi1}_{rmi2}");
+                                model.Add((LinearExpr)walkPen >= LinearExpr.Sum(new BoolVar[] { bv1, bv2 }) - 1);
+                                objVars.Add(walkPen);
+                                objCoeffs.Add(penalty);
+                                s4Added++;
                             }
                         }
                     }
                 }
             }
+            ReportSub($"S4: создано {s4Added} штрафных переменных");
         }
 
         // S5: SanPIN — penalize daily pairs > 4 per group (weight 500 per excess pair)
+        Report($"S5: штраф СанПиН за >4 пар в день ({groups.Count} групп)...");
         const int sanPinMax = 4;
         for (var gi = 0; gi < groups.Count; gi++)
         for (var d = 0; d < NumDays; d++)
@@ -597,11 +731,16 @@ public class OrToolsSchedulerService : ISchedulerService
                 .GroupBy(x => (x.r.SubjectId, x.r.LessonType))
                 .ToList();
 
+            Report($"S6: штраф за подряд одинаковых занятий ({stGroups.Count} комб. предмет-тип)...");
+
             // key: (sti, gi, d, p, wi) -> repPen BoolVar for "same type at p AND p+1"
             var repPenVars = new Dictionary<(int, int, int, int, int), BoolVar>();
 
+            int s6Report = Math.Max(1, stGroups.Count / 20);
             for (int sti = 0; sti < stGroups.Count; sti++)
             {
+                if (sti % s6Report == 0)
+                    ReportSub($"S6: комб. {sti}/{stGroups.Count} ({100 * sti / Math.Max(1, stGroups.Count)}%), {objVars.Count} слаг.");
                 var stg = stGroups[sti];
                 for (int gi = 0; gi < groups.Count; gi++)
                 {
@@ -661,7 +800,7 @@ public class OrToolsSchedulerService : ISchedulerService
         }
 
         // S7: Prefer pairs 2-3 (0-indexed) — penalize early/late slots per group
-        progress?.Report("Целевая функция S7: предпочтительное время занятий...");
+        Report("S7: предпочтительное время занятий...");
         for (int gi = 0; gi < groups.Count; gi++)
         for (int d = 0; d < NumDays; d++)
         for (int wi = 0; wi < 2; wi++)
@@ -675,9 +814,9 @@ public class OrToolsSchedulerService : ISchedulerService
 
         // S8: Saturday discouragement — soft penalty per group slot on day 5 (Saturday)
         const int saturdayIdx = 5;
+        Report(w.SaturdayPenalty > 0 ? "S8: штраф за субботу..." : "S8: пропуск (SaturdayPenalty=0)");
         if (w.SaturdayPenalty > 0)
         {
-            progress?.Report("Целевая функция S8: штраф за субботу...");
             for (int gi = 0; gi < groups.Count; gi++)
             for (int p = 0; p < numPairs; p++)
             for (int wi = 0; wi < 2; wi++)
@@ -687,10 +826,11 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        // S9: Department mismatch — penalize when room's department faculty differs from subject's department faculty
+        Report(w.DepartmentMismatchPenalty > 0
+            ? "S9: штраф за несоответствие кафедры..."
+            : "S9: пропуск (DepartmentMismatchPenalty=0)");
         if (w.DepartmentMismatchPenalty > 0)
         {
-            progress?.Report("Целевая функция S9: штраф за несоответствие кафедры...");
             foreach (var ((ri, _, _, _, rmi), v) in vars)
             {
                 var roomFacultyId = rooms[rmi].DepartmentFacultyId;
@@ -706,7 +846,7 @@ public class OrToolsSchedulerService : ISchedulerService
         if (objVars.Count > 0)
             model.Minimize(LinearExpr.WeightedSum(objVars.ToArray(), objCoeffs.ToArray()));
 
-        progress?.Report($"Запуск решателя (таймаут {input.SolverTimeoutSeconds}с, {objVars.Count} слагаемых в целевой функции)...");
+        Report($"Запуск решателя (таймаут {input.SolverTimeoutSeconds}с, {objVars.Count} слагаемых)...");
         var workers = int.TryParse(Environment.GetEnvironmentVariable("SOLVER_NUM_WORKERS"), out var nw) && nw > 0
             ? nw
             : 2;
@@ -730,7 +870,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     []);
         }
 
-        progress?.Report($"Извлечение результатов (статус: {status})...");
+        Report($"Извлечение результатов (статус: {status})...");
         //  Extract assignments
         var assignments = new List<SchedulerAssignment>();
         foreach (var ((ri, d, p, wi, rmi), v) in vars)
@@ -799,13 +939,19 @@ public class OrToolsSchedulerService : ISchedulerService
         return map;
     }
 
+    private const int ImpossibleDistanceMeters = 10_000_000;
+
     private static int TravelDistanceMeters(SchedulerRoom r1, SchedulerRoom r2,
         Dictionary<(Guid, Guid), int> buildingDistanceMap,
         Dictionary<(Guid, Guid), int> roomDistanceMap)
     {
         if (r1.BuildingId == r2.BuildingId)
             return roomDistanceMap.TryGetValue((r1.Id, r2.Id), out int rd) ? rd : 0;
-        return buildingDistanceMap.TryGetValue((r1.BuildingId, r2.BuildingId), out int d) ? d : int.MaxValue / 2;
+
+        if (!buildingDistanceMap.TryGetValue((r1.BuildingId, r2.BuildingId), out int interBuilding))
+            return ImpossibleDistanceMeters;
+
+        return r1.EntryDistanceMeters + interBuilding + r2.EntryDistanceMeters;
     }
 
     private static HashSet<(Guid, int, int, int)> BuildBlockedSet(IEnumerable<SchedulerBlock> blocks)

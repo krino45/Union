@@ -103,7 +103,8 @@ public record SchedulerRoom(
     int Floor = 1,
     IReadOnlyList<LessonType>? AllowedLessonTypes = null,
     Guid? DepartmentFacultyId = null,
-    bool IsDistributed = false
+    bool IsDistributed = false,
+    int EntryDistanceMeters = 0
 );
 
 public record SchedulerRoomDistance(Guid FromRoomId, Guid ToRoomId, int DistanceMeters);

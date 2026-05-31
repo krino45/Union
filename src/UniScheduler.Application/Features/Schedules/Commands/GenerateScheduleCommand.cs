@@ -232,18 +232,27 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .Select(kv => new SchedulerRoomDistance(kv.Key.Item1, kv.Key.Item2, kv.Value))
             .ToList();
 
+        var entryDistByRoom = ScheduleScoreCalculator.ComputeRoomEntryDistances(
+            floorPlanNodes, floorPlanEdges, weights.StairFloorMeters);
+
+        var bldDistMap = ScheduleScoreCalculator.ComputeAllPairsBuildingDistances(distances);
+        var bldDistList = bldDistMap
+            .Select(kv => new SchedulerBuildingDistance(kv.Key.Item1, kv.Key.Item2, kv.Value))
+            .ToList();
+
         var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(
             floorPlanNodes, floorPlanEdges, distances, rooms, pairSlots, subjectsWithDepts, weights);
 
         var input = new SchedulerInput(
             schedule.Id,
             rooms.Select(r => new SchedulerRoom(r.Id, r.BuildingId, r.RoomType, r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
-                r.Floor, r.AllowedLessonTypes, r.Department?.FacultyId, r.IsDistributed)).ToList(),
+                r.Floor, r.AllowedLessonTypes, r.Department?.FacultyId, r.IsDistributed,
+                EntryDistanceMeters: entryDistByRoom.TryGetValue(r.Id, out var ed) ? ed : 0)).ToList(),
             teachers.Select(t => new SchedulerTeacher(t.Id)).ToList(),
             groups.Select(g => new SchedulerGroup(g.Id, g.StudentCount,
                 g.BlockedDays.Select(bd => (int)bd.DayOfWeek - 1).ToList())).ToList(),
             requirements,
-            distances.Select(d => new SchedulerBuildingDistance(d.FromBuildingId, d.ToBuildingId, d.DistanceMeters)).ToList(),
+            bldDistList,
             blocks.Select(b => new SchedulerBlock(b.TeacherId, b.DayOfWeek, b.PairNumber, b.WeekType)).ToList(),
             PairsPerDay: pairsPerDay,
             BreakMinutesBetweenPairs: breakMinutes,
