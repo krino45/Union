@@ -15,7 +15,7 @@ public class OrToolsSchedulerService : ISchedulerService
 
     private SchedulerOutput Solve(SchedulerInput input, IProgress<string>? progress)
     {
-        const int TotalStages = 26;
+        const int TotalStages = 28;
         int stage = 0;
         void Report(string msg) => progress?.Report($"[{++stage}/{TotalStages}] {msg}");
         void ReportSub(string msg) => progress?.Report($"[{stage}/{TotalStages}] {msg}");
@@ -333,21 +333,69 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        Report($"Расстояния между аудиториями ({rooms.Count}**2 пар)...");
+        // Building index
+        var allBuildingIds = rooms.Where(r => !r.IsDistributed).Select(r => r.BuildingId).Distinct().ToList();
+        var buildingIdToIdx = allBuildingIds.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
+        var roomToBuildingIdx = new int[rooms.Count];
+        for (int i = 0; i < rooms.Count; i++)
+            roomToBuildingIdx[i] = rooms[i].IsDistributed ? -1 : buildingIdToIdx[rooms[i].BuildingId];
+
+        // if even the closest-to-entrance rooms can't make the walk, no room pair across them can.
+        var minEntryByBuilding = new Dictionary<Guid, int>();
+        foreach (var r in rooms)
+        {
+            if (r.IsDistributed) continue;
+            if (!minEntryByBuilding.TryGetValue(r.BuildingId, out int cur) || r.EntryDistanceMeters < cur)
+                minEntryByBuilding[r.BuildingId] = r.EntryDistanceMeters;
+        }
+
+        Report($"Расстояния между аудиториями ({rooms.Count}² пар × {numPairs - 1} перемен)...");
+        var bldgImpByBreak = new Dictionary<int, HashSet<int>>[numPairs - 1];
         var tooFarByBreak = new Dictionary<int, HashSet<int>>[numPairs - 1];
         var walkPenByBreak = new Dictionary<int, Dictionary<int, long>>[numPairs - 1];
-        long tooFarPairCount = 0, walkPenPairCount = 0;
+        long bldgImpPairCount = 0, tooFarPairCount = 0, walkPenPairCount = 0;
         for (int p = 0; p < numPairs - 1; p++)
         {
+            double allowedTravelMin = breakMinutes[p];
+
+            // Step 1: which building pairs are fully impossible at this break?
+            var bldgImp = new Dictionary<int, HashSet<int>>();
+            foreach (var (b1Id, b1Idx) in buildingIdToIdx)
+            foreach (var (b2Id, b2Idx) in buildingIdToIdx)
+            {
+                if (b1Idx == b2Idx) continue;
+                bool fullyImp;
+                if (!distances.TryGetValue((b1Id, b2Id), out int bd))
+                    fullyImp = true; // no path through any intermediate building either
+                else
+                {
+                    int minE1 = minEntryByBuilding.GetValueOrDefault(b1Id, 0);
+                    int minE2 = minEntryByBuilding.GetValueOrDefault(b2Id, 0);
+                    double minWalkMins = (bd + minE1 + minE2) / WalkSpeedMperMin;
+                    fullyImp = minWalkMins > allowedTravelMin;
+                }
+                if (fullyImp)
+                {
+                    if (!bldgImp.TryGetValue(b1Idx, out var s)) bldgImp[b1Idx] = s = new HashSet<int>();
+                    s.Add(b2Idx);
+                    bldgImpPairCount++;
+                }
+            }
+            bldgImpByBreak[p] = bldgImp;
+
+            // Step 2: room-level classification — skip cross-building pairs whose building pair is impossible
             var tooFar = new Dictionary<int, HashSet<int>>();
             var walkPen = new Dictionary<int, Dictionary<int, long>>();
-            double allowedTravelMin = breakMinutes[p];
             for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
             {
                 if (rooms[rmi1].IsDistributed) continue;
+                int bi1 = roomToBuildingIdx[rmi1];
                 for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
                 {
                     if (rooms[rmi2].IsDistributed) continue;
+                    int bi2 = roomToBuildingIdx[rmi2];
+                    if (bi1 != bi2 && bldgImp.TryGetValue(bi1, out var blockedB2s) && blockedB2s.Contains(bi2))
+                        continue;
                     int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
                     double walkMins = dist / WalkSpeedMperMin;
                     if (walkMins > allowedTravelMin)
@@ -367,19 +415,76 @@ public class OrToolsSchedulerService : ISchedulerService
             tooFarByBreak[p] = tooFar;
             walkPenByBreak[p] = walkPen;
         }
-        ReportSub($"Расстояния: {tooFarPairCount} запрещённых пар, {walkPenPairCount} штрафных пар");
+        ReportSub($"Расстояния: {bldgImpPairCount} запрещ. (здание×здание), {tooFarPairCount} запрещ. (комната×комната), {walkPenPairCount} штрафных пар");
 
-        bool hasTravelData = tooFarPairCount > 0 || walkPenPairCount > 0;
+        bool needsBuildingTravel = bldgImpPairCount > 0;
+        bool needsPerRoomTravel = tooFarPairCount > 0 || walkPenPairCount > 0;
 
-        // gruVars: per (group, day, pair, wi, room) occupancy - 1 if ANY req of group gi uses
-        // room rmi at slot (d, p, wi). Collapses ri1-ri2-rmi1-rmi2 in H_travel/S4
-        // into rmi1-rmi2 per group/slot.
-        Report(hasTravelData
+        // gbuVars: per (group, day, pair, wi, building) occupancy — OR over all req vars of the
+        // group landing in any room of that building at that slot. Drives the H_travel building-level
+        // constraint family. Built only when building-level forbidden pairs exist.
+        Report(needsBuildingTravel
+            ? $"Занятость зданий по группам ({groups.Count} групп * {allBuildingIds.Count} зданий)..."
+            : "Занятость зданий по группам — пропуск");
+        var gbuVars = new Dictionary<(int gi, int d, int p, int wi, int bi), BoolVar>();
+        var gbuByCell = new Dictionary<(int gi, int d, int p, int wi), List<(int bi, BoolVar v)>>();
+        if (needsBuildingTravel)
+        {
+            int gbuReport = Math.Max(1, groups.Count / 20);
+            var temp = new Dictionary<(int d, int p, int wi, int bi), List<BoolVar>>();
+            for (int gi = 0; gi < groups.Count; gi++)
+            {
+                if (gi % gbuReport == 0)
+                    ReportSub($"Занятость зданий: группа {gi}/{groups.Count} ({100 * gi / Math.Max(1, groups.Count)}%), {gbuVars.Count} перем.");
+                var grIdxs = groupReqs[groups[gi].Id];
+                if (grIdxs.Count <= 1) continue;
+                temp.Clear();
+                foreach (int ri in grIdxs)
+                {
+                    int varWi = VarWeekIndex(reqs[ri].WeekType);
+                    var wis = reqs[ri].WeekType == WeekType.Both ? new[] { 0, 1 } : new[] { varWi };
+                    for (int d = 0; d < NumDays; d++)
+                    for (int p = 0; p < numPairs; p++)
+                    {
+                        if (!varsByReqCell.TryGetValue((ri, d, p, varWi), out var cell)) continue;
+                        foreach (int wi in wis)
+                        foreach (var (rmi, v) in cell)
+                        {
+                            int bi = roomToBuildingIdx[rmi];
+                            if (bi < 0) continue; // distributed room — excluded from travel logic
+                            var key = (d, p, wi, bi);
+                            if (!temp.TryGetValue(key, out var lst)) temp[key] = lst = new List<BoolVar>();
+                            lst.Add(v);
+                        }
+                    }
+                }
+                foreach (var ((d, p, wi, bi), lst) in temp)
+                {
+                    BoolVar bv;
+                    if (lst.Count == 1) bv = lst[0];
+                    else
+                    {
+                        bv = model.NewBoolVar($"gbu_{gi}_{d}_{p}_{wi}_{bi}");
+                        model.AddMaxEquality(bv, lst.Select(v => (IntVar)v).ToArray());
+                    }
+                    gbuVars[(gi, d, p, wi, bi)] = bv;
+                    var ck = (gi, d, p, wi);
+                    if (!gbuByCell.TryGetValue(ck, out var clist)) gbuByCell[ck] = clist = new List<(int, BoolVar)>();
+                    clist.Add((bi, bv));
+                }
+            }
+            ReportSub($"Занятость зданий: создано {gbuVars.Count} переменных");
+        }
+
+        // gruVars: per (group, day, pair, wi, room) occupancy. Built only when there's residual
+        // per-room travel work (intra-building too-far, partial cross-building too-far, or walking
+        // penalties). With no distance data this stays empty.
+        Report(needsPerRoomTravel
             ? $"Занятость аудиторий по группам (для H_travel/S4)..."
-            : $"Занятость аудиторий по группам — пропуск (нет данных о расстояниях)");
+            : "Занятость аудиторий по группам — пропуск");
         var gruVars = new Dictionary<(int gi, int d, int p, int wi, int rmi), BoolVar>();
         var gruByCell = new Dictionary<(int gi, int d, int p, int wi), List<(int rmi, BoolVar v)>>();
-        if (hasTravelData)
+        if (needsPerRoomTravel)
         {
             int gruReport = Math.Max(1, groups.Count / 20);
             var temp = new Dictionary<(int d, int p, int wi, int rmi), List<BoolVar>>();
@@ -393,7 +498,6 @@ public class OrToolsSchedulerService : ISchedulerService
                 foreach (int ri in grIdxs)
                 {
                     int varWi = VarWeekIndex(reqs[ri].WeekType);
-                    // Both-type vars belong to BOTH calendar weeks for travel-conflict purposes
                     var wis = reqs[ri].WeekType == WeekType.Both ? new[] { 0, 1 } : new[] { varWi };
                     for (int d = 0; d < NumDays; d++)
                     for (int p = 0; p < numPairs; p++)
@@ -412,11 +516,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 foreach (var ((d, p, wi, rmi), lst) in temp)
                 {
                     BoolVar bv;
-                    if (lst.Count == 1)
-                    {
-                        // No new var needed — the single req var IS the occupancy indicator.
-                        bv = lst[0];
-                    }
+                    if (lst.Count == 1) bv = lst[0];
                     else
                     {
                         bv = model.NewBoolVar($"gru_{gi}_{d}_{p}_{wi}_{rmi}");
@@ -431,9 +531,45 @@ public class OrToolsSchedulerService : ISchedulerService
             ReportSub($"Занятость по группам: создано {gruVars.Count} переменных");
         }
 
+        Report(needsBuildingTravel
+            ? $"H_travel (по зданиям): {bldgImpPairCount} запрещённых пар, {groups.Count} групп..."
+            : "H_travel (по зданиям): пропуск");
+        if (needsBuildingTravel)
+        {
+            int htbReport = Math.Max(1, groups.Count / 20);
+            long htbConstraints = 0;
+            for (int gi = 0; gi < groups.Count; gi++)
+            {
+                if (gi % htbReport == 0)
+                    ReportSub($"H_travel (зд.): группа {gi}/{groups.Count} ({100 * gi / Math.Max(1, groups.Count)}%), {htbConstraints} огр.");
+                for (int d = 0; d < NumDays; d++)
+                for (int p = 0; p < numPairs - 1; p++)
+                {
+                    var bldgImp = bldgImpByBreak[p];
+                    if (bldgImp.Count == 0) continue;
+                    for (int wi = 0; wi < 2; wi++)
+                    {
+                        if (!gbuByCell.TryGetValue((gi, d, p, wi), out var cellP)) continue;
+                        if (!gbuByCell.TryGetValue((gi, d, p + 1, wi), out var cellP1)) continue;
+                        foreach (var (bi1, bv1) in cellP)
+                        {
+                            if (!bldgImp.TryGetValue(bi1, out var b2Set)) continue;
+                            foreach (var (bi2, bv2) in cellP1)
+                            {
+                                if (!b2Set.Contains(bi2)) continue;
+                                model.Add(LinearExpr.Sum(new BoolVar[] { bv1, bv2 }) <= 1);
+                                htbConstraints++;
+                            }
+                        }
+                    }
+                }
+            }
+            ReportSub($"H_travel (зд.): создано {htbConstraints} ограничений");
+        }
+
         Report(tooFarPairCount > 0
-            ? $"H_travel: невозможно дойти за перемену ({groups.Count} групп)..."
-            : "H_travel: пропуск (нет запрещённых пар)");
+            ? $"H_travel (по аудиториям): {tooFarPairCount} остаточных пар, {groups.Count} групп..."
+            : "H_travel (по аудиториям): пропуск");
         if (tooFarPairCount > 0)
         {
             int htReport = Math.Max(1, groups.Count / 20);
@@ -441,7 +577,7 @@ public class OrToolsSchedulerService : ISchedulerService
             for (int gi = 0; gi < groups.Count; gi++)
             {
                 if (gi % htReport == 0)
-                    ReportSub($"H_travel: группа {gi}/{groups.Count} ({100 * gi / Math.Max(1, groups.Count)}%), {htConstraints} огр.");
+                    ReportSub($"H_travel (комн.): группа {gi}/{groups.Count} ({100 * gi / Math.Max(1, groups.Count)}%), {htConstraints} огр.");
                 for (int d = 0; d < NumDays; d++)
                 for (int p = 0; p < numPairs - 1; p++)
                 {
@@ -464,7 +600,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     }
                 }
             }
-            ReportSub($"H_travel: создано {htConstraints} ограничений");
+            ReportSub($"H_travel (комн.): создано {htConstraints} ограничений");
         }
 
         Report($"Вспомогательные переменные занятости ({groups.Count} групп, {teachers.Count} преп.)...");
