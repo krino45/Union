@@ -71,6 +71,18 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
         modelBuilder.Entity<StudyPlan>()
             .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<Room>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.Building.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<StudentGroup>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.Faculty.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<BuildingDistance>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.FromBuilding.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<TeacherAvailability>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.Teacher.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<FloorPlanNode>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.Building.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<FloorPlanEdge>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.Building.UniversityId == _currentUniversity.UniversityId);
 
         base.OnModelCreating(modelBuilder);
     }

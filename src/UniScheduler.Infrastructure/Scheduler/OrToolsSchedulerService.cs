@@ -30,6 +30,21 @@ public class OrToolsSchedulerService : ISchedulerService
         var blocked = BuildBlockedSet(input.TeacherBlocks);
         var groupBlockedDays = groups.ToDictionary(g => g.Id, g => (g.BlockedDays ?? Array.Empty<int>()).ToHashSet());
 
+        var groupSizeById = groups.ToDictionary(g => g.Id, g => g.StudentCount);
+        var reqGroupSize = reqs.Select(r => r.HeadcountOverride
+            ?? r.GroupIds.Sum(gid => groupSizeById.TryGetValue(gid, out var sz) ? sz : 0)).ToArray();
+
+        progress?.Report($"Подсчёт совместимости ({reqs.Count} занятий,  {rooms.Count} аудиторий)...");
+        var compatibleRooms = new int[reqs.Count][];
+        for (int ri = 0; ri < reqs.Count; ri++)
+        {
+            var list = new List<int>(rooms.Count);
+            for (int rmi = 0; rmi < rooms.Count; rmi++)
+                if (IsCompatible(reqs[ri], rooms[rmi], reqGroupSize[ri]))
+                    list.Add(rmi);
+            compatibleRooms[ri] = list.ToArray();
+        }
+
         // key: (reqIdx, day, pair, weekTypeIdx, roomIdx)  value: BoolVar
         // WeekType.Both requirements use wi=0 only; they occupy both odd AND even weeks.
         // WeekType.Odd > wi=0, WeekType.Even > wi=1.
@@ -40,6 +55,8 @@ public class OrToolsSchedulerService : ISchedulerService
         {
             var req = reqs[ri];
             int varWi = VarWeekIndex(req.WeekType);
+            var compatRmis = compatibleRooms[ri];
+            if (compatRmis.Length == 0) continue;
 
             for (int d = 0; d < NumDays; d++)
             for (int p = 0; p < numPairs; p++)
@@ -55,12 +72,23 @@ public class OrToolsSchedulerService : ISchedulerService
                     : blocked.Contains((req.TeacherId, d, p, varWi));
                 if (slotBlocked) continue;
 
-                for (int rmi = 0; rmi < rooms.Count; rmi++)
-                {
-                    if (!IsCompatible(req, rooms[rmi], groups)) continue;
+                foreach (int rmi in compatRmis)
                     vars[(ri, d, p, varWi, rmi)] = model.NewBoolVar($"a_{ri}_{d}_{p}_{varWi}_{rmi}");
-                }
             }
+        }
+
+        progress?.Report($"Построение индекса переменных ({vars.Count} шт.)...");
+        var varsByReqWi = new Dictionary<(int ri, int wi), List<BoolVar>>();
+        var varsByReqCell = new Dictionary<(int ri, int d, int p, int wi), List<(int rmi, BoolVar v)>>();
+        foreach (var ((ri, d, p, wi, rmi), v) in vars)
+        {
+            var k1 = (ri, wi);
+            if (!varsByReqWi.TryGetValue(k1, out var l1)) varsByReqWi[k1] = l1 = new List<BoolVar>();
+            l1.Add(v);
+
+            var k2 = (ri, d, p, wi);
+            if (!varsByReqCell.TryGetValue(k2, out var l2)) varsByReqCell[k2] = l2 = new List<(int, BoolVar)>();
+            l2.Add((rmi, v));
         }
 
         progress?.Report($"Проверка совместимости ({vars.Count} переменных)...");
@@ -69,14 +97,13 @@ public class OrToolsSchedulerService : ISchedulerService
         for (int ri = 0; ri < reqs.Count; ri++)
         {
             var req = reqs[ri];
-            bool anyRoom = rooms.Any(r => IsCompatible(req, r, groups));
-            if (!anyRoom)
+            if (compatibleRooms[ri].Length == 0)
             {
                 noRoomLines.Add($"{req.LessonType} (subj {req.SubjectId:D})");
                 continue;
             }
             int varWi = VarWeekIndex(req.WeekType);
-            if (!vars.Any(kv => kv.Key.ri == ri && kv.Key.wi == varWi))
+            if (!varsByReqWi.ContainsKey((ri, varWi)))
                 noSlotLines.Add($"{req.LessonType} (subj {req.SubjectId:D})");
         }
         if (noRoomLines.Count > 0 || noSlotLines.Count > 0)
@@ -116,22 +143,18 @@ public class OrToolsSchedulerService : ISchedulerService
         }
 
         progress?.Report("Ограничение H2: каждое занятие ровно один раз");
-        //  H1: Each requirement scheduled exactly once
+        //  H2: Each requirement scheduled exactly once
         for (int ri = 0; ri < reqs.Count; ri++)
         {
             int varWi = VarWeekIndex(reqs[ri].WeekType);
-            var slotVars = CollectVars(vars, ri, varWi);
-            model.AddExactlyOne(slotVars);
+            if (varsByReqWi.TryGetValue((ri, varWi), out var slotVars))
+                model.AddExactlyOne(slotVars);
         }
 
         // teacherReqs is also used for isTeacherUsed auxiliary vars and soft objectives below.
         var teacherReqs = teachers.ToDictionary(t => t.Id, t =>
             reqs.Select((r, i) => (r, i)).Where(x => x.r.TeacherId == t.Id).Select(x => x.i).ToList());
         var teacherIdxMap = teachers.Select((t, i) => (t.Id, i)).ToDictionary(x => x.Id, x => x.i);
-
-        // Precompute group headcount per requirement for capacity checks.
-        // Subgroup sessions carry an explicit per-session headcount override.
-        var reqGroupSize = reqs.Select(r => r.HeadcountOverride ?? groups.Where(g => r.GroupIds.Contains(g.Id)).Sum(g => g.StudentCount)).ToArray();
 
         progress?.Report("Ограничение H4: конфликты аудиторий (по преподавателям)...");
         // H4: at most one TEACHER per room per slot.
@@ -226,17 +249,15 @@ public class OrToolsSchedulerService : ISchedulerService
                 {
                     if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
                     int varWi = VarWeekIndex(reqs[ri].WeekType);
-                    var riVars = vars.Where(x => x.Key.ri == ri && x.Key.d == d && x.Key.p == p && x.Key.wi == varWi)
-                                     .Select(x => x.Value).ToList();
-                    if (riVars.Count == 0) continue;
+                    if (!varsByReqCell.TryGetValue((ri, d, p, varWi), out var cell)) continue;
                     if (reqs[ri].ParallelKey is int pk)
                     {
                         if (!parallelCellVars.TryGetValue(pk, out var lst)) parallelCellVars[pk] = lst = new List<BoolVar>();
-                        lst.AddRange(riVars);
+                        foreach (var (_, v) in cell) lst.Add(v);
                     }
                     else
                     {
-                        occupants.AddRange(riVars);
+                        foreach (var (_, v) in cell) occupants.Add(v);
                     }
                 }
                 foreach (var (pk, lst) in parallelCellVars)
@@ -268,11 +289,11 @@ public class OrToolsSchedulerService : ISchedulerService
                 for (int d = 0; d < NumDays; d++)
                 for (int p = 0; p < numPairs; p++)
                 {
-                    var anchorVars = vars.Where(kv => kv.Key.ri == anchor && kv.Key.d == d && kv.Key.p == p && kv.Key.wi == anchorWi)
-                                         .Select(kv => (IntVar)kv.Value).ToList();
-                    var memberVars = vars.Where(kv => kv.Key.ri == m && kv.Key.d == d && kv.Key.p == p && kv.Key.wi == mWi)
-                                         .Select(kv => (IntVar)kv.Value).ToList();
-                    if (anchorVars.Count == 0 && memberVars.Count == 0) continue;
+                    varsByReqCell.TryGetValue((anchor, d, p, anchorWi), out var anchorCell);
+                    varsByReqCell.TryGetValue((m, d, p, mWi), out var memberCell);
+                    if ((anchorCell == null || anchorCell.Count == 0) && (memberCell == null || memberCell.Count == 0)) continue;
+                    var anchorVars = anchorCell == null ? Array.Empty<IntVar>() : anchorCell.Select(t => (IntVar)t.v).ToArray();
+                    var memberVars = memberCell == null ? Array.Empty<IntVar>() : memberCell.Select(t => (IntVar)t.v).ToArray();
                     model.Add(LinearExpr.Sum(anchorVars) == LinearExpr.Sum(memberVars));
                 }
             }
@@ -288,23 +309,26 @@ public class OrToolsSchedulerService : ISchedulerService
             {
                 double allowedTravelMin = breakMinutes[p];
 
-                for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
-                for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
+                foreach (int ri1 in grIdxs)
                 {
-                    if (rooms[rmi1].IsDistributed || rooms[rmi2].IsDistributed) continue;
-                    int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
-                    if (dist / WalkSpeedMperMin <= allowedTravelMin) continue;
+                    if (!AffectsWeekIndex(reqs[ri1].WeekType, wi)) continue;
+                    int wi1 = VarWeekIndex(reqs[ri1].WeekType);
+                    if (!varsByReqCell.TryGetValue((ri1, d, p, wi1), out var cell1)) continue;
 
-                    foreach (int ri1 in grIdxs)
                     foreach (int ri2 in grIdxs)
                     {
-                        if (!AffectsWeekIndex(reqs[ri1].WeekType, wi)) continue;
                         if (!AffectsWeekIndex(reqs[ri2].WeekType, wi)) continue;
-                        int wi1 = VarWeekIndex(reqs[ri1].WeekType);
                         int wi2 = VarWeekIndex(reqs[ri2].WeekType);
-                        if (!vars.TryGetValue((ri1, d, p, wi1, rmi1), out var v1)) continue;
-                        if (!vars.TryGetValue((ri2, d, p + 1, wi2, rmi2), out var v2)) continue;
-                        model.Add(LinearExpr.Sum(new BoolVar[] { v1, v2 }) <= 1);
+                        if (!varsByReqCell.TryGetValue((ri2, d, p + 1, wi2), out var cell2)) continue;
+
+                        foreach (var (rmi1, v1) in cell1)
+                        foreach (var (rmi2, v2) in cell2)
+                        {
+                            if (rooms[rmi1].IsDistributed || rooms[rmi2].IsDistributed) continue;
+                            int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
+                            if (dist / WalkSpeedMperMin <= allowedTravelMin) continue;
+                            model.Add(LinearExpr.Sum(new BoolVar[] { v1, v2 }) <= 1);
+                        }
                     }
                 }
             }
@@ -327,8 +351,8 @@ public class OrToolsSchedulerService : ISchedulerService
                 {
                     if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
                     int varWi = VarWeekIndex(reqs[ri].WeekType);
-                    foreach (var kv in vars.Where(x => x.Key.ri == ri && x.Key.d == d && x.Key.p == p && x.Key.wi == varWi))
-                        slotVars.Add(kv.Value);
+                    if (!varsByReqCell.TryGetValue((ri, d, p, varWi), out var cell)) continue;
+                    foreach (var (_, v) in cell) slotVars.Add(v);
                 }
 
                 if (slotVars.Count > 0)
@@ -354,8 +378,8 @@ public class OrToolsSchedulerService : ISchedulerService
                 {
                     if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
                     int varWi = VarWeekIndex(reqs[ri].WeekType);
-                    foreach (var kv in vars.Where(x => x.Key.ri == ri && x.Key.d == d && x.Key.p == p && x.Key.wi == varWi))
-                        slotVars.Add(kv.Value);
+                    if (!varsByReqCell.TryGetValue((ri, d, p, varWi), out var cell)) continue;
+                    foreach (var (_, v) in cell) slotVars.Add(v);
                 }
 
                 if (slotVars.Count > 0)
@@ -381,8 +405,9 @@ public class OrToolsSchedulerService : ISchedulerService
                 {
                     if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
                     int varWi = VarWeekIndex(reqs[ri].WeekType);
-                    foreach (var kv in vars.Where(x => x.Key.ri == ri && x.Key.d == d && x.Key.p == p && x.Key.wi == varWi))
-                        (reqs[ri].IsOnline ? onlineVars : campusVars).Add(kv.Value);
+                    if (!varsByReqCell.TryGetValue((ri, d, p, varWi), out var cell)) continue;
+                    var target = reqs[ri].IsOnline ? onlineVars : campusVars;
+                    foreach (var (_, v) in cell) target.Add(v);
                 }
 
                 var bc = model.NewBoolVar($"gcamp_{gi}_{d}_{p}_{wi}");
@@ -489,31 +514,34 @@ public class OrToolsSchedulerService : ISchedulerService
             {
                 double allowedTravelMin = breakMinutes[p];
 
-                for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
-                for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
+                foreach (int ri1 in grIdxs)
                 {
-                    if (rooms[rmi1].IsDistributed || rooms[rmi2].IsDistributed) continue;
-                    int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
-                    if (dist == 0) continue;
-                    double walkMins = dist / WalkSpeedMperMin;
-                    if (walkMins > allowedTravelMin) continue;
+                    if (!AffectsWeekIndex(reqs[ri1].WeekType, wi)) continue;
+                    int wi1 = VarWeekIndex(reqs[ri1].WeekType);
+                    if (!varsByReqCell.TryGetValue((ri1, d, p, wi1), out var cell1)) continue;
 
-                    long penalty = Math.Max(1L, (long)(walkMins / allowedTravelMin * w.WalkingPenaltyMax));
-
-                    foreach (int ri1 in grIdxs)
                     foreach (int ri2 in grIdxs)
                     {
-                        if (!AffectsWeekIndex(reqs[ri1].WeekType, wi)) continue;
                         if (!AffectsWeekIndex(reqs[ri2].WeekType, wi)) continue;
-                        var wi1 = VarWeekIndex(reqs[ri1].WeekType);
-                        var wi2 = VarWeekIndex(reqs[ri2].WeekType);
-                        if (!vars.TryGetValue((ri1, d, p, wi1, rmi1), out var v1)) continue;
-                        if (!vars.TryGetValue((ri2, d, p + 1, wi2, rmi2), out var v2)) continue;
-                        var walkPen = model.NewBoolVar($"walk_{gi}_{d}_{p}_{wi}_{rmi1}_{rmi2}_{ri1}_{ri2}");
-                        model.Add(LinearExpr.Sum([v1, v2]) <= 1 + walkPen);
-                        model.Add(walkPen <= LinearExpr.Sum([v1, v2]));
-                        objVars.Add(walkPen);
-                        objCoeffs.Add(penalty);
+                        int wi2 = VarWeekIndex(reqs[ri2].WeekType);
+                        if (!varsByReqCell.TryGetValue((ri2, d, p + 1, wi2), out var cell2)) continue;
+
+                        foreach (var (rmi1, v1) in cell1)
+                        foreach (var (rmi2, v2) in cell2)
+                        {
+                            if (rooms[rmi1].IsDistributed || rooms[rmi2].IsDistributed) continue;
+                            int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
+                            if (dist == 0) continue;
+                            double walkMins = dist / WalkSpeedMperMin;
+                            if (walkMins > allowedTravelMin) continue;
+
+                            long penalty = Math.Max(1L, (long)(walkMins / allowedTravelMin * w.WalkingPenaltyMax));
+                            var walkPen = model.NewBoolVar($"walk_{gi}_{d}_{p}_{wi}_{rmi1}_{rmi2}_{ri1}_{ri2}");
+                            model.Add(LinearExpr.Sum([v1, v2]) <= 1 + walkPen);
+                            model.Add(walkPen <= LinearExpr.Sum([v1, v2]));
+                            objVars.Add(walkPen);
+                            objCoeffs.Add(penalty);
+                        }
                     }
                 }
             }
@@ -562,11 +590,10 @@ public class OrToolsSchedulerService : ISchedulerService
                         {
                             if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
                             int varWi = VarWeekIndex(reqs[ri].WeekType);
-                            for (int rmi = 0; rmi < rooms.Count; rmi++)
-                            {
-                                if (vars.TryGetValue((ri, d, p,     varWi, rmi), out var vp))  atP.Add(vp);
-                                if (vars.TryGetValue((ri, d, p + 1, varWi, rmi), out var vp1)) atP1.Add(vp1);
-                            }
+                            if (varsByReqCell.TryGetValue((ri, d, p, varWi), out var cellP))
+                                foreach (var (_, v) in cellP) atP.Add(v);
+                            if (varsByReqCell.TryGetValue((ri, d, p + 1, varWi), out var cellP1))
+                                foreach (var (_, v) in cellP1) atP1.Add(v);
                         }
                         if (atP.Count == 0 || atP1.Count == 0) continue;
 
@@ -764,10 +791,7 @@ public class OrToolsSchedulerService : ISchedulerService
         return set;
     }
 
-    private static List<BoolVar> CollectVars(Dictionary<(int ri, int d, int p, int wi, int rmi), BoolVar> vars, int ri, int wi)
-        => vars.Where(kv => kv.Key.ri == ri && kv.Key.wi == wi).Select(kv => kv.Value).ToList();
-
-    private static bool IsCompatible(SchedulerRequirement req, SchedulerRoom room, List<SchedulerGroup> groups)
+    private static bool IsCompatible(SchedulerRequirement req, SchedulerRoom room, int headcount)
     {
         // Distributed sentinel room: only no-fixed-location requirements (language streams) may use
         // it, and they may use nothing else. It has no capacity/equipment constraints.
@@ -781,9 +805,7 @@ public class OrToolsSchedulerService : ISchedulerService
         if (req.NeedsLab && !room.HasLab) return false;
         if (room.AllowedLessonTypes is { Count: > 0 } allowed && !allowed.Contains(req.LessonType)) return false;
 
-        // Subgroup sessions only seat a fraction of the group, so HeadcountOverride takes precedence.
-        int total = req.HeadcountOverride ?? groups.Where(g => req.GroupIds.Contains(g.Id)).Sum(g => g.StudentCount);
-        if (room.Capacity < total) return false;
+        if (room.Capacity < headcount) return false;
 
         // An explicit AllowedLessonTypes is the admin's deliberate opt-in and overrides the
         // RoomType heuristic below (we already returned false above if it excluded this type).
