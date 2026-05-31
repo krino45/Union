@@ -16,8 +16,8 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { interval, Subscription } from 'rxjs';
-import { switchMap, takeWhile } from 'rxjs/operators';
+import { Subscription, timer, of, EMPTY } from 'rxjs';
+import { exhaustMap, takeWhile, catchError, filter } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
 import { Schedule, GenerationJobStatus, Faculty, SolverWeights } from '../../../core/models';
 import { ScheduleStatus, Term } from '../../../core/models/enums';
@@ -175,9 +175,39 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   loadSchedules(): void {
     this.loading = true;
     this.api.getSchedules().subscribe({
-      next: data => { this.schedules = data; this.loading = false; },
+      next: data => {
+        this.schedules = data;
+        this.loading = false;
+        this.resumeActiveGenerations();
+      },
       error: () => { this.loading = false; }
     });
+  }
+
+  private resumeActiveGenerations(): void {
+    for (const s of this.schedules) {
+      if (s.status !== ScheduleStatus.Draft) continue;
+      if (this.pollingSubscriptions[s.id]) continue;
+      this.api.getGenerationStatus(s.id).subscribe({
+        next: status => {
+          if (status.status === 'queued' || status.status === 'running') {
+            this.generationStatus[s.id] = status;
+            this.startPolling(s.id);
+          }
+        },
+        error: () => { /* not_found */ }
+      });
+    }
+  }
+
+  private errMsg(e: any): string {
+    if (typeof e?.error === 'string' && e.error.trim()) return e.error;
+    return e?.error?.error
+        || e?.error?.title
+        || e?.error?.detail
+        || e?.error?.message
+        || e?.message
+        || (e?.status ? `HTTP ${e.status}` : 'Неизвестная ошибка');
   }
 
   openCreateDialog(): void {
@@ -202,24 +232,42 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
           this.generationStatus[schedule.id] = { scheduleId: schedule.id, status: 'queued', entriesCreated: 0 };
           this.startPolling(schedule.id);
         },
-        error: (e) => this.snackBar.open(e.error?.title || 'Ошибка запуска генерации', 'OK', { duration: 4000 })
+        error: (e) => {
+          const msg = e.status === 409
+            ? (e.error?.error || 'Генерация уже выполняется для этого расписания')
+            : `Ошибка запуска генерации: ${this.errMsg(e)}`;
+          this.snackBar.open(msg, 'OK', { duration: 5000 });
+          // If a job is already running, attach the poller so the UI catches up.
+          if (e.status === 409) {
+            this.api.getGenerationStatus(schedule.id).subscribe(s => {
+              this.generationStatus[schedule.id] = s;
+              this.startPolling(schedule.id);
+            });
+          }
+        }
       });
     });
   }
 
   private startPolling(scheduleId: string): void {
     this.pollingSubscriptions[scheduleId]?.unsubscribe();
-    this.pollingSubscriptions[scheduleId] = interval(2000).pipe(
-      switchMap(() => this.api.getGenerationStatus(scheduleId)),
+    this.pollingSubscriptions[scheduleId] = timer(0, 2500).pipe(
+      exhaustMap(() => this.api.getGenerationStatus(scheduleId).pipe(
+        catchError(() => EMPTY)
+      )),
+      filter(s => s.status !== 'not_found'),
       takeWhile(s => s.status === 'queued' || s.status === 'running', true)
-    ).subscribe(status => {
-      this.generationStatus[scheduleId] = status;
-      if (status.status === 'completed') {
-        this.snackBar.open(`Генерация завершена: ${status.entriesCreated} занятий`, 'OK', { duration: 5000 });
-        this.loadSchedules();
-      } else if (status.status === 'failed') {
-        this.snackBar.open(`Генерация не удалась: ${status.message}`, 'OK', { duration: 6000 });
-      }
+    ).subscribe({
+      next: status => {
+        this.generationStatus[scheduleId] = status;
+        if (status.status === 'completed') {
+          this.snackBar.open(`Генерация завершена: ${status.entriesCreated} занятий`, 'OK', { duration: 5000 });
+          this.loadSchedules();
+        } else if (status.status === 'failed') {
+          this.snackBar.open(`Генерация не удалась: ${status.message || 'без сообщения'}`, 'OK', { duration: 8000 });
+        }
+      },
+      error: (e) => this.snackBar.open(`Опрос статуса прерван: ${this.errMsg(e)}`, 'OK', { duration: 5000 })
     });
   }
 

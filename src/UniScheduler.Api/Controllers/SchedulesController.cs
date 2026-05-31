@@ -114,6 +114,9 @@ public class SchedulesController : ControllerBase
     [HttpPost("{id:guid}/generate")]
     public IActionResult Generate(Guid id, [FromBody] GenerateRequest? body)
     {
+        var current = jobQueue.GetStatus(id);
+        if (current.Status == "queued" || current.Status == "running")
+            return Conflict(new { error = "Генерация уже выполняется для этого расписания", status = current.Status, stage = current.Stage });
         var jobId = jobQueue.Enqueue(id, body?.TimeoutSeconds ?? 120);
         return Accepted(new { jobId, scheduleId = id, status = "queued" });
     }

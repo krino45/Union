@@ -299,35 +299,64 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        progress?.Report("Ограничение H_travel: нарушение перемены...");
-        foreach (var group in groups)
+        progress?.Report("Предрасчёт расстояний между аудиториями...");
+        var tooFarByBreak = new HashSet<(int, int)>[numPairs - 1];
+        var walkPenByBreak = new Dictionary<(int, int), long>[numPairs - 1];
+        for (int p = 0; p < numPairs - 1; p++)
         {
-            var grIdxs = groupReqs[group.Id];
-            for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < numPairs - 1; p++)
-            for (int wi = 0; wi < 2; wi++)
+            var tooFar = new HashSet<(int, int)>();
+            var walkPen = new Dictionary<(int, int), long>();
+            double allowedTravelMin = breakMinutes[p];
+            for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
             {
-                double allowedTravelMin = breakMinutes[p];
-
-                foreach (int ri1 in grIdxs)
+                if (rooms[rmi1].IsDistributed) continue;
+                for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
                 {
-                    if (!AffectsWeekIndex(reqs[ri1].WeekType, wi)) continue;
-                    int wi1 = VarWeekIndex(reqs[ri1].WeekType);
-                    if (!varsByReqCell.TryGetValue((ri1, d, p, wi1), out var cell1)) continue;
+                    if (rooms[rmi2].IsDistributed) continue;
+                    int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
+                    if (dist < 0) continue; // unknown → no constraint
+                    double walkMins = dist / WalkSpeedMperMin;
+                    if (walkMins > allowedTravelMin)
+                        tooFar.Add((rmi1, rmi2));
+                    else if (dist > 0)
+                        walkPen[(rmi1, rmi2)] = Math.Max(1L, (long)(walkMins / allowedTravelMin * w.WalkingPenaltyMax));
+                }
+            }
+            tooFarByBreak[p] = tooFar;
+            walkPenByBreak[p] = walkPen;
+        }
 
-                    foreach (int ri2 in grIdxs)
+        progress?.Report("Ограничение H_travel: нарушение перемены...");
+        if (tooFarByBreak.Any(s => s.Count > 0))
+        {
+            foreach (var grIdxs in groups.Select(group => groupReqs[group.Id]))
+            {
+                for (int d = 0; d < NumDays; d++)
+                for (int p = 0; p < numPairs - 1; p++)
+                {
+                    var tooFar = tooFarByBreak[p];
+                    if (tooFar.Count == 0) continue;
+                    for (int wi = 0; wi < 2; wi++)
                     {
-                        if (!AffectsWeekIndex(reqs[ri2].WeekType, wi)) continue;
-                        int wi2 = VarWeekIndex(reqs[ri2].WeekType);
-                        if (!varsByReqCell.TryGetValue((ri2, d, p + 1, wi2), out var cell2)) continue;
-
-                        foreach (var (rmi1, v1) in cell1)
-                        foreach (var (rmi2, v2) in cell2)
+                        foreach (int ri1 in grIdxs)
                         {
-                            if (rooms[rmi1].IsDistributed || rooms[rmi2].IsDistributed) continue;
-                            int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
-                            if (dist / WalkSpeedMperMin <= allowedTravelMin) continue;
-                            model.Add(LinearExpr.Sum(new BoolVar[] { v1, v2 }) <= 1);
+                            if (!AffectsWeekIndex(reqs[ri1].WeekType, wi)) continue;
+                            int wi1 = VarWeekIndex(reqs[ri1].WeekType);
+                            if (!varsByReqCell.TryGetValue((ri1, d, p, wi1), out var cell1)) continue;
+
+                            foreach (int ri2 in grIdxs)
+                            {
+                                if (!AffectsWeekIndex(reqs[ri2].WeekType, wi)) continue;
+                                int wi2 = VarWeekIndex(reqs[ri2].WeekType);
+                                if (!varsByReqCell.TryGetValue((ri2, d, p + 1, wi2), out var cell2)) continue;
+
+                                foreach (var (rmi1, v1) in cell1)
+                                foreach (var (rmi2, v2) in cell2)
+                                {
+                                    if (!tooFar.Contains((rmi1, rmi2))) continue;
+                                    model.Add(LinearExpr.Sum(new BoolVar[] { v1, v2 }) <= 1);
+                                }
+                            }
                         }
                     }
                 }
@@ -361,6 +390,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     model.Add(bv == 0);
             }
         }
+
 
         var isTeacherUsed = new BoolVar[teachers.Count, NumDays, numPairs, 2];
         for (int ti = 0; ti < teachers.Count; ti++)
@@ -504,43 +534,42 @@ public class OrToolsSchedulerService : ISchedulerService
             objCoeffs.Add(w.ActiveDay);
         }
 
-        // S4: Walking penalty for adjacent pairs
-        for (int gi = 0; gi < groups.Count; gi++)
+        // S4: Walking penalty for adjacent pairs (uses precomputed walkPenByBreak)
+        if (walkPenByBreak.Any(d => d.Count > 0))
         {
-            var grIdxs = groupReqs[groups[gi].Id];
-            for (int d = 0; d < NumDays; d++)
-            for (int p = 0; p < numPairs - 1; p++)
-            for (int wi = 0; wi < 2; wi++)
+            for (int gi = 0; gi < groups.Count; gi++)
             {
-                double allowedTravelMin = breakMinutes[p];
-
-                foreach (int ri1 in grIdxs)
+                var grIdxs = groupReqs[groups[gi].Id];
+                for (int d = 0; d < NumDays; d++)
+                for (int p = 0; p < numPairs - 1; p++)
                 {
-                    if (!AffectsWeekIndex(reqs[ri1].WeekType, wi)) continue;
-                    int wi1 = VarWeekIndex(reqs[ri1].WeekType);
-                    if (!varsByReqCell.TryGetValue((ri1, d, p, wi1), out var cell1)) continue;
-
-                    foreach (int ri2 in grIdxs)
+                    var penMap = walkPenByBreak[p];
+                    if (penMap.Count == 0) continue;
+                    for (int wi = 0; wi < 2; wi++)
                     {
-                        if (!AffectsWeekIndex(reqs[ri2].WeekType, wi)) continue;
-                        int wi2 = VarWeekIndex(reqs[ri2].WeekType);
-                        if (!varsByReqCell.TryGetValue((ri2, d, p + 1, wi2), out var cell2)) continue;
-
-                        foreach (var (rmi1, v1) in cell1)
-                        foreach (var (rmi2, v2) in cell2)
+                        foreach (int ri1 in grIdxs)
                         {
-                            if (rooms[rmi1].IsDistributed || rooms[rmi2].IsDistributed) continue;
-                            int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
-                            if (dist == 0) continue;
-                            double walkMins = dist / WalkSpeedMperMin;
-                            if (walkMins > allowedTravelMin) continue;
+                            if (!AffectsWeekIndex(reqs[ri1].WeekType, wi)) continue;
+                            int wi1 = VarWeekIndex(reqs[ri1].WeekType);
+                            if (!varsByReqCell.TryGetValue((ri1, d, p, wi1), out var cell1)) continue;
 
-                            long penalty = Math.Max(1L, (long)(walkMins / allowedTravelMin * w.WalkingPenaltyMax));
-                            var walkPen = model.NewBoolVar($"walk_{gi}_{d}_{p}_{wi}_{rmi1}_{rmi2}_{ri1}_{ri2}");
-                            model.Add(LinearExpr.Sum([v1, v2]) <= 1 + walkPen);
-                            model.Add(walkPen <= LinearExpr.Sum([v1, v2]));
-                            objVars.Add(walkPen);
-                            objCoeffs.Add(penalty);
+                            foreach (int ri2 in grIdxs)
+                            {
+                                if (!AffectsWeekIndex(reqs[ri2].WeekType, wi)) continue;
+                                int wi2 = VarWeekIndex(reqs[ri2].WeekType);
+                                if (!varsByReqCell.TryGetValue((ri2, d, p + 1, wi2), out var cell2)) continue;
+
+                                foreach (var (rmi1, v1) in cell1)
+                                foreach (var (rmi2, v2) in cell2)
+                                {
+                                    if (!penMap.TryGetValue((rmi1, rmi2), out long penalty)) continue;
+                                    var walkPen = model.NewBoolVar($"walk_{gi}_{d}_{p}_{wi}_{rmi1}_{rmi2}_{ri1}_{ri2}");
+                                    model.Add(LinearExpr.Sum([v1, v2]) <= 1 + walkPen);
+                                    model.Add(walkPen <= LinearExpr.Sum([v1, v2]));
+                                    objVars.Add(walkPen);
+                                    objCoeffs.Add(penalty);
+                                }
+                            }
                         }
                     }
                 }
