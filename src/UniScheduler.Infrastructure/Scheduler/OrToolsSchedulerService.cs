@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Google.OrTools.Sat;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.Common.Models;
@@ -25,6 +27,10 @@ public class OrToolsSchedulerService : ISchedulerService
         var w = input.Weights ?? new SolverWeights();
 
         var model = new CpModel();
+        // Sentinel "always 0" bool
+        var Zero = model.NewBoolVar("ZERO");
+        model.Add(Zero == 0);
+
         var reqs = input.Requirements.ToList();
         var rooms = input.Rooms.ToList();
         var groups = input.Groups.ToList();
@@ -42,17 +48,19 @@ public class OrToolsSchedulerService : ISchedulerService
         Report($"Совместимость аудиторий ({reqs.Count} занятий × {rooms.Count} аудиторий)...");
         var compatibleRooms = new int[reqs.Count][];
         {
+            int done = 0;
             int reportEvery = Math.Max(1, reqs.Count / 20);
-            for (int ri = 0; ri < reqs.Count; ri++)
+            Parallel.For(0, reqs.Count, ri =>
             {
-                if (ri % reportEvery == 0)
-                    ReportSub($"Совместимость: {ri}/{reqs.Count} ({100 * ri / Math.Max(1, reqs.Count)}%)");
                 var list = new List<int>(rooms.Count);
                 for (int rmi = 0; rmi < rooms.Count; rmi++)
                     if (IsCompatible(reqs[ri], rooms[rmi], reqGroupSize[ri]))
                         list.Add(rmi);
                 compatibleRooms[ri] = list.ToArray();
-            }
+                int d = Interlocked.Increment(ref done);
+                if (d % reportEvery == 0)
+                    ReportSub($"Совместимость: {d}/{reqs.Count} ({100 * d / Math.Max(1, reqs.Count)}%)");
+            });
         }
 
         // key: (reqIdx, day, pair, weekTypeIdx, roomIdx)  value: BoolVar
@@ -206,9 +214,14 @@ public class OrToolsSchedulerService : ISchedulerService
                     capSizes.Add(reqGroupSize[ri]);
                 }
                 if (tVars.Count == 0) continue;
-                int ti = teacherIdxMap[tId];
-                var pres = model.NewBoolVar($"tp_{ti}_{rmi}_{d}_{p}_{wi}");
-                model.AddMaxEquality(pres, tVars.Select(v => (IntVar)v).ToArray());
+                BoolVar pres;
+                if (tVars.Count == 1) pres = tVars[0];
+                else
+                {
+                    int ti = teacherIdxMap[tId];
+                    pres = model.NewBoolVar($"tp_{ti}_{rmi}_{d}_{p}_{wi}");
+                    model.AddMaxEquality(pres, tVars.Select(v => (IntVar)v).ToArray());
+                }
                 teacherPresences.Add(pres);
             }
 
@@ -248,8 +261,13 @@ public class OrToolsSchedulerService : ISchedulerService
                             rVars.Add(v);
                     }
                     if (rVars.Count == 0) continue;
-                    var pres = model.NewBoolVar($"tr_{ti}_{rmi}_{d}_{p}_{wi}");
-                    model.AddMaxEquality(pres, rVars.Select(v => (IntVar)v).ToArray());
+                    BoolVar pres;
+                    if (rVars.Count == 1) pres = rVars[0];
+                    else
+                    {
+                        pres = model.NewBoolVar($"tr_{ti}_{rmi}_{d}_{p}_{wi}");
+                        model.AddMaxEquality(pres, rVars.Select(v => (IntVar)v).ToArray());
+                    }
                     roomPresences.Add(pres);
                 }
                 if (roomPresences.Count > 1) model.AddAtMostOne(roomPresences);
@@ -354,9 +372,10 @@ public class OrToolsSchedulerService : ISchedulerService
         var tooFarByBreak = new Dictionary<int, HashSet<int>>[numPairs - 1];
         var walkPenByBreak = new Dictionary<int, Dictionary<int, long>>[numPairs - 1];
         long bldgImpPairCount = 0, tooFarPairCount = 0, walkPenPairCount = 0;
-        for (int p = 0; p < numPairs - 1; p++)
+        Parallel.For(0, numPairs - 1, p =>
         {
             double allowedTravelMin = breakMinutes[p];
+            long localBldgImp = 0, localTooFar = 0, localWalkPen = 0;
 
             // Step 1: which building pairs are fully impossible at this break?
             var bldgImp = new Dictionary<int, HashSet<int>>();
@@ -366,7 +385,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 if (b1Idx == b2Idx) continue;
                 bool fullyImp;
                 if (!distances.TryGetValue((b1Id, b2Id), out int bd))
-                    fullyImp = true; // no path through any intermediate building either
+                    fullyImp = true;
                 else
                 {
                     int minE1 = minEntryByBuilding.GetValueOrDefault(b1Id, 0);
@@ -378,7 +397,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 {
                     if (!bldgImp.TryGetValue(b1Idx, out var s)) bldgImp[b1Idx] = s = new HashSet<int>();
                     s.Add(b2Idx);
-                    bldgImpPairCount++;
+                    localBldgImp++;
                 }
             }
             bldgImpByBreak[p] = bldgImp;
@@ -402,19 +421,23 @@ public class OrToolsSchedulerService : ISchedulerService
                     {
                         if (!tooFar.TryGetValue(rmi1, out var s)) tooFar[rmi1] = s = new HashSet<int>();
                         s.Add(rmi2);
-                        tooFarPairCount++;
+                        localTooFar++;
                     }
                     else if (dist > 0)
                     {
                         if (!walkPen.TryGetValue(rmi1, out var m)) walkPen[rmi1] = m = new Dictionary<int, long>();
                         m[rmi2] = Math.Max(1L, (long)(walkMins / allowedTravelMin * w.WalkingPenaltyMax));
-                        walkPenPairCount++;
+                        localWalkPen++;
                     }
                 }
             }
             tooFarByBreak[p] = tooFar;
             walkPenByBreak[p] = walkPen;
-        }
+
+            Interlocked.Add(ref bldgImpPairCount, localBldgImp);
+            Interlocked.Add(ref tooFarPairCount, localTooFar);
+            Interlocked.Add(ref walkPenPairCount, localWalkPen);
+        });
         ReportSub($"Расстояния: {bldgImpPairCount} запрещ. (здание×здание), {tooFarPairCount} запрещ. (комната×комната), {walkPenPairCount} штрафных пар");
 
         bool needsBuildingTravel = bldgImpPairCount > 0;
@@ -616,9 +639,6 @@ public class OrToolsSchedulerService : ISchedulerService
             for (int p = 0; p < numPairs; p++)
             for (int wi = 0; wi < 2; wi++)
             {
-                var bv = model.NewBoolVar($"gu_{gi}_{d}_{p}_{wi}");
-                isGroupUsed[gi, d, p, wi] = bv;
-
                 var slotVars = new List<BoolVar>();
                 foreach (int ri in grIdxs)
                 {
@@ -628,10 +648,15 @@ public class OrToolsSchedulerService : ISchedulerService
                     foreach (var (_, v) in cell) slotVars.Add(v);
                 }
 
-                if (slotVars.Count > 0)
-                    model.AddMaxEquality(bv, slotVars.Select(v => (IntVar)v).ToArray());
+                BoolVar bv;
+                if (slotVars.Count == 0) bv = Zero;
+                else if (slotVars.Count == 1) bv = slotVars[0];
                 else
-                    model.Add(bv == 0);
+                {
+                    bv = model.NewBoolVar($"gu_{gi}_{d}_{p}_{wi}");
+                    model.AddMaxEquality(bv, slotVars.Select(v => (IntVar)v).ToArray());
+                }
+                isGroupUsed[gi, d, p, wi] = bv;
             }
         }
         }
@@ -648,9 +673,6 @@ public class OrToolsSchedulerService : ISchedulerService
             for (int p = 0; p < numPairs; p++)
             for (int wi = 0; wi < 2; wi++)
             {
-                var bv = model.NewBoolVar($"tu_{ti}_{d}_{p}_{wi}");
-                isTeacherUsed[ti, d, p, wi] = bv;
-
                 var slotVars = new List<BoolVar>();
                 foreach (int ri in trIdxs)
                 {
@@ -660,10 +682,15 @@ public class OrToolsSchedulerService : ISchedulerService
                     foreach (var (_, v) in cell) slotVars.Add(v);
                 }
 
-                if (slotVars.Count > 0)
-                    model.AddMaxEquality(bv, slotVars.Select(v => (IntVar)v).ToArray());
+                BoolVar bv;
+                if (slotVars.Count == 0) bv = Zero;
+                else if (slotVars.Count == 1) bv = slotVars[0];
                 else
-                    model.Add(bv == 0);
+                {
+                    bv = model.NewBoolVar($"tu_{ti}_{d}_{p}_{wi}");
+                    model.AddMaxEquality(bv, slotVars.Select(v => (IntVar)v).ToArray());
+                }
+                isTeacherUsed[ti, d, p, wi] = bv;
             }
         }
         }
@@ -693,14 +720,24 @@ public class OrToolsSchedulerService : ISchedulerService
                     foreach (var (_, v) in cell) target.Add(v);
                 }
 
-                var bc = model.NewBoolVar($"gcamp_{gi}_{d}_{p}_{wi}");
-                if (campusVars.Count > 0) model.AddMaxEquality(bc, campusVars.Select(v => (IntVar)v).ToArray());
-                else model.Add(bc == 0);
+                BoolVar bc;
+                if (campusVars.Count == 0) bc = Zero;
+                else if (campusVars.Count == 1) bc = campusVars[0];
+                else
+                {
+                    bc = model.NewBoolVar($"gcamp_{gi}_{d}_{p}_{wi}");
+                    model.AddMaxEquality(bc, campusVars.Select(v => (IntVar)v).ToArray());
+                }
                 isGroupCampus[gi, d, p, wi] = bc;
 
-                var bo = model.NewBoolVar($"gonl_{gi}_{d}_{p}_{wi}");
-                if (onlineVars.Count > 0) model.AddMaxEquality(bo, onlineVars.Select(v => (IntVar)v).ToArray());
-                else model.Add(bo == 0);
+                BoolVar bo;
+                if (onlineVars.Count == 0) bo = Zero;
+                else if (onlineVars.Count == 1) bo = onlineVars[0];
+                else
+                {
+                    bo = model.NewBoolVar($"gonl_{gi}_{d}_{p}_{wi}");
+                    model.AddMaxEquality(bo, onlineVars.Select(v => (IntVar)v).ToArray());
+                }
                 isGroupOnline[gi, d, p, wi] = bo;
             }
         }
@@ -985,7 +1022,7 @@ public class OrToolsSchedulerService : ISchedulerService
         Report($"Запуск решателя (таймаут {input.SolverTimeoutSeconds}с, {objVars.Count} слагаемых)...");
         var workers = int.TryParse(Environment.GetEnvironmentVariable("SOLVER_NUM_WORKERS"), out var nw) && nw > 0
             ? nw
-            : 2;
+            : Math.Max(2, Environment.ProcessorCount - 1);
         var solver = new CpSolver();
         solver.StringParameters =
             $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
