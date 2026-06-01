@@ -53,303 +53,339 @@ const NODE_ICONS: Record<string, string> = {
     MatProgressSpinnerModule, MatDividerModule, MatDialogModule,
   ],
   template: `
-<div class="editor-page">
-  <div class="page-header">
-    <h1>Редактор планировок<span class="draft-badge" *ngIf="dirty"> ● черновик</span></h1>
-    <div class="header-controls">
-      <mat-form-field appearance="outline" class="building-select">
-        <mat-label>Корпус</mat-label>
-        <mat-select name="bld" [(ngModel)]="selectedBuildingId" (ngModelChange)="onBuildingChange($event)">
-          <mat-option *ngFor="let b of buildings" [value]="b.id">{{ b.shortCode }} — {{ b.address }}</mat-option>
-        </mat-select>
-      </mat-form-field>
-      <mat-form-field appearance="outline" class="scale-field">
-        <mat-label>Масштаб (м/100px)</mat-label>
-        <input matInput name="scale" type="number" [(ngModel)]="scale" min="0.1" step="0.5"
-               (ngModelChange)="onScaleChange()">
-      </mat-form-field>
-    </div>
-  </div>
-
-  <div class="editor-container" *ngIf="selectedBuilding; else noBuilding">
-    <div class="floor-tabs">
-      <button *ngFor="let f of floors" class="floor-tab"
-              [class.active]="f === currentFloor" (click)="selectFloor(f)">
-        {{ floorLabel(f) }}
-      </button>
-    </div>
-
-    <div class="toolbar">
-      <div class="btn-group">
-        <button mat-stroked-button [class.active-tool]="mode==='select'" (click)="setMode('select')"
-                matTooltip="Выбор / перемещение  [Esc]"><mat-icon>mouse</mat-icon></button>
-        <button mat-stroked-button [class.active-tool]="mode==='edge'" (click)="setMode('edge')"
-                matTooltip="Нарисовать путь"><mat-icon>timeline</mat-icon></button>
-        <button mat-stroked-button [class.active-tool]="mode==='delete'" (click)="setMode('delete')"
-                matTooltip="Удалить  [Del]"><mat-icon>delete</mat-icon></button>
-      </div>
-      <mat-divider [vertical]="true" class="v-divider"></mat-divider>
-      <div class="btn-group place-types">
-        <button *ngFor="let nt of nodeTypes" mat-stroked-button
-                [class.active-tool]="mode==='place' && placeType===nt.type"
-                (click)="setPlaceType(nt.type)"
-                [style.border-color]="nt.color"
-                [matTooltip]="nt.label">
-          <span [style.color]="nt.color">{{ nt.label }}</span>
-        </button>
-      </div>
-      <mat-divider [vertical]="true" class="v-divider"></mat-divider>
-      <div class="btn-group">
-        <button mat-icon-button (click)="zoomBtn(1)"  matTooltip="Увеличить  [Ctrl+↑ колесо]"><mat-icon>zoom_in</mat-icon></button>
-        <button mat-icon-button (click)="zoomBtn(-1)" matTooltip="Уменьшить  [Ctrl+↓ колесо]"><mat-icon>zoom_out</mat-icon></button>
-        <button mat-icon-button (click)="resetView()" matTooltip="Сбросить вид"><mat-icon>fit_screen</mat-icon></button>
-      </div>
-      <span class="edge-hint" *ngIf="mode==='edge' && edgeSource">
-        <mat-icon>arrow_forward</mat-icon> нажмите второй узел
-      </span>
-      <span class="spacer"></span>
-      <button mat-stroked-button (click)="openDraftsDialog()" [disabled]="!selectedBuildingId"
-              matTooltip="Версии и черновики">
-        <mat-icon>history</mat-icon> Версии
-      </button>
-      <button mat-button (click)="reload()" [disabled]="loading" matTooltip="Сбросить мой черновик, перезагрузить активную версию">
-        <mat-icon>refresh</mat-icon>
-      </button>
-      <button mat-raised-button color="primary" (click)="save()" [disabled]="saving || !selectedBuildingId">
-        <mat-icon>save</mat-icon> {{ saving ? 'Сохранение…' : 'Сохранить' }}
-      </button>
-    </div>
-
-    <div class="main-area">
-      <div class="canvas-wrapper" #canvasWrapper
-           (mousemove)="onMouseMove($event)"
-           (mouseup)="onMouseUp($event)"
-           (mouseleave)="onMouseLeave($event)">
-        <svg #svgCanvas width="100%" height="100%"
-             class="floor-canvas" preserveAspectRatio="none"
-             [attr.viewBox]="viewBox"
-             [style.cursor]="cursor"
-             (mousedown)="onCanvasMouseDown($event)">
-          <defs>
-            <pattern id="fp-grid" width="50" height="50" patternUnits="userSpaceOnUse">
-              <path d="M50 0L0 0 0 50" fill="none" stroke="#e8e8e8" stroke-width="1"/>
-            </pattern>
-          </defs>
-          <rect x="-99999" y="-99999" width="199998" height="199998" fill="url(#fp-grid)" pointer-events="none"/>
-
-          <line *ngIf="snapGuideX !== null"
-                [attr.x1]="snapGuideX" y1="-99999" [attr.x2]="snapGuideX" y2="99999"
-                class="snap-guide"/>
-          <line *ngIf="snapGuideY !== null"
-                x1="-99999" [attr.y1]="snapGuideY" x2="99999" [attr.y2]="snapGuideY"
-                class="snap-guide"/>
-
-          <!-- Edges -->
-          <g *ngFor="let e of currentFloorEdges()">
-            <line [attr.x1]="nodeById(e.fromNodeId)?.x??0" [attr.y1]="nodeById(e.fromNodeId)?.y??0"
-                  [attr.x2]="nodeById(e.toNodeId)?.x??0"   [attr.y2]="nodeById(e.toNodeId)?.y??0"
-                  class="edge-line"
-                  [class.cross-floor]="isEdgeCrossFloor(e)"
-                  [class.sel-edge]="selectedEdgeId===e.id"
-                  [attr.stroke-width]="edgeStrokeWidth(e)"
-                  (mousedown)="onEdgeMouseDown($event,e)"/>
-            <text [attr.x]="edgeMidX(e)" [attr.y]="edgeMidY(e)-8"
-                  class="edge-lbl" text-anchor="middle"
-                  [attr.font-size]="edgeLabelSize(e)">{{ e.distanceMeters }}м</text>
-          </g>
-
-          <!-- Edge preview -->
-          <line *ngIf="edgeSource && mousePos"
-                [attr.x1]="nodeById(edgeSource.nodeId)?.x??0" [attr.y1]="nodeById(edgeSource.nodeId)?.y??0"
-                [attr.x2]="mousePos.x" [attr.y2]="mousePos.y"
-                class="edge-preview"/>
-
-          <!-- Nodes -->
-          <g *ngFor="let node of currentFloorNodes()"
-             [attr.transform]="'translate('+node.x+','+node.y+')'"
-             class="node-g"
-             [class.sel-node]="node.selected"
-             (mousedown)="onNodeMouseDown($event,node)">
-            <circle [attr.r]="NR"
-                    [attr.fill]="nodeColor(node)"
-                    [attr.stroke]="node.selected ? '#ff6f00' : (isUnlinkedRoom(node) ? '#f44336' : '#ffffffcc')"
-                    stroke-width="3"/>
-            <text text-anchor="middle" dy="0.38em" class="nicon">{{ nodeIcon(node) }}</text>
-            <text text-anchor="middle" [attr.dy]="NR + 14" class="nlbl">{{ nodeDisplayLabel(node) }}</text>
-            <circle *ngIf="hasCrossFloorEdge(node)" cx="18" cy="-18" r="8" fill="#ff6f00" stroke="#fff" stroke-width="2"/>
-            <text   *ngIf="hasCrossFloorEdge(node)" x="18" y="-14" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">↕</text>
-          </g>
-        </svg>
-      </div>
-
-      <!-- Props panel -->
-      <div class="props-panel">
-        <ng-container *ngIf="selectedNode as node">
-          <div class="panel-title">Узел</div>
-
-          <div class="prop-row">
-            <span class="prop-lbl">Тип</span>
-            <mat-select name="ntype" [(ngModel)]="node.nodeType" (ngModelChange)="onNodeTypeChange(node)" class="prop-sel">
-              <mat-option *ngFor="let nt of nodeTypes" [value]="nt.type">
-                <span [style.color]="nt.color">{{ nt.label }}</span>
-              </mat-option>
+    <div class="editor-page">
+      <div class="page-header">
+        <h1>Редактор планировок<span class="draft-badge" *ngIf="dirty"> ● черновик</span></h1>
+        <div class="header-controls">
+          <mat-form-field appearance="outline" class="building-select">
+            <mat-label>Корпус</mat-label>
+            <mat-select name="bld" [(ngModel)]="selectedBuildingId" (ngModelChange)="onBuildingChange($event)">
+              <mat-option *ngFor="let b of buildings" [value]="b.id">{{ b.shortCode }} — {{ b.address }}</mat-option>
             </mat-select>
-          </div>
-
-          <div class="prop-row">
-            <span class="prop-lbl">Этаж</span>
-            <input name="nfloor" type="number" [(ngModel)]="node.floor" class="prop-input" (change)="markDirty()">
-          </div>
-
-          <div class="prop-row" *ngIf="node.nodeType===FNT.Room">
-            <span class="prop-lbl">Аудитория (этаж {{ node.floor }})</span>
-            <mat-select name="nroom" [(ngModel)]="node.roomId"
-                        (ngModelChange)="onRoomAssigned(node,$event)" class="prop-sel">
-              <mat-option [value]="null">— без привязки —</mat-option>
-              <mat-option *ngFor="let r of floorRooms(node)" [value]="r.id">
-                {{ r.number }}
-              </mat-option>
-              <mat-option value="__new__">
-                <span class="add-room-opt"><mat-icon>add_circle_outline</mat-icon> Добавить аудиторию…</span>
-              </mat-option>
-            </mat-select>
-            <span class="warn" *ngIf="isUnlinkedRoom(node)">⚠ нет привязки/метки</span>
-          </div>
-
-          <!-- Inline add-room form -->
-          <div class="add-room-form" *ngIf="showAddRoomForm && node.nodeType===FNT.Room">
-            <div class="prop-lbl" style="margin-bottom:4px">Новая аудитория</div>
-            <div class="add-room-row">
-              <input name="newNum" type="text" [(ngModel)]="newRoomNumber"
-                     class="prop-input" placeholder="Номер (обязательно)" style="flex:2">
-              <input name="newCap" type="number" [(ngModel)]="newRoomCapacity"
-                     class="prop-input" placeholder="Мест" min="1" style="flex:1">
-            </div>
-            <div class="add-room-row" style="margin-top:4px">
-              <input type="number" [value]="node.floor" disabled
-                     class="prop-input prop-input-disabled" style="flex:1" title="Этаж (из позиции узла)">
-              <button mat-stroked-button color="primary"
-                      [disabled]="addingRoom || !newRoomNumber.trim()"
-                      (click)="addRoom(node)" style="flex:2;font-size:12px">
-                <mat-icon>add</mat-icon> Создать
-              </button>
-              <button mat-icon-button (click)="showAddRoomForm=false" style="flex-shrink:0">
-                <mat-icon>close</mat-icon>
-              </button>
-            </div>
-          </div>
-
-          <div class="prop-row">
-            <span class="prop-lbl">Метка</span>
-            <input name="nlabel" type="text" [(ngModel)]="node.label" class="prop-input"
-                   placeholder="Необязательно" (input)="markDirty()">
-          </div>
-
-          <div class="prop-row">
-            <span class="prop-lbl">X / Y</span>
-            <span class="prop-val">{{ node.x|number:'1.0-0' }} / {{ node.y|number:'1.0-0' }}</span>
-          </div>
-
-          <!-- Entrance → other campuses -->
-          <ng-container *ngIf="node.nodeType===FNT.Entrance">
-            <mat-divider style="margin:10px 0 8px"></mat-divider>
-            <div class="prop-lbl">Расстояние до корпусов (м)</div>
-            <div class="conn-hint">Пусто = нет прохода от этого входа</div>
-            <div class="conn-list" *ngIf="otherBuildings.length > 0; else noOtherBld">
-              <div class="conn-row" *ngFor="let b of otherBuildings">
-                <span class="conn-code">{{ b.shortCode }}</span>
-                <input type="number" min="1" step="10" class="prop-input conn-input"
-                       [ngModel]="getConnMeters(node, b.id)" [ngModelOptions]="{standalone:true}"
-                       (ngModelChange)="setConnMeters(node, b.id, $event)"
-                       placeholder="—">
-              </div>
-            </div>
-            <ng-template #noOtherBld><div class="conn-hint">Нет других корпусов</div></ng-template>
-          </ng-container>
-
-          <!-- Multi-floor stairs/elevator -->
-          <ng-container *ngIf="isMultiFloorType(node)">
-            <mat-divider style="margin:10px 0 8px"></mat-divider>
-            <div class="prop-lbl">Присутствует на этажах</div>
-            <div class="floor-checks">
-              <label *ngFor="let f of floors" class="fcheck">
-                <input type="checkbox"
-                       [checked]="isStairOnFloor(node,f)"
-                       [disabled]="node.floor===f"
-                       (change)="toggleStairFloor(node,f,$any($event.target).checked)">
-                <span>{{ floorLabel(f) }}</span>
-              </label>
-            </div>
-            <button mat-stroked-button class="full-btn" (click)="extendToAllFloors(node)">
-              <mat-icon>layers</mat-icon> Добавить на все этажи
-            </button>
-          </ng-container>
-
-          <button mat-stroked-button color="warn" class="full-btn" style="margin-top:12px" (click)="deleteNode(node)">
-            <mat-icon>delete</mat-icon> Удалить узел
-          </button>
-        </ng-container>
-
-        <ng-container *ngIf="selectedEdgeId && !selectedNode">
-          <div class="panel-title">Путь</div>
-          <ng-container *ngIf="selectedEdge() as edge">
-            <div class="prop-row">
-              <span class="prop-lbl">Расстояние (м)</span>
-              <input name="edist" type="number" [(ngModel)]="edge.distanceMeters"
-                     class="prop-input" min="1" (change)="markDirty()">
-            </div>
-            <div class="prop-row">
-              <span class="prop-lbl">Этажи</span>
-              <span class="prop-val">
-                {{ nodeById(edge.fromNodeId)?.floor }} → {{ nodeById(edge.toNodeId)?.floor }}
-              </span>
-            </div>
-            <button mat-stroked-button color="warn" class="full-btn" style="margin-top:10px" (click)="deleteEdge(edge)">
-              <mat-icon>delete</mat-icon> Удалить путь
-            </button>
-          </ng-container>
-        </ng-container>
-
-        <div class="hint-area" *ngIf="!selectedNode && !selectedEdgeId">
-          <div class="hint-row">
-            <mat-icon class="hint-icon">info</mat-icon>
-            <div class="hint-texts">
-              <p *ngIf="mode==='select'">Нажмите для выбора. Перетащите для перемещения.<br>Узлы прилипают к одной оси.<br>Alt+Drag или колесо — панорама.</p>
-              <p *ngIf="mode==='place'">Нажмите на холст — добавится <b>{{ placeTypeLabel }}</b>.</p>
-              <p *ngIf="mode==='edge'">Нажмите первый узел, затем второй. Esc — отмена.</p>
-              <p *ngIf="mode==='delete'">Нажмите узел или путь для удаления.</p>
-            </div>
-          </div>
-          <mat-divider style="margin:8px 0"></mat-divider>
-          <div class="legend">
-            <div *ngFor="let nt of nodeTypes" class="legend-item">
-              <span class="ldot" [style.background]="nt.color"></span>{{ nt.label }}
-            </div>
-          </div>
-          <mat-divider style="margin:8px 0"></mat-divider>
-          <div class="shortcuts">
-            <div><kbd>Del</kbd> удалить выбранное</div>
-            <div><kbd>Esc</kbd> отмена / выбор</div>
-            <div><kbd>Ctrl+S</kbd> сохранить</div>
-            <div><kbd>Ctrl+Колесо</kbd> масштаб</div>
-            <div><kbd>Alt+Drag</kbd> панорама</div>
-          </div>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="scale-field">
+            <mat-label>Масштаб (м/100px)</mat-label>
+            <input matInput name="scale" type="number" [(ngModel)]="scale" min="0.1" step="0.5"
+                   (ngModelChange)="onScaleChange()">
+          </mat-form-field>
         </div>
       </div>
-    </div>
 
-    <div class="loading-overlay" *ngIf="loading">
-      <mat-spinner diameter="48"></mat-spinner>
-    </div>
-  </div>
+      <div class="editor-container" *ngIf="selectedBuilding; else noBuilding">
+        <div class="floor-tabs">
+          <button *ngFor="let f of floors" class="floor-tab"
+                  [class.active]="f === currentFloor" (click)="selectFloor(f)">
+            {{ floorLabel(f) }}
+          </button>
+        </div>
 
-  <ng-template #noBuilding>
-    <div class="no-bld">
-      <mat-icon>apartment</mat-icon>
-      <p>Выберите корпус для редактирования планировки</p>
-    </div>
-  </ng-template>
-</div>
+        <div class="toolbar">
+          <div class="btn-group">
+            <button mat-stroked-button [class.active-tool]="mode==='select'" (click)="setMode('select')"
+                    matTooltip="Выбор / перемещение  [Esc]">
+              <mat-icon>mouse</mat-icon>
+            </button>
+            <button mat-stroked-button [class.active-tool]="mode==='edge'" (click)="setMode('edge')"
+                    matTooltip="Нарисовать путь">
+              <mat-icon>timeline</mat-icon>
+            </button>
+            <button mat-stroked-button [class.active-tool]="mode==='delete'" (click)="setMode('delete')"
+                    matTooltip="Удалить  [Del]">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+          <mat-divider [vertical]="true" class="v-divider"></mat-divider>
+          <div class="btn-group place-types">
+            <button *ngFor="let nt of nodeTypes" mat-stroked-button
+                    [class.active-tool]="mode==='place' && placeType===nt.type"
+                    (click)="setPlaceType(nt.type)"
+                    [style.border-color]="nt.color"
+                    [matTooltip]="nt.label">
+              <span [style.color]="nt.color">{{ nt.label }}</span>
+            </button>
+          </div>
+          <mat-divider [vertical]="true" class="v-divider"></mat-divider>
+          <div class="btn-group">
+            <button mat-icon-button (click)="zoomBtn(1)" matTooltip="Увеличить  [Ctrl+↑ колесо]">
+              <mat-icon>zoom_in</mat-icon>
+            </button>
+            <button mat-icon-button (click)="zoomBtn(-1)" matTooltip="Уменьшить  [Ctrl+↓ колесо]">
+              <mat-icon>zoom_out</mat-icon>
+            </button>
+            <button mat-icon-button (click)="resetView()" matTooltip="Сбросить вид">
+              <mat-icon>fit_screen</mat-icon>
+            </button>
+          </div>
+          <span class="edge-hint" *ngIf="mode==='edge' && edgeSource">
+        <mat-icon>arrow_forward</mat-icon> нажмите второй узел
+      </span>
+          <span class="spacer"></span>
+          <button mat-stroked-button (click)="openDraftsDialog()" [disabled]="!selectedBuildingId"
+                  matTooltip="Версии и черновики">
+            <mat-icon>history</mat-icon>
+            Версии
+          </button>
+          <button mat-button (click)="reload()" [disabled]="loading"
+                  matTooltip="Сбросить мой черновик, перезагрузить активную версию">
+            <mat-icon>refresh</mat-icon>
+          </button>
+          <button mat-raised-button color="primary" (click)="save()" [disabled]="saving || !selectedBuildingId">
+            <mat-icon>save</mat-icon>
+            {{ saving ? 'Сохранение…' : 'Сохранить' }}
+          </button>
+        </div>
+
+        <div class="main-area">
+          <div class="canvas-wrapper" #canvasWrapper
+               (mousemove)="onMouseMove($event)"
+               (mouseup)="onMouseUp($event)"
+               (mouseleave)="onMouseLeave($event)">
+            <svg #svgCanvas width="100%" height="100%"
+                 class="floor-canvas" preserveAspectRatio="none"
+                 [attr.viewBox]="viewBox"
+                 [style.cursor]="cursor"
+                 (mousedown)="onCanvasMouseDown($event)">
+              <defs>
+                <pattern id="fp-grid" width="50" height="50" patternUnits="userSpaceOnUse">
+                  <path d="M50 0L0 0 0 50" fill="none" stroke="#e8e8e8" stroke-width="1"/>
+                </pattern>
+              </defs>
+              <rect x="-99999" y="-99999" width="199998" height="199998" fill="url(#fp-grid)" pointer-events="none"/>
+
+              <line *ngIf="snapGuideX !== null"
+                    [attr.x1]="snapGuideX" y1="-99999" [attr.x2]="snapGuideX" y2="99999"
+                    class="snap-guide"/>
+              <line *ngIf="snapGuideY !== null"
+                    x1="-99999" [attr.y1]="snapGuideY" x2="99999" [attr.y2]="snapGuideY"
+                    class="snap-guide"/>
+
+              <!-- Edges -->
+              <g *ngFor="let e of currentFloorEdges()">
+                <line [attr.x1]="nodeById(e.fromNodeId)?.x??0" [attr.y1]="nodeById(e.fromNodeId)?.y??0"
+                      [attr.x2]="nodeById(e.toNodeId)?.x??0" [attr.y2]="nodeById(e.toNodeId)?.y??0"
+                      class="edge-line"
+                      [class.cross-floor]="isEdgeCrossFloor(e)"
+                      [class.sel-edge]="selectedEdgeId===e.id"
+                      [attr.stroke-width]="edgeStrokeWidth(e)"
+                      (mousedown)="onEdgeMouseDown($event,e)"/>
+                <text [attr.x]="edgeMidX(e)" [attr.y]="edgeMidY(e)-8"
+                      class="edge-lbl" text-anchor="middle"
+                      [attr.font-size]="edgeLabelSize(e)">{{ e.distanceMeters }}м
+                </text>
+              </g>
+
+              <!-- Edge preview -->
+              <line *ngIf="edgeSource && mousePos"
+                    [attr.x1]="nodeById(edgeSource.nodeId)?.x??0" [attr.y1]="nodeById(edgeSource.nodeId)?.y??0"
+                    [attr.x2]="mousePos.x" [attr.y2]="mousePos.y"
+                    class="edge-preview"/>
+
+              <!-- Nodes -->
+              <g *ngFor="let node of currentFloorNodes()"
+                 [attr.transform]="'translate('+node.x+','+node.y+')'"
+                 class="node-g"
+                 [class.sel-node]="node.selected"
+                 (mousedown)="onNodeMouseDown($event,node)">
+                <circle [attr.r]="NR"
+                        [attr.fill]="nodeColor(node)"
+                        [attr.stroke]="node.selected ? '#ff6f00' : (isUnlinkedRoom(node) ? '#f44336' : '#ffffffcc')"
+                        stroke-width="3"/>
+                <text text-anchor="middle" dy="0.38em" class="nicon">{{ nodeIcon(node) }}</text>
+                <text text-anchor="middle" [attr.dy]="NR + 14" class="nlbl">{{ nodeDisplayLabel(node) }}</text>
+                <circle *ngIf="hasCrossFloorEdge(node)" cx="18" cy="-18" r="8" fill="#ff6f00" stroke="#fff"
+                        stroke-width="2"/>
+                <text *ngIf="hasCrossFloorEdge(node)" x="18" y="-14" text-anchor="middle" font-size="10" fill="#fff"
+                      font-weight="bold">↕
+                </text>
+              </g>
+            </svg>
+          </div>
+
+          <!-- Props panel -->
+          <div class="props-panel">
+            <ng-container *ngIf="selectedNodes?.length === 1 && selectedNode as node">
+              <div class="panel-title">Узел</div>
+
+              <div class="prop-row">
+                <span class="prop-lbl">Тип</span>
+                <mat-select name="ntype" [(ngModel)]="node.nodeType" (ngModelChange)="onNodeTypeChange(node)"
+                            class="prop-sel">
+                  <mat-option *ngFor="let nt of nodeTypes" [value]="nt.type">
+                    <span [style.color]="nt.color">{{ nt.label }}</span>
+                  </mat-option>
+                </mat-select>
+              </div>
+
+              <div class="prop-row">
+                <span class="prop-lbl">Этаж</span>
+                <input name="nfloor" type="number" [(ngModel)]="node.floor" class="prop-input" (change)="markDirty()">
+              </div>
+
+              <div class="prop-row" *ngIf="node.nodeType===FNT.Room">
+                <span class="prop-lbl">Аудитория (этаж {{ node.floor }})</span>
+                <mat-select name="nroom" [(ngModel)]="node.roomId"
+                            (ngModelChange)="onRoomAssigned(node,$event)" class="prop-sel">
+                  <mat-option [value]="null">— без привязки —</mat-option>
+                  <mat-option *ngFor="let r of floorRooms(node)" [value]="r.id">
+                    {{ r.number }}
+                  </mat-option>
+                  <mat-option value="__new__">
+                    <span class="add-room-opt"><mat-icon>add_circle_outline</mat-icon> Добавить аудиторию…</span>
+                  </mat-option>
+                </mat-select>
+                <span class="warn" *ngIf="isUnlinkedRoom(node)">⚠ нет привязки/метки</span>
+              </div>
+
+              <!-- Inline add-room form -->
+              <div class="add-room-form" *ngIf="showAddRoomForm && node.nodeType===FNT.Room">
+                <div class="prop-lbl" style="margin-bottom:4px">Новая аудитория</div>
+                <div class="add-room-row">
+                  <input name="newNum" type="text" [(ngModel)]="newRoomNumber"
+                         class="prop-input" placeholder="Номер (обязательно)" style="flex:2">
+                  <input name="newCap" type="number" [(ngModel)]="newRoomCapacity"
+                         class="prop-input" placeholder="Мест" min="1" style="flex:1">
+                </div>
+                <div class="add-room-row" style="margin-top:4px">
+                  <input type="number" [value]="node.floor" disabled
+                         class="prop-input prop-input-disabled" style="flex:1" title="Этаж (из позиции узла)">
+                  <button mat-stroked-button color="primary"
+                          [disabled]="addingRoom || !newRoomNumber.trim()"
+                          (click)="addRoom(node)" style="flex:2;font-size:12px">
+                    <mat-icon>add</mat-icon>
+                    Создать
+                  </button>
+                  <button mat-icon-button (click)="showAddRoomForm=false" style="flex-shrink:0">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </div>
+              </div>
+
+              <div class="prop-row">
+                <span class="prop-lbl">Метка</span>
+                <input name="nlabel" type="text" [(ngModel)]="node.label" class="prop-input"
+                       placeholder="Необязательно" (input)="markDirty()">
+              </div>
+
+              <div class="prop-row">
+                <span class="prop-lbl">X / Y</span>
+                <span class="prop-val">{{ node.x|number:'1.0-0' }} / {{ node.y|number:'1.0-0' }}</span>
+              </div>
+
+              <!-- Entrance → other campuses -->
+              <ng-container *ngIf="node.nodeType===FNT.Entrance">
+                <mat-divider style="margin:10px 0 8px"></mat-divider>
+                <div class="prop-lbl">Расстояние до корпусов (м)</div>
+                <div class="conn-hint">Пусто = нет прохода от этого входа</div>
+                <div class="conn-list" *ngIf="otherBuildings.length > 0; else noOtherBld">
+                  <div class="conn-row" *ngFor="let b of otherBuildings">
+                    <span class="conn-code">{{ b.shortCode }}</span>
+                    <input type="number" min="1" step="10" class="prop-input conn-input"
+                           [ngModel]="getConnMeters(node, b.id)" [ngModelOptions]="{standalone:true}"
+                           (ngModelChange)="setConnMeters(node, b.id, $event)"
+                           placeholder="—">
+                  </div>
+                </div>
+                <ng-template #noOtherBld>
+                  <div class="conn-hint">Нет других корпусов</div>
+                </ng-template>
+              </ng-container>
+
+              <!-- Multi-floor stairs/elevator -->
+              <ng-container *ngIf="isMultiFloorType(node)">
+                <mat-divider style="margin:10px 0 8px"></mat-divider>
+                <div class="prop-lbl">Присутствует на этажах</div>
+                <div class="floor-checks">
+                  <label *ngFor="let f of floors" class="fcheck">
+                    <input type="checkbox"
+                           [checked]="isStairOnFloor(node,f)"
+                           [disabled]="node.floor===f"
+                           (change)="toggleStairFloor(node,f,$any($event.target).checked)">
+                    <span>{{ floorLabel(f) }}</span>
+                  </label>
+                </div>
+                <button mat-stroked-button class="full-btn" (click)="extendToAllFloors(node)">
+                  <mat-icon>layers</mat-icon>
+                  Добавить на все этажи
+                </button>
+              </ng-container>
+
+              <button mat-stroked-button color="warn" class="full-btn" style="margin-top:12px"
+                      (click)="deleteNode(node)">
+                <mat-icon>delete</mat-icon>
+                Удалить узел
+              </button>
+            </ng-container>
+
+            <ng-container *ngIf="selectedEdgeId && !selectedNode">
+              <div class="panel-title">Путь</div>
+              <ng-container *ngIf="selectedEdge() as edge">
+                <div class="prop-row">
+                  <span class="prop-lbl">Расстояние (м)</span>
+                  <input name="edist" type="number" [(ngModel)]="edge.distanceMeters"
+                         class="prop-input" min="1" (change)="markDirty()">
+                </div>
+                <div class="prop-row">
+                  <span class="prop-lbl">Этажи</span>
+                  <span class="prop-val">
+                {{ nodeById(edge.fromNodeId)?.floor }} → {{ nodeById(edge.toNodeId)?.floor }}
+              </span>
+                </div>
+                <button mat-stroked-button color="warn" class="full-btn" style="margin-top:10px"
+                        (click)="deleteEdge(edge)">
+                  <mat-icon>delete</mat-icon>
+                  Удалить путь
+                </button>
+              </ng-container>
+            </ng-container>
+
+            <div class="hint-area" *ngIf="selectedNodes as nodes">
+              <button mat-stroked-button *ngIf="nodes.length > 1" color="warn" class="full-btn" style="margin-top:12px" (click)="deleteSelectedNodes()">
+                <mat-icon>delete</mat-icon>
+                Удалить выделенные узлы
+              </button>
+            </div>
+
+              <div class="hint-area" *ngIf="!selectedNode && !selectedEdgeId">
+                <div class="hint-row">
+                  <mat-icon class="hint-icon">info</mat-icon>
+                  <div class="hint-texts">
+                    <p *ngIf="mode==='select'">Нажмите для выбора. Перетащите для перемещения.<br>Узлы прилипают к одной
+                      оси.<br>Alt+Drag или колесо — панорама.</p>
+                    <p *ngIf="mode==='place'">Нажмите на холст — добавится <b>{{ placeTypeLabel }}</b>.</p>
+                    <p *ngIf="mode==='edge'">Нажмите первый узел, затем второй. Esc — отмена.</p>
+                    <p *ngIf="mode==='delete'">Нажмите узел или путь для удаления.</p>
+                  </div>
+                </div>
+                <mat-divider style="margin:8px 0"></mat-divider>
+                <div class="legend">
+                  <div *ngFor="let nt of nodeTypes" class="legend-item">
+                    <span class="ldot" [style.background]="nt.color"></span>{{ nt.label }}
+                  </div>
+                </div>
+                <mat-divider style="margin:8px 0"></mat-divider>
+                <div class="shortcuts">
+                  <div><kbd>Del</kbd> удалить выбранное</div>
+                  <div><kbd>Esc</kbd> отмена / выбор</div>
+                  <div><kbd>Ctrl+S</kbd> сохранить</div>
+                  <div><kbd>Ctrl+Колесо</kbd> масштаб</div>
+                  <div><kbd>Alt+Drag</kbd> панорама</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="loading-overlay" *ngIf="loading">
+            <mat-spinner diameter="48"></mat-spinner>
+          </div>
+        </div>
+
+        <ng-template #noBuilding>
+          <div class="no-bld">
+            <mat-icon>apartment</mat-icon>
+            <p>Выберите корпус для редактирования планировки</p>
+          </div>
+        </ng-template>
+      </div>
   `,
   styles: [`
     :host { display: block; }
@@ -463,8 +499,8 @@ const NODE_ICONS: Record<string, string> = {
   `]
 })
 export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestroy {
-  @ViewChild('svgCanvas')     svgCanvas!:     ElementRef<SVGSVGElement>;
-  @ViewChild('canvasWrapper') canvasWrapper!: ElementRef<HTMLDivElement>;
+  @ViewChild('svgCanvas', {static: false, read: ElementRef})     svgCanvas!:     ElementRef<SVGSVGElement>;
+  @ViewChild('canvasWrapper', {static: false, read: ElementRef}) canvasWrapper!: ElementRef<HTMLDivElement>;
 
   buildings:          Building[] = [];
   selectedBuildingId: string | null = null;
@@ -522,14 +558,18 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
       const nz = Math.max(0.1, Math.min(20, this.zoomLevel * factor));
       this.vx = wx - (sx / r.width)  * (this.containerW / nz);
       this.vy = wy - (sy / r.height) * (this.containerH / nz);
+      this.NR *= this.zoomLevel / nz;
       this.zoomLevel = nz;
+    } else if (e.shiftKey) {
+      this.vy += (e.deltaX / r.width)  * (this.containerW / this.zoomLevel);
+      this.vx += (e.deltaY / r.height) * (this.containerH / this.zoomLevel);
     } else {
       this.vx += (e.deltaX / r.width)  * (this.containerW / this.zoomLevel);
       this.vy += (e.deltaY / r.height) * (this.containerH / this.zoomLevel);
     }
   };
 
-  readonly NR  = NODE_RADIUS;
+  NR  = NODE_RADIUS;
   readonly FNT = FloorPlanNodeType;
 
   readonly nodeTypes = [
@@ -541,6 +581,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
   ];
 
   get selectedNode():   EditorNode | undefined  { return this.nodes.find(n => n.selected); }
+  get selectedNodes():   EditorNode[] { return this.nodes.filter(n => n.selected); }
   get placeTypeLabel(): string                  { return this.nodeTypes.find(t => t.type === this.placeType)?.label ?? ''; }
   get viewBox():        string {
     const vw = this.containerW / this.zoomLevel;
@@ -555,7 +596,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     return 'default';
   }
 
-  constructor(private api: ApiService, private snackBar: MatSnackBar, private ngZone: NgZone, private dialog: MatDialog) {}
+  constructor(private api: ApiService, private snackBar: MatSnackBar, private elementRef: ElementRef, private ngZone: NgZone, private dialog: MatDialog) {}
 
   openDraftsDialog(): void {
     if (!this.selectedBuilding) return;
@@ -595,8 +636,26 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     this.api.getBuildings().subscribe(bs => { this.buildings = bs; });
   }
 
-  ngAfterViewInit(): void {
-    this.svgCanvas?.nativeElement?.addEventListener('wheel', this.wheelHandler, { passive: false });
+  private mo?: MutationObserver;
+
+  ngAfterViewInit() {
+    const root = this.elementRef.nativeElement as HTMLElement;
+    const tryAttach = () => {
+      const svg = root.querySelector('.floor-canvas') as SVGSVGElement | null;
+      if (svg) {
+        this.attachWheel(svg);
+        return true;
+      }
+      return false;
+    };
+
+    if (!tryAttach()) {
+      this.mo = new MutationObserver(() => {
+        if (tryAttach() && this.mo) { this.mo.disconnect(); this.mo = undefined; }
+      });
+      this.mo.observe(root, { childList: true, subtree: true });
+    }
+
     this.resizeObserver = new ResizeObserver(entries => {
       this.ngZone.run(() => {
         const cr = entries[0]?.contentRect;
@@ -605,9 +664,14 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     });
   }
 
+  private attachWheel(svg: SVGSVGElement) {
+    svg.addEventListener('wheel', this.wheelHandler, { passive: false, capture: true });
+  }
+
   ngOnDestroy(): void {
     this.svgCanvas?.nativeElement?.removeEventListener('wheel', this.wheelHandler);
     this.resizeObserver?.disconnect();
+    this.mo?.disconnect();
   }
 
   @HostListener('window:keydown', ['$event'])
@@ -629,7 +693,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
   @HostListener('window:blur')
   onBlur(): void { this.panning = false; this.dragging = null; this.snapGuideX = null; this.snapGuideY = null; }
 
-  // ── Building ─────────────────────────────────────────────────────────────────
+  // Building
 
   onBuildingChange(id: string): void {
     this.selectedBuilding = this.buildings.find(b => b.id === id) ?? null;
@@ -718,14 +782,14 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
       this.api.saveFloorPlanDraft(buildingId, this.currentDraftId, draftJson).subscribe({ error: () => {} });
       return;
     }
-    // No draft yet — create one. Name uses date so repeated work doesn't keep stacking.
+
     this.api.createFloorPlanDraft(buildingId, `Черновик ${new Date().toLocaleDateString('ru-RU')}`, draftJson).subscribe({
       next: r => { this.currentDraftId = r.id; },
       error: () => {}
     });
   }
 
-  // ── Floors / view ─────────────────────────────────────────────────────────────
+  // Floors / view
 
   selectFloor(f: number): void { this.currentFloor = f; this.clearSelection(); }
   floorLabel(f: number): string { return f < 0 ? `Подвал ${Math.abs(f)}` : `Этаж ${f}`; }
@@ -743,12 +807,13 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     const nz = Math.max(0.1, Math.min(20, this.zoomLevel * factor));
     this.vx = cx - (this.containerW / nz) / 2;
     this.vy = cy - (this.containerH / nz) / 2;
+    this.NR *= this.zoomLevel / nz;
     this.zoomLevel = nz;
   }
 
-  resetView(): void { this.vx = 0; this.vy = 0; this.zoomLevel = 1; }
+  resetView(): void { this.vx = 0; this.vy = 0; this.zoomLevel = 1; this.NR = NODE_RADIUS; }
 
-  // ── Node helpers ─────────────────────────────────────────────────────────────
+  // Node helpers
 
   nodeById(id: string): EditorNode | undefined { return this.nodes.find(n => n.id === id); }
   nodeColor(n: FloorPlanNode): string  { return NODE_COLORS[n.nodeType] ?? '#999'; }
@@ -795,7 +860,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     return this.buildingRooms.filter(r => r.floor === node.floor);
   }
 
-  // ── Entrance → other-building connections ────────────────────────────────────
+  // Entrance to other-building connections
 
   get otherBuildings(): Building[] {
     return this.buildings.filter(b => b.id !== this.selectedBuildingId);
@@ -819,7 +884,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     this.markDirty();
   }
 
-  // ── Mode / selection ─────────────────────────────────────────────────────────
+  // Mode / selection
 
   setMode(m: EditorMode): void { this.mode = m; this.edgeSource = null; if (m !== 'select') this.clearSelection(); }
   setPlaceType(t: FloorPlanNodeType): void { this.placeType = t; this.mode = 'place'; }
@@ -881,7 +946,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     });
   }
 
-  // ── Staircase multi-floor ─────────────────────────────────────────────────────
+  // Staircase multi-floor
 
   isMultiFloorType(n: EditorNode): boolean {
     return n.nodeType === FloorPlanNodeType.Staircase || n.nodeType === FloorPlanNodeType.Elevator;
@@ -925,7 +990,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
       this.edges.push({ id: crypto.randomUUID(), buildingId: this.selectedBuildingId!, fromNodeId: g[i].id, toNodeId: g[i+1].id, distanceMeters: 15 });
   }
 
-  // ── Snapping ──────────────────────────────────────────────────────────────────
+  // Snapping
 
   private applySnap(node: EditorNode, rx: number, ry: number): { x: number; y: number } {
     const t = SNAP_PX / this.zoomLevel;
@@ -939,14 +1004,14 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     return { x, y };
   }
 
-  // ── Mouse events ──────────────────────────────────────────────────────────────
+  // Mouse events
 
   onCanvasMouseDown(event: MouseEvent): void {
     if (event.button === 1 || event.altKey) { event.preventDefault(); this.startPan(event); return; }
     if (event.target !== event.currentTarget) return;
     const { x, y } = this.svgPoint(event);
     if (this.mode === 'place') { this.placeNode(x, y); }
-    else if (this.mode === 'select') { this.clearSelection(); this.startPan(event); }
+    else if (this.mode === 'select' && !event.ctrlKey) { this.clearSelection(); this.startPan(event); }
     else if (this.mode === 'delete') { this.clearSelection(); }
   }
 
@@ -959,6 +1024,13 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     event.stopPropagation();
     if (event.button === 1 || event.altKey) { this.startPan(event); return; }
     const { x, y } = this.svgPoint(event);
+    if (event.ctrlKey && this.mode === 'select') { node.selected = !node.selected; return; }
+    if (this.mode === 'place') {
+      if (this.placeType !== node.nodeType) {
+        this.placeType = node.nodeType;
+        return;
+      }
+    }
     if (this.mode === 'delete')  { this.deleteNode(node); return; }
     if (this.mode === 'edge') {
       if (!this.edgeSource) { this.edgeSource = { nodeId: node.id }; }
@@ -997,7 +1069,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     }
   }
 
-  // Recompute distanceMeters for every edge that touches `nodeId`, using current scale.
+  //Recompute distanceMeters for every edge that touches `nodeId`, using current scale.
   private recomputeEdgesFor(nodeId: string): void {
     const node = this.nodeById(nodeId);
     if (!node) return;
@@ -1011,7 +1083,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     }
   }
 
-  // Recompute all edge lengths (used when scale changes).
+  //Recompute all edge lengths (used when scale changes).
   recomputeAllEdges(): void {
     for (const edge of this.edges) {
       const a = this.nodeById(edge.fromNodeId);
@@ -1037,7 +1109,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
 
   onMouseLeave(event: MouseEvent): void { this.onMouseUp(event); this.mousePos = null; }
 
-  // ── Operations ────────────────────────────────────────────────────────────────
+  // Operations
 
   placeNode(x: number, y: number): void {
     const node: EditorNode = {
@@ -1046,7 +1118,7 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
       nodeType: this.placeType, roomId: null, label: null, selected: true
     };
     this.nodes.forEach(n => n.selected = false);
-    this.nodes.push(node); this.mode = 'select'; this.markDirty();
+    this.nodes.push(node); this.markDirty();
   }
 
   createEdge(fromId: string, toId: string): void {
@@ -1054,6 +1126,14 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     const a = this.nodeById(fromId)!, b = this.nodeById(toId)!;
     const dx = a.x - b.x, dy = a.y - b.y;
     this.edges.push({ id: crypto.randomUUID(), buildingId: this.selectedBuildingId!, fromNodeId: fromId, toNodeId: toId, distanceMeters: Math.max(1, Math.round(Math.sqrt(dx*dx+dy*dy) * this.scale / 100)) });
+    this.markDirty();
+  }
+
+  deleteSelectedNodes(): void {
+    for (let node of this.selectedNodes) {
+      this.edges = this.edges.filter(e => e.fromNodeId!==node.id && e.toNodeId!==node.id);
+      this.nodes = this.nodes.filter(n => n.id!==node.id);
+    }
     this.markDirty();
   }
 
