@@ -41,6 +41,7 @@ public class OrToolsSchedulerService : ISchedulerService
         var distances = BuildDistanceMap(input.BuildingDistances);
         var roomDistances = BuildRoomDistanceMap(input.RoomDistances);
         var blocked = BuildBlockedSet(input.TeacherBlocks);
+        var blockedRoomSlots = BuildBlockedRoomSlots(input.RoomBlocks);
         var groupBlockedDays = groups.ToDictionary(g => g.Id, g => (g.BlockedDays ?? Array.Empty<int>()).ToHashSet());
 
         var groupSizeById = groups.ToDictionary(g => g.Id, g => g.StudentCount);
@@ -107,6 +108,17 @@ public class OrToolsSchedulerService : ISchedulerService
 
                     foreach (int rmi in compatRmis)
                     {
+                        if (blockedRoomSlots.Count > 0)
+                        {
+                            var roomId = rooms[rmi].Id;
+                            bool roomTaken = false;
+                            foreach (int awi in calendarWis)
+                            {
+                                if (blockedRoomSlots.Contains((roomId, d, p, awi))) { roomTaken = true; break; }
+                            }
+                            if (roomTaken) continue;
+                        }
+
                         var v = model.NewBoolVar($"a_{ri}_{d}_{p}_{varWi}_{rmi}");
                         totalVarCount++;
 
@@ -429,6 +441,20 @@ public class OrToolsSchedulerService : ISchedulerService
 
         var bldgGuidByIdx = buildingIdToIdx.ToDictionary(kv => kv.Value, kv => kv.Key);
 
+        var zoneEntryMeters = new Dictionary<(int bi, int floor), int>();
+        if (input.ZoneEntryDistances != null)
+        {
+            foreach (var z in input.ZoneEntryDistances)
+            {
+                if (buildingIdToIdx.TryGetValue(z.BuildingId, out int bi))
+                    zoneEntryMeters[(bi, z.Floor)] = z.EntryDistanceMeters;
+            }
+        }
+        int ZoneEntryWalk(int bi, int floor) =>
+            zoneEntryMeters.TryGetValue((bi, floor), out int e)
+                ? e
+                : Math.Max(0, floor - 1) * w.StairFloorMeters;
+
         Report($"Расстояния ({zones.Count} * {zones.Count} зон * {numPairs - 1} перемен)...");
         // Zone-pair travel: cross-building only (intra-building handled per-room via gru).
         // Walk metres = (f1 - 1) * stair + bd(b1, b2) + (f2 - 1) * stair.
@@ -460,9 +486,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     continue;
                 }
 
-                int walkMeters = Math.Max(0, f1 - 1) * w.StairFloorMeters
-                                 + bd
-                                 + Math.Max(0, f2 - 1) * w.StairFloorMeters;
+                int walkMeters = ZoneEntryWalk(b1, f1) + bd + ZoneEntryWalk(b2, f2);
                 double walkMins = walkMeters / WalkSpeedMperMin;
                 if (walkMins > allowedTravelMin)
                 {
@@ -1339,6 +1363,19 @@ public class OrToolsSchedulerService : ISchedulerService
                 set.Add((b.TeacherId, (int)b.Day - 1, b.PairNumber - 1, wi));
         }
 
+        return set;
+    }
+
+    private static HashSet<(Guid, int, int, int)> BuildBlockedRoomSlots(IEnumerable<SchedulerRoomBlock>? blocks)
+    {
+        var set = new HashSet<(Guid, int, int, int)>();
+        if (blocks == null) return set;
+        foreach (var b in blocks)
+        {
+            // Both-type blocks cover BOTH calendar weeks (the room is occupied every week).
+            foreach (int wi in b.WeekType == WeekType.Both ? new[] { 0, 1 } : new[] { VarWeekIndex(b.WeekType) })
+                set.Add((b.RoomId, (int)b.Day - 1, b.PairNumber - 1, wi));
+        }
         return set;
     }
 

@@ -16,10 +16,10 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { Subscription, timer, of, EMPTY } from 'rxjs';
+import { Subscription, timer, of, EMPTY, forkJoin } from 'rxjs';
 import { exhaustMap, takeWhile, catchError, filter } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
-import { Schedule, GenerationJobStatus, Faculty, SolverWeights } from '../../../core/models';
+import { Schedule, GenerationJobStatus, Faculty, SolverWeights, StudyPlan } from '../../../core/models';
 import { ScheduleStatus, Term } from '../../../core/models/enums';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -224,10 +224,14 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   }
 
   triggerGeneration(schedule: Schedule): void {
-    const ref = this.dialog.open(SolverSettingsDialogComponent, { width: '520px' });
-    ref.afterClosed().subscribe((timeoutSeconds: number | null) => {
-      if (timeoutSeconds == null) return;
-      this.api.generateSchedule(schedule.id, { timeoutSeconds }).subscribe({
+    const ref = this.dialog.open(SolverSettingsDialogComponent, {
+      width: '560px',
+      data: { academicYear: schedule.academicYear, term: schedule.term }
+    });
+    ref.afterClosed().subscribe((result: { timeoutSeconds: number; planIds: string[] | null } | null) => {
+      if (!result) return;
+      const { timeoutSeconds, planIds } = result;
+      this.api.generateSchedule(schedule.id, { timeoutSeconds, planIds }).subscribe({
         next: () => {
           this.generationStatus[schedule.id] = { scheduleId: schedule.id, status: 'queued', entriesCreated: 0 };
           this.startPolling(schedule.id);
@@ -442,7 +446,7 @@ export class CreateScheduleDialogComponent {
   imports: [
     CommonModule, ReactiveFormsModule,
     MatButtonModule, MatFormFieldModule, MatInputModule, MatDialogModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule, MatSelectModule
   ],
   template: `
     <h2 mat-dialog-title>Параметры генерации</h2>
@@ -450,108 +454,139 @@ export class CreateScheduleDialogComponent {
       <div *ngIf="loading" class="spinner-wrap"><mat-spinner diameter="32"></mat-spinner></div>
       <form *ngIf="!loading" [formGroup]="form" class="settings-form">
 
-        <p class="section-label">Штрафы за «окна»</p>
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Окно студента (S1)</mat-label>
-            <input matInput type="number" formControlName="studentWindow" min="0">
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Окно преподавателя (S2)</mat-label>
-            <input matInput type="number" formControlName="teacherWindow" min="0">
-          </mat-form-field>
-        </div>
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Активный день группы (S3)</mat-label>
-            <input matInput type="number" formControlName="activeDay" min="0">
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Превышение СанПиН (S5)</mat-label>
-            <input matInput type="number" formControlName="sanPinOverload" min="0">
-          </mat-form-field>
-        </div>
+        <section class="block">
+          <h3 class="block-title">Запуск</h3>
+          <p class="block-desc">Каждый план решается отдельно: расписания других планов сохраняются и блокируют свои аудитории.</p>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1" *ngIf="studyPlans.length > 0">
+              <mat-label>Учебные планы</mat-label>
+              <mat-select formControlName="planIds" multiple>
+                <mat-option *ngFor="let sp of studyPlans" [value]="sp.id">
+                  {{ sp.name || ('План ' + sp.id.slice(0, 8)) }}
+                  <span class="plan-meta">— {{ sp.groups.length }} групп, {{ sp.entries.length }} дисциплин</span>
+                </mat-option>
+              </mat-select>
+              <mat-hint>Пусто — все планы по умолчанию (крупные первыми).</mat-hint>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Таймаут на план, сек</mat-label>
+              <input matInput type="number" formControlName="timeoutSeconds" min="10" max="3600">
+              <mat-hint>Применяется к каждому плану отдельно (10–3600).</mat-hint>
+            </mat-form-field>
+          </div>
+        </section>
 
-        <p class="section-label">Повторные пары одного типа (S6)</p>
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Лекция</mat-label>
-            <input matInput type="number" formControlName="consecLecture" min="0">
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Семинар</mat-label>
-            <input matInput type="number" formControlName="consecSeminar" min="0">
-          </mat-form-field>
-        </div>
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Практика</mat-label>
-            <input matInput type="number" formControlName="consecPractical" min="0">
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Лабораторная</mat-label>
-            <input matInput type="number" formControlName="consecLab" min="0">
-          </mat-form-field>
-        </div>
+        <section class="block">
+          <h3 class="block-title">Окна и активность</h3>
+          <p class="block-desc">Штраф за пустую пару в середине дня (S1–S2) и за каждый используемый день недели (S3). Чем больше — тем компактнее расписание.</p>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Окно студента</mat-label>
+              <input matInput type="number" formControlName="studentWindow" min="0">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Окно преподавателя</mat-label>
+              <input matInput type="number" formControlName="teacherWindow" min="0">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Активный день</mat-label>
+              <input matInput type="number" formControlName="activeDay" min="0">
+            </mat-form-field>
+          </div>
+        </section>
 
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Скаляр серии (S6) — множитель за 3+ подряд</mat-label>
-            <input matInput type="number" formControlName="consecRunScalar" min="1">
-          </mat-form-field>
-        </div>
+        <section class="block">
+          <h3 class="block-title">Сверхнормативная нагрузка</h3>
+          <p class="block-desc">Штраф СанПиН за каждую пару сверх четырёх в день (S5).</p>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Штраф за пару &gt; 4 в день</mat-label>
+              <input matInput type="number" formControlName="sanPinOverload" min="0">
+            </mat-form-field>
+          </div>
+        </section>
 
-        <p class="section-label">Предпочтительное время занятий (S7) — штраф за слот</p>
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Ранние (1–2)</mat-label>
-            <input matInput type="number" formControlName="earlyPair" min="0">
-            <mat-hint>/шаг</mat-hint>
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Средние (3–4)</mat-label>
-            <input matInput type="number" formControlName="middlePair" min="0">
-            <mat-hint>фикс.</mat-hint>
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Поздние (5+)</mat-label>
-            <input matInput type="number" formControlName="latePair" min="0">
-            <mat-hint>/шаг</mat-hint>
-          </mat-form-field>
-        </div>
+        <section class="block">
+          <h3 class="block-title">Подряд идущие пары одного типа (S6)</h3>
+          <p class="block-desc">Штраф за каждую пару того же предмета и типа сразу после предыдущей.</p>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Лекция</mat-label>
+              <input matInput type="number" formControlName="consecLecture" min="0">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Семинар</mat-label>
+              <input matInput type="number" formControlName="consecSeminar" min="0">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Практика</mat-label>
+              <input matInput type="number" formControlName="consecPractical" min="0">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Лабораторная</mat-label>
+              <input matInput type="number" formControlName="consecLab" min="0">
+            </mat-form-field>
+          </div>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Усиление за серии 3+ подряд</mat-label>
+              <input matInput type="number" formControlName="consecRunScalar" min="1">
+              <mat-hint>Множитель к штрафу выше для каждой пары в длинной серии.</mat-hint>
+            </mat-form-field>
+          </div>
+        </section>
 
-        <p class="section-label">Штрафы за размещение (S8–S9)</p>
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Суббота (S8)</mat-label>
-            <input matInput type="number" formControlName="saturdayPenalty" min="0">
-            <mat-hint>0 — субботы не ограничены</mat-hint>
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Несоответствие кафедры (S9)</mat-label>
-            <input matInput type="number" formControlName="departmentMismatchPenalty" min="0">
-          </mat-form-field>
-        </div>
+        <section class="block">
+          <h3 class="block-title">Время дня (S7)</h3>
+          <p class="block-desc">Штраф за каждую пару в соответствующем слоте. Предпочтительны пары 3–4.</p>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Ранние пары (1–2)</mat-label>
+              <input matInput type="number" formControlName="earlyPair" min="0">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Средние пары (3–4)</mat-label>
+              <input matInput type="number" formControlName="middlePair" min="0">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Поздние пары (5+)</mat-label>
+              <input matInput type="number" formControlName="latePair" min="0">
+            </mat-form-field>
+          </div>
+        </section>
 
-        <p class="section-label">Параметры решателя</p>
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Макс. штраф за ходьбу (S4)</mat-label>
-            <input matInput type="number" formControlName="walkingPenaltyMax" min="1">
-            <mat-hint>при ходьбе ≈ перемене</mat-hint>
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Метров на этаж (лестница)</mat-label>
-            <input matInput type="number" formControlName="stairFloorMeters" min="0">
-            <mat-hint>= ходьба за 1 этаж</mat-hint>
-          </mat-form-field>
-        </div>
-        <div class="row">
-          <mat-form-field appearance="outline" class="flex1">
-            <mat-label>Таймаут (сек, 30–60000)</mat-label>
-            <input matInput type="number" formControlName="timeoutSeconds" min="30" max="60000">
-          </mat-form-field>
-        </div>
+        <section class="block">
+          <h3 class="block-title">Размещение (S8–S9)</h3>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Суббота</mat-label>
+              <input matInput type="number" formControlName="saturdayPenalty" min="0">
+              <mat-hint>0 — субботы без штрафа.</mat-hint>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Чужая кафедра</mat-label>
+              <input matInput type="number" formControlName="departmentMismatchPenalty" min="0">
+              <mat-hint>Штраф за аудиторию не своей кафедры.</mat-hint>
+            </mat-form-field>
+          </div>
+        </section>
+
+        <section class="block">
+          <h3 class="block-title">Ходьба и этажи (S4)</h3>
+          <p class="block-desc">Штраф за переход между парами растёт пропорционально длине пути. Лестницы считаются как метры на этаж.</p>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Максимальный штраф за ходьбу</mat-label>
+              <input matInput type="number" formControlName="walkingPenaltyMax" min="1">
+              <mat-hint>Достигается когда путь занимает всю перемену.</mat-hint>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Метров за один этаж</mat-label>
+              <input matInput type="number" formControlName="stairFloorMeters" min="0">
+              <mat-hint>Используется как эквивалент при подъёме по лестнице.</mat-hint>
+            </mat-form-field>
+          </div>
+        </section>
 
       </form>
     </mat-dialog-content>
@@ -563,11 +598,13 @@ export class CreateScheduleDialogComponent {
     </mat-dialog-actions>
   `,
   styles: [`
-    .settings-form { display: flex; flex-direction: column; padding-top: 4px; min-width: 440px; }
-    .row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
+    .settings-form { display: flex; flex-direction: column; padding-top: 4px; min-width: 480px; }
+    .block { margin-bottom: 14px; }
+    .block-title { margin: 4px 0 2px; font-size: 13px; font-weight: 600; color: #2d2d2d; }
+    .block-desc { margin: 0 0 10px; font-size: 12px; color: #666; line-height: 1.4; }
+    .row { display: flex; gap: 8px; align-items: flex-start; }
     .flex1 { flex: 1; min-width: 0; }
-    .half-width { width: calc(50% - 4px); }
-    .section-label { margin: 14px 0 6px; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.4px; }
+    .plan-meta { color: #888; font-size: 12px; margin-left: 4px; }
     .spinner-wrap { display: flex; justify-content: center; padding: 32px; }
     /* Let multi-line hints push the field taller instead of overlapping the row below. */
     ::ng-deep .settings-form .mat-mdc-form-field-subscript-wrapper,
@@ -577,62 +614,69 @@ export class CreateScheduleDialogComponent {
 export class SolverSettingsDialogComponent implements OnInit {
   form!: FormGroup;
   loading = true;
+  studyPlans: StudyPlan[] = [];
 
   constructor(
     private dialogRef: MatDialogRef<SolverSettingsDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) private data: { academicYear: number; term: string },
     private api: ApiService,
     private fb: FormBuilder
   ) {}
 
   ngOnInit(): void {
-    this.api.getSolverSettings().subscribe({
-      next: w => {
-        this.form = this.fb.group({
-          studentWindow:            [w.studentWindow,            [Validators.required, Validators.min(0)]],
-          teacherWindow:            [w.teacherWindow,            [Validators.required, Validators.min(0)]],
-          activeDay:                [w.activeDay,                [Validators.required, Validators.min(0)]],
-          sanPinOverload:           [w.sanPinOverload,           [Validators.required, Validators.min(0)]],
-          consecLecture:            [w.consecLecture,            [Validators.required, Validators.min(0)]],
-          consecSeminar:            [w.consecSeminar,            [Validators.required, Validators.min(0)]],
-          consecPractical:          [w.consecPractical,          [Validators.required, Validators.min(0)]],
-          consecLab:                [w.consecLab,                [Validators.required, Validators.min(0)]],
-          earlyPair:                [w.earlyPair,                [Validators.required, Validators.min(0)]],
-          middlePair:               [w.middlePair,               [Validators.required, Validators.min(0)]],
-          latePair:                 [w.latePair,                 [Validators.required, Validators.min(0)]],
-          consecRunScalar:          [w.consecRunScalar,          [Validators.required, Validators.min(1)]],
-          saturdayPenalty:          [w.saturdayPenalty,          [Validators.required, Validators.min(0)]],
-          departmentMismatchPenalty:[w.departmentMismatchPenalty,[Validators.required, Validators.min(0)]],
-          walkingPenaltyMax:        [w.walkingPenaltyMax,        [Validators.required, Validators.min(1)]],
-          stairFloorMeters:         [w.stairFloorMeters ?? 20,   [Validators.required, Validators.min(0)]],
-          timeoutSeconds:           [120,                        [Validators.required, Validators.min(10), Validators.max(600)]],
-        });
-        this.loading = false;
-      },
-      error: () => {
-        this.form = this.buildDefaultForm();
-        this.loading = false;
-      }
+    forkJoin({
+      weights: this.api.getSolverSettings().pipe(catchError(() => of(null))),
+      plans: this.api.getStudyPlans(this.data?.academicYear, this.data?.term).pipe(catchError(() => of([] as StudyPlan[])))
+    }).subscribe(({ weights, plans }) => {
+      this.studyPlans = plans;
+      this.form = weights ? this.buildForm(weights) : this.buildDefaultForm();
+      this.loading = false;
     });
   }
 
   saveAndRun(): void {
     if (this.form.invalid) return;
     this.loading = true;
-    const { timeoutSeconds, ...weights } = this.form.value;
+    const { timeoutSeconds, planIds, ...weights } = this.form.value;
+    const planIdsToReturn: string[] | null = (planIds && planIds.length > 0) ? planIds : null;
     this.api.updateSolverSettings(weights).subscribe({
-      next: () => this.dialogRef.close(timeoutSeconds as number),
+      next: () => this.dialogRef.close({ timeoutSeconds, planIds: planIdsToReturn }),
       error: () => { this.loading = false; }
+    });
+  }
+
+  private buildForm(w: SolverWeights): FormGroup {
+    return this.fb.group({
+      planIds:                  [[] as string[]],
+      timeoutSeconds:           [120, [Validators.required, Validators.min(10), Validators.max(3600)]],
+      studentWindow:            [w.studentWindow,            [Validators.required, Validators.min(0)]],
+      teacherWindow:            [w.teacherWindow,            [Validators.required, Validators.min(0)]],
+      activeDay:                [w.activeDay,                [Validators.required, Validators.min(0)]],
+      sanPinOverload:           [w.sanPinOverload,           [Validators.required, Validators.min(0)]],
+      consecLecture:            [w.consecLecture,            [Validators.required, Validators.min(0)]],
+      consecSeminar:            [w.consecSeminar,            [Validators.required, Validators.min(0)]],
+      consecPractical:          [w.consecPractical,          [Validators.required, Validators.min(0)]],
+      consecLab:                [w.consecLab,                [Validators.required, Validators.min(0)]],
+      earlyPair:                [w.earlyPair,                [Validators.required, Validators.min(0)]],
+      middlePair:               [w.middlePair,               [Validators.required, Validators.min(0)]],
+      latePair:                 [w.latePair,                 [Validators.required, Validators.min(0)]],
+      consecRunScalar:          [w.consecRunScalar,          [Validators.required, Validators.min(1)]],
+      saturdayPenalty:          [w.saturdayPenalty,          [Validators.required, Validators.min(0)]],
+      departmentMismatchPenalty:[w.departmentMismatchPenalty,[Validators.required, Validators.min(0)]],
+      walkingPenaltyMax:        [w.walkingPenaltyMax,        [Validators.required, Validators.min(1)]],
+      stairFloorMeters:         [w.stairFloorMeters ?? 20,   [Validators.required, Validators.min(0)]],
     });
   }
 
   private buildDefaultForm(): FormGroup {
     return this.fb.group({
+      planIds: [[] as string[]],
+      timeoutSeconds: [120, [Validators.required, Validators.min(10), Validators.max(3600)]],
       studentWindow: [100], teacherWindow: [80], activeDay: [60], sanPinOverload: [300],
       consecLecture: [70], consecSeminar: [40], consecPractical: [30], consecLab: [10],
       earlyPair: [15], middlePair: [0], latePair: [25], consecRunScalar: [3],
       saturdayPenalty: [30], departmentMismatchPenalty: [50], walkingPenaltyMax: [120],
       stairFloorMeters: [20],
-      timeoutSeconds: [120],
     });
   }
 }

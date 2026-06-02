@@ -335,6 +335,44 @@ public static class ScheduleScoreCalculator
         return result;
     }
 
+    // Shortest metres from any node on (building, floor) to any Entrance node in the same building.
+    public static IReadOnlyDictionary<(Guid buildingId, int floor), int> ComputeZoneEntryDistances(
+        IEnumerable<FloorPlanNode> nodes, IEnumerable<FloorPlanEdge> edges, int stairFloorMeters = 20)
+    {
+        var nodeList = nodes.ToList();
+        if (nodeList.Count == 0) return new Dictionary<(Guid, int), int>();
+
+        var floorById = nodeList.ToDictionary(n => n.Id, n => n.Floor);
+        var adj = nodeList.ToDictionary(n => n.Id, _ => new List<(Guid, int)>());
+        foreach (var e in edges)
+        {
+            if (!adj.ContainsKey(e.FromNodeId) || !adj.ContainsKey(e.ToNodeId)) continue;
+            int floorDiff = Math.Abs(floorById[e.FromNodeId] - floorById[e.ToNodeId]);
+            int weight = floorDiff > 0 ? floorDiff * stairFloorMeters : e.DistanceMeters;
+            adj[e.FromNodeId].Add((e.ToNodeId, weight));
+            adj[e.ToNodeId].Add((e.FromNodeId, weight));
+        }
+
+        var entrances = nodeList.Where(n => n.NodeType == FloorPlanNodeType.Entrance).ToList();
+        var result = new Dictionary<(Guid, int), int>();
+        var allIds = nodeList.Select(n => n.Id).ToArray();
+
+        foreach (var entrance in entrances)
+        {
+            var dist = Dijkstra(entrance.Id, adj, allIds);
+            var ebid = entrance.BuildingId;
+            foreach (var n in nodeList)
+            {
+                if (n.BuildingId != ebid) continue;
+                if (!dist.TryGetValue(n.Id, out int d) || d >= int.MaxValue / 2) continue;
+                var key = (ebid, n.Floor);
+                if (!result.TryGetValue(key, out int cur) || d < cur)
+                    result[key] = d;
+            }
+        }
+        return result;
+    }
+
     public static IReadOnlyDictionary<(Guid, Guid), int> ComputeAllPairsBuildingDistances(
         IEnumerable<BuildingDistance> directEdges)
     {

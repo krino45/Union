@@ -88,8 +88,15 @@ public record SchedulerInput(
     IReadOnlyList<int>? BreakMinutesBetweenPairs = null,
     int SolverTimeoutSeconds = 60,
     IReadOnlyList<SchedulerRoomDistance>? RoomDistances = null,
-    SolverWeights? Weights = null
+    SolverWeights? Weights = null,
+    IReadOnlyList<SchedulerZoneEntryDistance>? ZoneEntryDistances = null,
+    // Cells the scheduler must treat as already taken
+    IReadOnlyList<SchedulerRoomBlock>? RoomBlocks = null
 );
+
+public record SchedulerZoneEntryDistance(Guid BuildingId, int Floor, int EntryDistanceMeters);
+
+public record SchedulerRoomBlock(Guid RoomId, RussianDayOfWeek Day, int PairNumber, WeekType WeekType);
 
 public record SchedulerRoom(
     Guid Id,
