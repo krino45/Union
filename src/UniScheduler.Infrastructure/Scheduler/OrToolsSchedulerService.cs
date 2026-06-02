@@ -67,15 +67,15 @@ public class OrToolsSchedulerService : ISchedulerService
             });
         }
 
-        //   varsByReqWi:   (ri, varWi) → list<v>                  — used by H2 + feasibility
-        //   varsByReqCell: (ri, d, p, varWi) → list<(rmi, v)>     — used everywhere else
-        //   byCellRoom:    (rmi, d, p, calendarWi) → list<(tId, v, size)>  — used by H4 only
-        //   byCellTeacher: (tId, d, p, calendarWi) → list<(rmi, v)>        — used by H5 only
+        //   varsByReqWi:   (ri, varWi) -> list<v>                  — used by H2 + feasibility
+        //   varsByReqCell: (ri, d, p, varWi) -> list<(rmi, v)>     — used everywhere else
+        //   byCellRoom:    (rmi, d, p, calendarWi) -> list<(ri, tId, v, size)>  — used by H4 only
+        //   byCellTeacher: (tId, d, p, calendarWi) -> list<(ri, rmi, v)>        — used by H5 only
         // The byCell* indexes use calendar week (Both-week vars appear in BOTH wi=0 and wi=1).
         var varsByReqWi = new Dictionary<(int ri, int wi), List<BoolVar>>();
         var varsByReqCell = new Dictionary<(int ri, int d, int p, int wi), List<(int rmi, BoolVar v)>>();
-        var byCellRoom = new Dictionary<(int rmi, int d, int p, int wi), List<(Guid tId, BoolVar v, long size)>>();
-        var byCellTeacher = new Dictionary<(Guid tId, int d, int p, int wi), List<(int rmi, BoolVar v)>>();
+        var byCellRoom = new Dictionary<(int rmi, int d, int p, int wi), List<(int ri, Guid tId, BoolVar v, long size)>>();
+        var byCellTeacher = new Dictionary<(Guid tId, int d, int p, int wi), List<(int ri, int rmi, BoolVar v)>>();
         long totalVarCount = 0;
 
         Report($"Создание переменных ({reqs.Count} занятий)...");
@@ -135,13 +135,13 @@ public class OrToolsSchedulerService : ISchedulerService
                         {
                             var kCR = (rmi, d, p, awi);
                             if (!byCellRoom.TryGetValue(kCR, out var lCR))
-                                byCellRoom[kCR] = lCR = new List<(Guid, BoolVar, long)>();
-                            lCR.Add((tId, v, size));
+                                byCellRoom[kCR] = lCR = new List<(int, Guid, BoolVar, long)>();
+                            lCR.Add((ri, tId, v, size));
 
                             var kCT = (tId, d, p, awi);
                             if (!byCellTeacher.TryGetValue(kCT, out var lCT))
-                                byCellTeacher[kCT] = lCT = new List<(int, BoolVar)>();
-                            lCT.Add((rmi, v));
+                                byCellTeacher[kCT] = lCT = new List<(int, int, BoolVar)>();
+                            lCT.Add((ri, rmi, v));
                         }
                     }
                 }
@@ -229,8 +229,8 @@ public class OrToolsSchedulerService : ISchedulerService
             reqs.Select((r, i) => (r, i)).Where(x => x.r.TeacherId == t.Id).Select(x => x.i).ToList());
         var teacherIdxMap = teachers.Select((t, i) => (t.Id, i)).ToDictionary(x => x.Id, x => x.i);
 
-        Report($"H4: один преподаватель в аудитории за слот ({byCellRoom.Count} активных ячеек)...");
-        // H4: at most one TEACHER per room per slot.
+        Report($"H4: один урок в аудитории за слот ({byCellRoom.Count} активных ячеек)...");
+        // H4: at most one requirement (lesson) per room per slot.
         // H4-cap: total headcount of all concurrent requirements ≤ room capacity.
         {
             int h4Done = 0;
@@ -243,34 +243,31 @@ public class OrToolsSchedulerService : ISchedulerService
                 h4Done++;
                 if (rooms[rmi].IsDistributed) continue;
 
-                // Group entries by teacher
-                var byTeacher = new Dictionary<Guid, List<BoolVar>>();
+                var byReq = new Dictionary<int, List<BoolVar>>();
                 var capVars = new List<IntVar>();
                 var capSizes = new List<long>();
-                foreach (var (tId, v, size) in entries)
+                foreach (var (ri, _, v, size) in entries)
                 {
-                    if (!byTeacher.TryGetValue(tId, out var tv)) byTeacher[tId] = tv = new List<BoolVar>();
-                    tv.Add(v);
+                    if (!byReq.TryGetValue(ri, out var rv)) byReq[ri] = rv = new List<BoolVar>();
+                    rv.Add(v);
                     capVars.Add(v);
                     capSizes.Add(size);
                 }
 
-                var teacherPresences = new List<BoolVar>();
-                foreach (var (tId, tv) in byTeacher)
+                var reqPresences = new List<BoolVar>();
+                foreach (var (ri, rv) in byReq)
                 {
                     BoolVar pres;
-                    if (tv.Count == 1) pres = tv[0];
+                    if (rv.Count == 1) pres = rv[0];
                     else
                     {
-                        int ti = teacherIdxMap[tId];
-                        pres = model.NewBoolVar($"tp_{ti}_{rmi}_{d}_{p}_{wi}");
-                        model.AddMaxEquality(pres, tv.Select(x => (IntVar)x).ToArray());
+                        pres = model.NewBoolVar($"rp4_{ri}_{rmi}_{d}_{p}_{wi}");
+                        model.AddMaxEquality(pres, rv.Select(x => (IntVar)x).ToArray());
                     }
-
-                    teacherPresences.Add(pres);
+                    reqPresences.Add(pres);
                 }
 
-                if (teacherPresences.Count > 1) model.AddAtMostOne(teacherPresences);
+                if (reqPresences.Count > 1) model.AddAtMostOne(reqPresences);
                 if (capVars.Count > 0 && rooms[rmi].Capacity > 0)
                     model.Add(LinearExpr.WeightedSum(capVars.ToArray(), capSizes.ToArray()) <= rooms[rmi].Capacity);
             }
@@ -278,8 +275,8 @@ public class OrToolsSchedulerService : ISchedulerService
         byCellRoom = null!;
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
 
-        Report($"H5: преподаватель в одной аудитории за слот ({byCellTeacher.Count} активных ячеек)...");
-        // H5: each teacher in at most one room per slot.
+        Report($"H5: преподаватель ведёт не более одного занятия за слот ({byCellTeacher.Count} активных ячеек)...");
+        // H5: each teacher takes at most one requirement per slot.
         {
             int h5Done = 0;
             int h5Total = byCellTeacher.Count;
@@ -289,33 +286,31 @@ public class OrToolsSchedulerService : ISchedulerService
                 if (h5Done % h5Report == 0)
                     ReportSub($"H5: ячейка {h5Done}/{h5Total} ({100 * h5Done / Math.Max(1, h5Total)}%)");
                 h5Done++;
-                if (entries.Count <= 1) continue; // 1 entry = тщ conflict
 
-                int ti = teacherIdxMap[tId];
-                var byRmi = new Dictionary<int, List<BoolVar>>();
-                foreach (var (rmi, v) in entries)
+                var byReq = new Dictionary<int, List<BoolVar>>();
+                foreach (var (ri, _, v) in entries)
                 {
-                    if (!byRmi.TryGetValue(rmi, out var rv)) byRmi[rmi] = rv = new List<BoolVar>();
+                    if (!byReq.TryGetValue(ri, out var rv)) byReq[ri] = rv = new List<BoolVar>();
                     rv.Add(v);
                 }
 
-                if (byRmi.Count <= 1) continue; // teacher only in one room at this slot = fine
+                if (byReq.Count <= 1) continue; // only one req involves this teacher at this slot due to H2
 
-                var roomPresences = new List<BoolVar>();
-                foreach (var (rmi, rv) in byRmi)
+                int ti = teacherIdxMap[tId];
+                var reqPresences = new List<BoolVar>();
+                foreach (var (ri, rv) in byReq)
                 {
                     BoolVar pres;
                     if (rv.Count == 1) pres = rv[0];
                     else
                     {
-                        pres = model.NewBoolVar($"tr_{ti}_{rmi}_{d}_{p}_{wi}");
+                        pres = model.NewBoolVar($"rp5_{ri}_{ti}_{d}_{p}_{wi}");
                         model.AddMaxEquality(pres, rv.Select(x => (IntVar)x).ToArray());
                     }
-
-                    roomPresences.Add(pres);
+                    reqPresences.Add(pres);
                 }
 
-                if (roomPresences.Count > 1) model.AddAtMostOne(roomPresences);
+                model.AddAtMostOne(reqPresences);
             }
         }
         byCellTeacher = null!;
