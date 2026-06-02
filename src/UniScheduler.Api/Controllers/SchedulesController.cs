@@ -130,6 +130,16 @@ public class SchedulesController : ControllerBase
     }
 
     [Authorize(Roles = AdminOnly)]
+    [HttpPost("{id:guid}/generate/cancel")]
+    public IActionResult CancelGeneration(Guid id)
+    {
+        var ok = jobQueue.TryCancel(id);
+        if (!ok)
+            return NotFound(new { error = "Нет активной генерации для этого расписания" });
+        return Accepted(new { scheduleId = id, status = "cancelling" });
+    }
+
+    [Authorize(Roles = AdminOnly)]
     [HttpGet("{id:guid}/audit")]
     public async Task<ActionResult<ScheduleAuditDto>> Audit(Guid id, CancellationToken ct)
         => Ok(await mediator.Send(new GetScheduleAuditQuery(id), ct));

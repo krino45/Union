@@ -297,6 +297,9 @@ export class ApiService {
   getGenerationStatus(id: string): Observable<GenerationJobStatus> {
     return this.http.get<GenerationJobStatus>(`${this.base}/schedules/${id}/generate/status`);
   }
+  cancelGeneration(id: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/schedules/${id}/generate/cancel`, {});
+  }
 
   //  Solver settings
   getSolverSettings(): Observable<SolverWeights> {

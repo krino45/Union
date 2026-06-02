@@ -47,6 +47,11 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
         var shared = await LoadSharedDataAsync(schedule, weights, cancellationToken);
 
+        var groupToPlanId = new Dictionary<Guid, Guid>();
+        foreach (var sp in shared.StudyPlans)
+            foreach (var g in sp.Groups)
+                groupToPlanId[g.StudentGroupId] = sp.Id;
+
         List<StudyPlan> plansToRun;
         if (request.PlanIds is { Count: > 0 })
         {
@@ -58,45 +63,49 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         }
         else
         {
+            var groupIdsWithEntries = await db.ScheduleEntryStudentGroups
+                .Where(esg => esg.ScheduleEntry.ScheduleId == request.ScheduleId)
+                .Select(esg => esg.StudentGroupId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            var plansWithEntries = groupIdsWithEntries
+                .Where(gid => groupToPlanId.ContainsKey(gid))
+                .Select(gid => groupToPlanId[gid])
+                .ToHashSet();
             plansToRun = shared.StudyPlans
+                .Where(sp => !plansWithEntries.Contains(sp.Id))
                 .OrderByDescending(sp => sp.Groups.Count)
                 .ThenByDescending(sp => sp.Entries.Count)
                 .ToList();
+            if (plansToRun.Count == 0)
+                return new GenerateScheduleResult(true, "Feasible",
+                    "Все планы уже сгенерированы. Чтобы перегенерировать — выберите планы явно.", 0);
         }
 
         var plansToRunIds = plansToRun.Select(sp => sp.Id).ToHashSet();
-
-        var groupToPlanId = new Dictionary<Guid, Guid>();
-        foreach (var sp in shared.StudyPlans)
-            foreach (var g in sp.Groups)
-                groupToPlanId[g.StudentGroupId] = sp.Id;
 
         var existing = await db.ScheduleEntries
             .Include(e => e.StudentGroups)
             .Where(e => e.ScheduleId == request.ScheduleId)
             .ToListAsync(cancellationToken);
 
+        var entriesByPlan = new Dictionary<Guid, List<ScheduleEntry>>();
         var keptEntries = new List<ScheduleEntry>();
-        var entriesToDelete = new List<ScheduleEntry>();
         foreach (var e in existing)
         {
             var firstGroupId = e.StudentGroups.FirstOrDefault()?.StudentGroupId;
             Guid? planId = firstGroupId.HasValue && groupToPlanId.TryGetValue(firstGroupId.Value, out var pid)
                 ? pid : (Guid?)null;
             if (planId.HasValue && plansToRunIds.Contains(planId.Value))
-                entriesToDelete.Add(e);
+            {
+                if (!entriesByPlan.TryGetValue(planId.Value, out var list))
+                    entriesByPlan[planId.Value] = list = new List<ScheduleEntry>();
+                list.Add(e);
+            }
             else
+            {
                 keptEntries.Add(e);
-        }
-        if (entriesToDelete.Count > 0)
-        {
-            var deleteIds = entriesToDelete.Select(e => e.Id).ToList();
-            var relatedRequests = await db.RescheduleRequests
-                .Where(r => deleteIds.Contains(r.OriginalEntryId))
-                .ToListAsync(cancellationToken);
-            db.RescheduleRequests.RemoveRange(relatedRequests);
-            db.ScheduleEntries.RemoveRange(entriesToDelete);
-            await db.SaveChangesAsync(cancellationToken);
+            }
         }
 
         var roomBlocks = keptEntries
@@ -107,19 +116,32 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .Select(e => new SchedulerBlock(e.TeacherId, e.DayOfWeek, e.PairNumber, e.WeekType))
             .ToList();
 
+        int batchGroupTarget = int.TryParse(Environment.GetEnvironmentVariable("UNISCHEDULER_BATCH_GROUP_TARGET"), out var t) && t > 0 ? t : 5;
+        var batches = BuildBatches(plansToRun, batchGroupTarget);
+
         int totalPlaced = 0;
         var perPlanMessages = new List<string>();
         int parallelSeq = 1;
+        int idx = 0;
 
-        for (int i = 0; i < plansToRun.Count; i++)
+        for (int bi = 0; bi < batches.Count; bi++)
         {
-            var plan = plansToRun[i];
-            p?.Report($"План {i + 1}/{plansToRun.Count}: {plan.Name ?? plan.Id.ToString()[..8]}...");
+            var batch = batches[bi];
+            int batchGroups = batch.Sum(pl => pl.Groups.Count);
+            var batchPrefix = $"Партия {bi + 1}/{batches.Count} ({batch.Count} планов, {batchGroups} групп)";
+            p?.Report($"{batchPrefix} | подготовка...");
 
-            var requirements = BuildRequirementsForPlan(plan, shared, ref parallelSeq);
+            var batchProgress = p == null ? null
+                : (IProgress<string>)new Progress<string>(s => p.Report($"{batchPrefix} | {s}"));
+
+            var requirements = new List<SchedulerRequirement>();
+            foreach (var plan in batch)
+                requirements.AddRange(BuildRequirementsForPlan(plan, shared, ref idx, ref parallelSeq));
+
             if (requirements.Count == 0)
             {
-                perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: 0 занятий (пропущен)");
+                foreach (var plan in batch)
+                    perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: 0 занятий (пропущен)");
                 continue;
             }
 
@@ -127,25 +149,42 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 schedule.Id, shared, requirements, roomBlocks, dynamicTeacherBlocks,
                 request.SolverTimeoutSeconds, weights);
 
-            var output = await scheduler.SolveAsync(input, cancellationToken, p);
+            var output = await scheduler.SolveAsync(input, cancellationToken, batchProgress);
 
             if (output.Status == SolverStatus.Infeasible)
             {
-                perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: НЕРАЗРЕШИМО: {output.Message}");
-                schedule.GenerationNotes = $"План {plan.Name ?? plan.Id.ToString()[..8]} неразрешим. {string.Join(" | ", perPlanMessages)}";
+                var labels = string.Join(", ", batch.Select(pl => pl.Name ?? pl.Id.ToString()[..8]));
+                perPlanMessages.Add($"Партия [{labels}]: НЕРАЗРЕШИМО: {output.Message}");
+                schedule.GenerationNotes = $"Партия {bi + 1} неразрешима. {string.Join(" | ", perPlanMessages)}";
                 await db.SaveChangesAsync(cancellationToken);
                 return new GenerateScheduleResult(false, "Infeasible",
-                    $"Plan {plan.Name ?? plan.Id.ToString()[..8]}: {output.Message}", totalPlaced);
+                    $"Batch {bi + 1} ({labels}): {output.Message}", totalPlaced);
             }
 
             if (output.Status == SolverStatus.Unknown)
             {
-                perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: ТАЙМАУТ: решение не найдено за {request.SolverTimeoutSeconds}с");
+                foreach (var plan in batch)
+                    perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: ТАЙМАУТ (партия {bi + 1})");
                 continue;
+            }
+
+            foreach (var plan in batch)
+            {
+                if (entriesByPlan.TryGetValue(plan.Id, out var oldForPlan) && oldForPlan.Count > 0)
+                {
+                    var oldIds = oldForPlan.Select(e => e.Id).ToList();
+                    var relatedRequests = await db.RescheduleRequests
+                        .Where(r => oldIds.Contains(r.OriginalEntryId))
+                        .ToListAsync(cancellationToken);
+                    db.RescheduleRequests.RemoveRange(relatedRequests);
+                    db.ScheduleEntries.RemoveRange(oldForPlan);
+                    entriesByPlan.Remove(plan.Id);
+                }
             }
 
             var parallelGuids = new Dictionary<int, Guid>();
             var newEntries = new List<ScheduleEntry>();
+            var countByPlan = new Dictionary<Guid, int>();
             foreach (var assignment in output.Assignments)
             {
                 var req = input.Requirements[assignment.RequirementIndex];
@@ -179,10 +218,18 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                         StudentGroupId = groupId
                     });
                 }
+
+                var firstGroup = req.GroupIds.FirstOrDefault();
+                if (groupToPlanId.TryGetValue(firstGroup, out var pid))
+                    countByPlan[pid] = countByPlan.GetValueOrDefault(pid) + 1;
             }
             await db.SaveChangesAsync(cancellationToken);
             totalPlaced += newEntries.Count;
-            perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: {newEntries.Count} занятий ({output.Status})");
+            foreach (var plan in batch)
+            {
+                var cnt = countByPlan.GetValueOrDefault(plan.Id, 0);
+                perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: {cnt} занятий");
+            }
 
             foreach (var e in newEntries)
             {
@@ -301,11 +348,40 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             zoneEntryDist, bldDistList, scoreCtx);
     }
 
+    // Greedy bin-packing: walk plans in the caller-given order (priority order from the UI, or
+    // default size-desc), accumulating into a batch until adding the next plan would exceed the
+    // target group count. A plan whose own group count >= target ships as its own batch.
+    private static List<List<StudyPlan>> BuildBatches(IReadOnlyList<StudyPlan> plans, int target)
+    {
+        var batches = new List<List<StudyPlan>>();
+        var current = new List<StudyPlan>();
+        int currentGroups = 0;
+        foreach (var plan in plans)
+        {
+            int planGroups = plan.Groups.Count;
+            if (current.Count > 0 && currentGroups + planGroups > target)
+            {
+                batches.Add(current);
+                current = new List<StudyPlan>();
+                currentGroups = 0;
+            }
+            current.Add(plan);
+            currentGroups += planGroups;
+            if (currentGroups >= target)
+            {
+                batches.Add(current);
+                current = new List<StudyPlan>();
+                currentGroups = 0;
+            }
+        }
+        if (current.Count > 0) batches.Add(current);
+        return batches;
+    }
+
     private static List<SchedulerRequirement> BuildRequirementsForPlan(
-        StudyPlan plan, SharedData shared, ref int parallelSeq)
+        StudyPlan plan, SharedData shared, ref int idx, ref int parallelSeq)
     {
         var requirements = new List<SchedulerRequirement>();
-        int idx = 0;
         int studyWeeks = StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan);
         var planGroupIds = plan.Groups
             .Select(g => g.StudentGroupId)

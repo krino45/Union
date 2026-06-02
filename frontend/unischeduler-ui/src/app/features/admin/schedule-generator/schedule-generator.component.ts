@@ -1,6 +1,6 @@
-import { Component, OnInit, OnDestroy, Inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, Inject, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -14,10 +14,11 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { Subscription, timer, of, EMPTY, forkJoin } from 'rxjs';
-import { exhaustMap, takeWhile, catchError, filter } from 'rxjs/operators';
+import { Subscription, timer, of, EMPTY, forkJoin, Observable } from 'rxjs';
+import { exhaustMap, takeWhile, catchError, filter, map, startWith } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
 import { Schedule, GenerationJobStatus, Faculty, SolverWeights, StudyPlan } from '../../../core/models';
 import { ScheduleStatus, Term } from '../../../core/models/enums';
@@ -75,9 +76,17 @@ const CURRENT_YEAR = new Date().getFullYear();
             *ngIf="gs.status === 'queued' || gs.status === 'running'"
             mode="indeterminate">
           </mat-progress-bar>
-          <div class="status-text" [class]="'gen-' + gs.status">
-            {{ genStatusLabel(gs) }}
-            <span *ngIf="gs.status === 'completed'"> — {{ gs.entriesCreated }} занятий</span>
+          <div class="gen-row">
+            <div class="status-text" [class]="'gen-' + gs.status">
+              {{ genStatusLabel(gs) }}
+              <span *ngIf="gs.status === 'completed'"> — {{ gs.entriesCreated }} занятий</span>
+            </div>
+            <button mat-stroked-button color="warn"
+                    *ngIf="gs.status === 'queued' || gs.status === 'running'"
+                    [disabled]="cancelling[s.id]"
+                    (click)="cancelGeneration(s)">
+              <mat-icon>stop</mat-icon> {{ cancelling[s.id] ? 'Отмена...' : 'Отменить' }}
+            </button>
           </div>
         </div>
       </mat-card-content>
@@ -127,7 +136,9 @@ const CURRENT_YEAR = new Date().getFullYear();
     .spacer { flex: 1; }
     .faculty-tag { font-weight: normal; color: #555; }
     .generation-status { margin-top: 8px; }
-    .status-text { font-size: 13px; margin-top: 4px; }
+    .gen-row { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+    .gen-row .status-text { flex: 1; }
+    .status-text { font-size: 13px; }
     .gen-completed { color: #388e3c; }
     .gen-failed { color: #d32f2f; }
     .gen-queued, .gen-running { color: #1976d2; }
@@ -150,6 +161,7 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   schedules: Schedule[] = [];
   faculties: Faculty[] = [];
   generationStatus: Record<string, GenerationJobStatus> = {};
+  cancelling: Record<string, boolean> = {};
   loading = true;
   showArchived = false;
   private pollingSubscriptions: Record<string, Subscription> = {};
@@ -265,10 +277,13 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
       next: status => {
         this.generationStatus[scheduleId] = status;
         if (status.status === 'completed') {
+          this.cancelling[scheduleId] = false;
           this.snackBar.open(`Генерация завершена: ${status.entriesCreated} занятий`, 'OK', { duration: 5000 });
           this.loadSchedules();
         } else if (status.status === 'failed') {
+          this.cancelling[scheduleId] = false;
           this.snackBar.open(`Генерация не удалась: ${status.message || 'без сообщения'}`, 'OK', { duration: 8000 });
+          this.loadSchedules();
         }
       },
       error: (e) => this.snackBar.open(`Опрос статуса прерван: ${this.errMsg(e)}`, 'OK', { duration: 5000 })
@@ -278,6 +293,21 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   isGenerating(scheduleId: string): boolean {
     const s = this.generationStatus[scheduleId];
     return s?.status === 'queued' || s?.status === 'running';
+  }
+
+  cancelGeneration(schedule: Schedule): void {
+    if (!confirm('Прервать генерацию? Уже сохранённые планы останутся.')) return;
+    this.cancelling[schedule.id] = true;
+    this.api.cancelGeneration(schedule.id).subscribe({
+      next: () => {
+        this.snackBar.open('Запрос на отмену отправлен', 'OK', { duration: 3000 });
+      },
+      error: (e) => {
+        this.cancelling[schedule.id] = false;
+        const msg = e.status === 404 ? 'Активной генерации нет' : this.errMsg(e);
+        this.snackBar.open(`Не удалось отменить: ${msg}`, 'OK', { duration: 5000 });
+      }
+    });
   }
 
   publishSchedule(schedule: Schedule): void {
@@ -446,7 +476,8 @@ export class CreateScheduleDialogComponent {
   imports: [
     CommonModule, ReactiveFormsModule,
     MatButtonModule, MatFormFieldModule, MatInputModule, MatDialogModule,
-    MatProgressSpinnerModule, MatSelectModule
+    MatProgressSpinnerModule, MatSelectModule, MatChipsModule,
+    MatAutocompleteModule, MatIconModule
   ],
   template: `
     <h2 mat-dialog-title>Параметры генерации</h2>
@@ -456,23 +487,53 @@ export class CreateScheduleDialogComponent {
 
         <section class="block">
           <h3 class="block-title">Запуск</h3>
-          <p class="block-desc">Каждый план решается отдельно: расписания других планов сохраняются и блокируют свои аудитории.</p>
+          <p class="block-desc">Каждый план решается отдельно: уже сохранённые планы блокируют свои аудитории. Порядок выбора = порядок генерации.</p>
+
+          <mat-form-field appearance="outline" class="full-width" *ngIf="studyPlans.length > 0">
+            <mat-label>Учебные планы</mat-label>
+            <mat-chip-grid #chipGrid aria-label="Выбранные планы">
+              <mat-chip-row *ngFor="let sp of selectedPlans; let i = index" (removed)="removePlan(sp)">
+                <span class="chip-order">{{ i + 1 }}.</span> {{ planLabel(sp) }}
+                <button matChipRemove [attr.aria-label]="'Убрать ' + planLabel(sp)">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </mat-chip-row>
+            </mat-chip-grid>
+            <input
+              #planSearchInput
+              placeholder="Поиск плана..."
+              [formControl]="planSearch"
+              [matAutocomplete]="auto"
+              [matChipInputFor]="chipGrid"
+              [matChipInputAddOnBlur]="false">
+            <mat-autocomplete #auto="matAutocomplete" (optionSelected)="selectPlan($event)">
+              <mat-option *ngFor="let sp of filteredPlans | async" [value]="sp">
+                {{ planLabel(sp) }}
+                <span class="plan-meta">— {{ sp.groups.length }} групп, {{ sp.entries.length }} дисциплин</span>
+              </mat-option>
+            </mat-autocomplete>
+            <mat-hint>
+              Пусто — только планы без занятий. Чтобы перегенерировать всё, добавьте всё вручную.
+            </mat-hint>
+          </mat-form-field>
+
           <div class="row">
-            <mat-form-field appearance="outline" class="flex1" *ngIf="studyPlans.length > 0">
-              <mat-label>Учебные планы</mat-label>
-              <mat-select formControlName="planIds" multiple>
-                <mat-option *ngFor="let sp of studyPlans" [value]="sp.id">
-                  {{ sp.name || ('План ' + sp.id.slice(0, 8)) }}
-                  <span class="plan-meta">— {{ sp.groups.length }} групп, {{ sp.entries.length }} дисциплин</span>
-                </mat-option>
-              </mat-select>
-              <mat-hint>Пусто — все планы по умолчанию (крупные первыми).</mat-hint>
-            </mat-form-field>
             <mat-form-field appearance="outline" class="flex1">
               <mat-label>Таймаут на план, сек</mat-label>
               <input matInput type="number" formControlName="timeoutSeconds" min="10" max="3600">
               <mat-hint>Применяется к каждому плану отдельно (10–3600).</mat-hint>
             </mat-form-field>
+            <button mat-stroked-button type="button" class="select-all-btn"
+                    *ngIf="studyPlans.length > 0"
+                    (click)="selectAllPlans()"
+                    [disabled]="selectedPlans.length === studyPlans.length">
+              Все планы
+            </button>
+            <button mat-stroked-button type="button" class="clear-btn"
+                    *ngIf="selectedPlans.length > 0"
+                    (click)="clearPlans()">
+              Очистить
+            </button>
           </div>
         </section>
 
@@ -604,7 +665,10 @@ export class CreateScheduleDialogComponent {
     .block-desc { margin: 0 0 10px; font-size: 12px; color: #666; line-height: 1.4; }
     .row { display: flex; gap: 8px; align-items: flex-start; }
     .flex1 { flex: 1; min-width: 0; }
+    .full-width { width: 100%; }
     .plan-meta { color: #888; font-size: 12px; margin-left: 4px; }
+    .chip-order { font-weight: 600; color: #1976d2; margin-right: 4px; }
+    .select-all-btn, .clear-btn { height: 40px; align-self: flex-start; margin-top: 6px; font-size: 12px; }
     .spinner-wrap { display: flex; justify-content: center; padding: 32px; }
     /* Let multi-line hints push the field taller instead of overlapping the row below. */
     ::ng-deep .settings-form .mat-mdc-form-field-subscript-wrapper,
@@ -615,6 +679,10 @@ export class SolverSettingsDialogComponent implements OnInit {
   form!: FormGroup;
   loading = true;
   studyPlans: StudyPlan[] = [];
+  selectedPlans: StudyPlan[] = [];
+  planSearch = new FormControl('');
+  filteredPlans!: Observable<StudyPlan[]>;
+  @ViewChild('planSearchInput') planSearchInput!: ElementRef<HTMLInputElement>;
 
   constructor(
     private dialogRef: MatDialogRef<SolverSettingsDialogComponent>,
@@ -630,15 +698,57 @@ export class SolverSettingsDialogComponent implements OnInit {
     }).subscribe(({ weights, plans }) => {
       this.studyPlans = plans;
       this.form = weights ? this.buildForm(weights) : this.buildDefaultForm();
+      this.filteredPlans = this.planSearch.valueChanges.pipe(
+        startWith(''),
+        map(v => this.filterPlans(typeof v === 'string' ? v : ''))
+      );
       this.loading = false;
     });
+  }
+
+  planLabel(sp: StudyPlan): string {
+    return sp.name || ('План ' + sp.id.slice(0, 8));
+  }
+
+  private filterPlans(query: string): StudyPlan[] {
+    const selected = new Set(this.selectedPlans.map(p => p.id));
+    const q = query.toLowerCase().trim();
+    return this.studyPlans
+      .filter(sp => !selected.has(sp.id))
+      .filter(sp => !q || this.planLabel(sp).toLowerCase().includes(q));
+  }
+
+  selectPlan(event: MatAutocompleteSelectedEvent): void {
+    const sp = event.option.value as StudyPlan;
+    if (!this.selectedPlans.some(p => p.id === sp.id)) {
+      this.selectedPlans = [...this.selectedPlans, sp];
+    }
+    this.planSearchInput.nativeElement.value = '';
+    this.planSearch.setValue('');
+  }
+
+  removePlan(sp: StudyPlan): void {
+    this.selectedPlans = this.selectedPlans.filter(p => p.id !== sp.id);
+    this.planSearch.setValue(this.planSearch.value ?? '');
+  }
+
+  selectAllPlans(): void {
+    this.selectedPlans = [...this.studyPlans];
+    this.planSearch.setValue('');
+  }
+
+  clearPlans(): void {
+    this.selectedPlans = [];
+    this.planSearch.setValue('');
   }
 
   saveAndRun(): void {
     if (this.form.invalid) return;
     this.loading = true;
-    const { timeoutSeconds, planIds, ...weights } = this.form.value;
-    const planIdsToReturn: string[] | null = (planIds && planIds.length > 0) ? planIds : null;
+    const { timeoutSeconds, ...weights } = this.form.value;
+    const planIdsToReturn: string[] | null = this.selectedPlans.length > 0
+      ? this.selectedPlans.map(p => p.id)
+      : null;
     this.api.updateSolverSettings(weights).subscribe({
       next: () => this.dialogRef.close({ timeoutSeconds, planIds: planIdsToReturn }),
       error: () => { this.loading = false; }
@@ -647,7 +757,6 @@ export class SolverSettingsDialogComponent implements OnInit {
 
   private buildForm(w: SolverWeights): FormGroup {
     return this.fb.group({
-      planIds:                  [[] as string[]],
       timeoutSeconds:           [120, [Validators.required, Validators.min(10), Validators.max(3600)]],
       studentWindow:            [w.studentWindow,            [Validators.required, Validators.min(0)]],
       teacherWindow:            [w.teacherWindow,            [Validators.required, Validators.min(0)]],
@@ -670,7 +779,6 @@ export class SolverSettingsDialogComponent implements OnInit {
 
   private buildDefaultForm(): FormGroup {
     return this.fb.group({
-      planIds: [[] as string[]],
       timeoutSeconds: [120, [Validators.required, Validators.min(10), Validators.max(3600)]],
       studentWindow: [100], teacherWindow: [80], activeDay: [60], sanPinOverload: [300],
       consecLecture: [70], consecSeminar: [40], consecPractical: [30], consecLab: [10],
