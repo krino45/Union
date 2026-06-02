@@ -131,11 +131,17 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
             if (output.Status == SolverStatus.Infeasible)
             {
-                perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: НЕРАЗРЕШИМО — {output.Message}");
+                perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: НЕРАЗРЕШИМО: {output.Message}");
                 schedule.GenerationNotes = $"План {plan.Name ?? plan.Id.ToString()[..8]} неразрешим. {string.Join(" | ", perPlanMessages)}";
                 await db.SaveChangesAsync(cancellationToken);
                 return new GenerateScheduleResult(false, "Infeasible",
                     $"Plan {plan.Name ?? plan.Id.ToString()[..8]}: {output.Message}", totalPlaced);
+            }
+
+            if (output.Status == SolverStatus.Unknown)
+            {
+                perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: ТАЙМАУТ: решение не найдено за {request.SolverTimeoutSeconds}с");
+                continue;
             }
 
             var parallelGuids = new Dictionary<int, Guid>();
@@ -189,6 +195,13 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         schedule.GeneratedAt = DateTime.UtcNow;
         schedule.GenerationNotes = string.Join(" | ", perPlanMessages);
         await db.SaveChangesAsync(cancellationToken);
+
+        if (totalPlaced == 0)
+        {
+            return new GenerateScheduleResult(false, "Unknown",
+                "Ни один учебный план не уложился в таймаут. Увеличьте таймаут или сузьте состав планов.",
+                0);
+        }
 
         p?.Report("Вычисление оценки...");
         var scoreEntries = await db.ScheduleEntries
