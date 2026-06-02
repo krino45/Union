@@ -1238,17 +1238,14 @@ public class OrToolsSchedulerService : ISchedulerService
         var workers = int.TryParse(Environment.GetEnvironmentVariable("SOLVER_NUM_WORKERS"), out var nw) && nw > 0
             ? nw
             : Math.Max(2, Environment.ProcessorCount - 1);
-        // linearization_level=0 disables CP-SAT's LP relaxation — biggest single memory win on
-        // large models. Trades some solution quality for fitting in RAM.
         int linLevel = int.TryParse(Environment.GetEnvironmentVariable("SOLVER_LINEARIZATION_LEVEL"), out var ll) &&
                        ll >= 0
             ? ll
-            : 0;
-        // probing during presolve can blow up on large problems too. Default to minimal.
+            : 1;
         int probingLevel = int.TryParse(Environment.GetEnvironmentVariable("SOLVER_PROBING_LEVEL"), out var pl) &&
                            pl >= 0
             ? pl
-            : 0;
+            : 1;
         var solver = new CpSolver();
         solver.StringParameters =
             $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
