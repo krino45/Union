@@ -91,7 +91,21 @@ public record SchedulerInput(
     SolverWeights? Weights = null,
     IReadOnlyList<SchedulerZoneEntryDistance>? ZoneEntryDistances = null,
     // Cells the scheduler must treat as already taken
-    IReadOnlyList<SchedulerRoomBlock>? RoomBlocks = null
+    IReadOnlyList<SchedulerRoomBlock>? RoomBlocks = null,
+    // LNS repair mode: each pin forces its requirement onto the given (day, pair, week, room).
+    // Pinned reqs emit a single BoolVar (the matching cell); reqs not in this list are free.
+    IReadOnlyList<SchedulerPin>? Pinnings = null
+);
+
+// LNS: hard-fix one requirement to a specific placement. WeekType must equal the requirement's
+// own WeekType (Both/Odd/Even). Validation in the solver rejects pins that conflict with room
+// compatibility, teacher availability blocks, room blocks, or group day blocks.
+public record SchedulerPin(
+    int RequirementIndex,
+    RussianDayOfWeek Day,
+    int PairNumber,
+    WeekType WeekType,
+    Guid RoomId
 );
 
 public record SchedulerZoneEntryDistance(Guid BuildingId, int Floor, int EntryDistanceMeters);

@@ -146,6 +146,7 @@ export interface GenerationJobStatus {
 export interface GenerateScheduleRequest {
   timeoutSeconds: number;
   planIds?: string[] | null;
+  polish?: boolean;
 }
 
 export interface SolverWeights {

@@ -49,6 +49,64 @@ public class OrToolsSchedulerService : ISchedulerService
                                             ?? r.GroupIds.Sum(gid =>
                                                 groupSizeById.TryGetValue(gid, out var sz) ? sz : 0)).ToArray();
 
+        // LNS pins (repair mode). Each pinned req emits exactly one BoolVar (the matching cell),
+        // and H2's AddExactlyOne over that single var forces it to 1. We validate every pin upfront
+        // so failure points have actionable messages instead of falling out as "no feasible slots".
+        Dictionary<int, (int d, int p, int rmi)>? pinTarget = null;
+        if (input.Pinnings is { Count: > 0 })
+        {
+            Report($"Закрепление: проверка {input.Pinnings.Count} закреплений...");
+            var roomIdToIdx = new Dictionary<Guid, int>(rooms.Count);
+            for (int i = 0; i < rooms.Count; i++) roomIdToIdx[rooms[i].Id] = i;
+
+            pinTarget = new Dictionary<int, (int, int, int)>(input.Pinnings.Count);
+            foreach (var pin in input.Pinnings)
+            {
+                int ri = pin.RequirementIndex;
+                if (ri < 0 || ri >= reqs.Count)
+                    return new SchedulerOutput(SolverStatus.Infeasible,
+                        $"Pin: requirement index {ri} out of range (0..{reqs.Count - 1})", []);
+                if (pinTarget.ContainsKey(ri))
+                    return new SchedulerOutput(SolverStatus.Infeasible,
+                        $"Pin: requirement {ri} pinned more than once", []);
+                var req = reqs[ri];
+                if (req.WeekType != pin.WeekType)
+                    return new SchedulerOutput(SolverStatus.Infeasible,
+                        $"Pin ri={ri}: WeekType mismatch (req={req.WeekType}, pin={pin.WeekType})", []);
+                if (!roomIdToIdx.TryGetValue(pin.RoomId, out int rmi))
+                    return new SchedulerOutput(SolverStatus.Infeasible,
+                        $"Pin ri={ri}: room {pin.RoomId} not in scheduler input", []);
+
+                int d = (int)pin.Day - 1;
+                int pp = pin.PairNumber - 1;
+                if (d < 0 || d >= NumDays || pp < 0 || pp >= numPairs)
+                    return new SchedulerOutput(SolverStatus.Infeasible,
+                        $"Pin ri={ri}: day/pair {pin.Day}/p{pin.PairNumber} out of range", []);
+
+                if (!IsCompatible(req, rooms[rmi], reqGroupSize[ri]))
+                    return new SchedulerOutput(SolverStatus.Infeasible,
+                        $"Pin ri={ri}: room {pin.RoomId} incompatible (type/capacity/equipment/online)", []);
+                if (req.GroupIds.Any(gId => groupBlockedDays.TryGetValue(gId, out var bd) && bd.Contains(d)))
+                    return new SchedulerOutput(SolverStatus.Infeasible,
+                        $"Pin ri={ri}: day {pin.Day} is blocked for one of the groups", []);
+
+                int[] calendarWis = req.WeekType == WeekType.Both
+                    ? new[] { 0, 1 }
+                    : new[] { VarWeekIndex(req.WeekType) };
+                foreach (int awi in calendarWis)
+                {
+                    if (blocked.Contains((req.TeacherId, d, pp, awi)))
+                        return new SchedulerOutput(SolverStatus.Infeasible,
+                            $"Pin ri={ri}: teacher slot ({pin.Day}, p{pin.PairNumber}, week {awi}) is blocked", []);
+                    if (blockedRoomSlots.Contains((pin.RoomId, d, pp, awi)))
+                        return new SchedulerOutput(SolverStatus.Infeasible,
+                            $"Pin ri={ri}: room {pin.RoomId} is blocked at ({pin.Day}, p{pin.PairNumber}, week {awi})", []);
+                }
+
+                pinTarget[ri] = (d, pp, rmi);
+            }
+        }
+
         Report($"Совместимость аудиторий ({reqs.Count} занятий × {rooms.Count} аудиторий)...");
         var compatibleRooms = new int[reqs.Count][];
         {
@@ -94,9 +152,19 @@ public class OrToolsSchedulerService : ISchedulerService
                 long size = reqGroupSize[ri];
                 int[] calendarWis = req.WeekType == WeekType.Both ? new[] { 0, 1 } : new[] { varWi };
 
+                bool isPinned = false;
+                int pinD = 0, pinP = 0, pinRmi = 0;
+                if (pinTarget != null && pinTarget.TryGetValue(ri, out var pt))
+                {
+                    isPinned = true;
+                    pinD = pt.d; pinP = pt.p; pinRmi = pt.rmi;
+                }
+
                 for (int d = 0; d < NumDays; d++)
                 for (int p = 0; p < numPairs; p++)
                 {
+                    if (isPinned && (d != pinD || p != pinP)) continue;
+
                     bool dayBlockedForGroup = req.GroupIds.Any(gId =>
                         groupBlockedDays.TryGetValue(gId, out var bd) && bd.Contains(d));
                     if (dayBlockedForGroup) continue;
@@ -108,6 +176,8 @@ public class OrToolsSchedulerService : ISchedulerService
 
                     foreach (int rmi in compatRmis)
                     {
+                        if (isPinned && rmi != pinRmi) continue;
+
                         if (blockedRoomSlots.Count > 0)
                         {
                             var roomId = rooms[rmi].Id;

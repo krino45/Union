@@ -6,7 +6,7 @@ namespace UniScheduler.Api.Services;
 
 public interface IGenerationJobQueue
 {
-    Guid Enqueue(Guid scheduleId, int timeoutSeconds, IReadOnlyList<Guid>? planIds = null);
+    Guid Enqueue(Guid scheduleId, int timeoutSeconds, IReadOnlyList<Guid>? planIds = null, bool polish = false);
     GenerationJobStatus GetStatus(Guid scheduleId);
     bool TryCancel(Guid scheduleId);
 }
@@ -23,13 +23,13 @@ public class GenerationJobQueue : IGenerationJobQueue
 {
     private readonly ConcurrentDictionary<Guid, GenerationJobStatus> statuses = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> cancellations = new();
-    private readonly ConcurrentQueue<(Guid jobId, Guid scheduleId, int timeout, IReadOnlyList<Guid>? planIds)> queue = new();
+    private readonly ConcurrentQueue<(Guid jobId, Guid scheduleId, int timeout, IReadOnlyList<Guid>? planIds, bool polish)> queue = new();
 
-    public Guid Enqueue(Guid scheduleId, int timeoutSeconds, IReadOnlyList<Guid>? planIds = null)
+    public Guid Enqueue(Guid scheduleId, int timeoutSeconds, IReadOnlyList<Guid>? planIds = null, bool polish = false)
     {
         var jobId = scheduleId;
         statuses[scheduleId] = new GenerationJobStatus(scheduleId, "queued", null, null, 0, null);
-        queue.Enqueue((jobId, scheduleId, timeoutSeconds, planIds));
+        queue.Enqueue((jobId, scheduleId, timeoutSeconds, planIds, polish));
         return jobId;
     }
 
@@ -38,7 +38,7 @@ public class GenerationJobQueue : IGenerationJobQueue
             ? status
             : new GenerationJobStatus(scheduleId, "not_found", null, null, 0, null);
 
-    public bool TryDequeue(out (Guid jobId, Guid scheduleId, int timeout, IReadOnlyList<Guid>? planIds) item)
+    public bool TryDequeue(out (Guid jobId, Guid scheduleId, int timeout, IReadOnlyList<Guid>? planIds, bool polish) item)
         => queue.TryDequeue(out item);
 
     public void SetStatus(Guid scheduleId, GenerationJobStatus status) => statuses[scheduleId] = status;
@@ -87,7 +87,7 @@ public class GenerationBackgroundService : BackgroundService
         {
             if (queue.TryDequeue(out var item))
             {
-                var (_, scheduleId, timeout, planIds) = item;
+                var (_, scheduleId, timeout, planIds, polish) = item;
 
                 var queued = queue.GetStatus(scheduleId);
                 if (queued.Status == "failed")
@@ -108,7 +108,7 @@ public class GenerationBackgroundService : BackgroundService
                 {
                     using var scope = scopeFactory.CreateScope();
                     var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-                    var result = await mediator.Send(new GenerateScheduleCommand(scheduleId, timeout, progress, planIds), cts.Token);
+                    var result = await mediator.Send(new GenerateScheduleCommand(scheduleId, timeout, progress, planIds, polish), cts.Token);
 
                     queue.SetStatus(scheduleId, new GenerationJobStatus(
                         scheduleId,

@@ -240,10 +240,10 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
       width: '560px',
       data: { academicYear: schedule.academicYear, term: schedule.term }
     });
-    ref.afterClosed().subscribe((result: { timeoutSeconds: number; planIds: string[] | null } | null) => {
+    ref.afterClosed().subscribe((result: { timeoutSeconds: number; planIds: string[] | null; polish: boolean } | null) => {
       if (!result) return;
-      const { timeoutSeconds, planIds } = result;
-      this.api.generateSchedule(schedule.id, { timeoutSeconds, planIds }).subscribe({
+      const { timeoutSeconds, planIds, polish } = result;
+      this.api.generateSchedule(schedule.id, { timeoutSeconds, planIds, polish }).subscribe({
         next: () => {
           this.generationStatus[schedule.id] = { scheduleId: schedule.id, status: 'queued', entriesCreated: 0 };
           this.startPolling(schedule.id);
@@ -535,6 +535,14 @@ export class CreateScheduleDialogComponent {
               Очистить
             </button>
           </div>
+          <div class="row polish-row">
+            <mat-checkbox formControlName="polish">
+              Полировка (LNS) после генерации
+            </mat-checkbox>
+            <span class="polish-hint">
+              Добавляет фазу оптимизации: до 5 минут попыток улучшить оценку перестановкой занятий. Применяется к итогу.
+            </span>
+          </div>
         </section>
 
         <section class="block">
@@ -669,6 +677,8 @@ export class CreateScheduleDialogComponent {
     .plan-meta { color: #888; font-size: 12px; margin-left: 4px; }
     .chip-order { font-weight: 600; color: #1976d2; margin-right: 4px; }
     .select-all-btn, .clear-btn { height: 40px; align-self: flex-start; margin-top: 6px; font-size: 12px; }
+    .polish-row { align-items: center; gap: 10px; margin-top: -4px; flex-wrap: wrap; }
+    .polish-hint { font-size: 12px; color: #666; }
     .spinner-wrap { display: flex; justify-content: center; padding: 32px; }
     /* Let multi-line hints push the field taller instead of overlapping the row below. */
     ::ng-deep .settings-form .mat-mdc-form-field-subscript-wrapper,
@@ -745,12 +755,12 @@ export class SolverSettingsDialogComponent implements OnInit {
   saveAndRun(): void {
     if (this.form.invalid) return;
     this.loading = true;
-    const { timeoutSeconds, ...weights } = this.form.value;
+    const { timeoutSeconds, polish, ...weights } = this.form.value;
     const planIdsToReturn: string[] | null = this.selectedPlans.length > 0
       ? this.selectedPlans.map(p => p.id)
       : null;
     this.api.updateSolverSettings(weights).subscribe({
-      next: () => this.dialogRef.close({ timeoutSeconds, planIds: planIdsToReturn }),
+      next: () => this.dialogRef.close({ timeoutSeconds, planIds: planIdsToReturn, polish: !!polish }),
       error: () => { this.loading = false; }
     });
   }
@@ -758,6 +768,7 @@ export class SolverSettingsDialogComponent implements OnInit {
   private buildForm(w: SolverWeights): FormGroup {
     return this.fb.group({
       timeoutSeconds:           [120, [Validators.required, Validators.min(10), Validators.max(3600)]],
+      polish:                   [false],
       studentWindow:            [w.studentWindow,            [Validators.required, Validators.min(0)]],
       teacherWindow:            [w.teacherWindow,            [Validators.required, Validators.min(0)]],
       activeDay:                [w.activeDay,                [Validators.required, Validators.min(0)]],
@@ -780,6 +791,7 @@ export class SolverSettingsDialogComponent implements OnInit {
   private buildDefaultForm(): FormGroup {
     return this.fb.group({
       timeoutSeconds: [120, [Validators.required, Validators.min(10), Validators.max(3600)]],
+      polish: [false],
       studentWindow: [100], teacherWindow: [80], activeDay: [60], sanPinOverload: [300],
       consecLecture: [70], consecSeminar: [40], consecPractical: [30], consecLab: [10],
       earlyPair: [15], middlePair: [0], latePair: [25], consecRunScalar: [3],

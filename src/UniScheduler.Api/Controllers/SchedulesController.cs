@@ -117,7 +117,7 @@ public class SchedulesController : ControllerBase
         var current = jobQueue.GetStatus(id);
         if (current.Status == "queued" || current.Status == "running")
             return Conflict(new { error = "Генерация уже выполняется для этого расписания", status = current.Status, stage = current.Stage });
-        var jobId = jobQueue.Enqueue(id, body?.TimeoutSeconds ?? 120, body?.PlanIds);
+        var jobId = jobQueue.Enqueue(id, body?.TimeoutSeconds ?? 120, body?.PlanIds, body?.Polish ?? false);
         return Accepted(new { jobId, scheduleId = id, status = "queued" });
     }
 
@@ -207,7 +207,7 @@ public class SchedulesController : ControllerBase
 }
 
 public record ImportFromJsonBody(bool Replace, List<JsonEntryImport> Entries);
-public record GenerateRequest(int TimeoutSeconds = 120, List<Guid>? PlanIds = null);
+public record GenerateRequest(int TimeoutSeconds = 120, List<Guid>? PlanIds = null, bool Polish = false);
 public record SetScheduleAccessRequest(bool IsOpenToAdmins);
 public record RenameScheduleRequest(string Name);
 public record ValidateEditBody(
