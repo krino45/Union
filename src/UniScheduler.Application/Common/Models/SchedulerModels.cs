@@ -94,13 +94,28 @@ public record SchedulerInput(
     IReadOnlyList<SchedulerRoomBlock>? RoomBlocks = null,
     // LNS repair mode: each pin forces its requirement onto the given (day, pair, week, room).
     // Pinned reqs emit a single BoolVar (the matching cell); reqs not in this list are free.
-    IReadOnlyList<SchedulerPin>? Pinnings = null
+    IReadOnlyList<SchedulerPin>? Pinnings = null,
+    // LNS warm-start: advisory placements for freed reqs. The solver calls AddHint(v, 1) for
+    // the matching BoolVar — no constraint, just a search heuristic that gives CP-SAT a cheap
+    // initial upper bound. Hints with no matching candidate cell are silently ignored.
+    IReadOnlyList<SchedulerHint>? Hints = null
 );
 
 // LNS: hard-fix one requirement to a specific placement. WeekType must equal the requirement's
 // own WeekType (Both/Odd/Even). Validation in the solver rejects pins that conflict with room
 // compatibility, teacher availability blocks, room blocks, or group day blocks.
 public record SchedulerPin(
+    int RequirementIndex,
+    RussianDayOfWeek Day,
+    int PairNumber,
+    WeekType WeekType,
+    Guid RoomId
+);
+
+// LNS: advisory "try this first" placement. Same shape as a pin but never constraining —
+// solver may ignore. Used to warm-start kicks from the current incumbent placements of freed
+// reqs so CP-SAT finds the existing solution quickly and prunes worse branches.
+public record SchedulerHint(
     int RequirementIndex,
     RussianDayOfWeek Day,
     int PairNumber,

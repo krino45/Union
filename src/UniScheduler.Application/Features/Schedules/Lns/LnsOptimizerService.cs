@@ -96,13 +96,21 @@ public class LnsOptimizerService : ILnsOptimizerService
                 continue;
             }
 
-            // 5. Build pins for ri NOT in destroy.
+            // 5. Build pins for ri NOT in destroy, hints for ri that ARE in destroy
             var pins = new List<SchedulerPin>(reqs.Count - destroy.Count);
+            var hints = new List<SchedulerHint>(destroy.Count);
             foreach (var (ri, entry) in entryByRi)
             {
-                if (destroy.Contains(ri)) continue;
-                if (!entry.RoomId.HasValue) continue;          // online entries have no room — skip pin
-                pins.Add(new SchedulerPin(ri, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
+                if (destroy.Contains(ri))
+                {
+                    if (!entry.RoomId.HasValue) continue;
+                    hints.Add(new SchedulerHint(ri, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
+                }
+                else
+                {
+                    if (!entry.RoomId.HasValue) continue;      // online entries have no room — skip pin
+                    pins.Add(new SchedulerPin(ri, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
+                }
             }
 
             // 6. Call solver as repair. roomBlocks / teacherBlocks empty (everything is in the
@@ -114,7 +122,8 @@ public class LnsOptimizerService : ILnsOptimizerService
                 extraTeacherBlocks: Array.Empty<SchedulerBlock>(),
                 timeoutSeconds: opts.KickTimeoutSeconds,
                 weights: shared.Weights,
-                pinnings: pins);
+                pinnings: pins,
+                hints: hints);
 
             SchedulerOutput? output;
             try

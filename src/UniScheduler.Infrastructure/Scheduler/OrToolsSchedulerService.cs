@@ -253,6 +253,34 @@ public class OrToolsSchedulerService : ISchedulerService
         // again — drop it now.
         compatibleRooms = null!;
 
+        if (input.Hints is { Count: > 0 })
+        {
+            var roomIdToIdxH = new Dictionary<Guid, int>(rooms.Count);
+            for (int i = 0; i < rooms.Count; i++) roomIdToIdxH[rooms[i].Id] = i;
+            int hintsApplied = 0;
+            foreach (var hint in input.Hints)
+            {
+                int ri = hint.RequirementIndex;
+                if (ri < 0 || ri >= reqs.Count) continue;
+                if (!roomIdToIdxH.TryGetValue(hint.RoomId, out int rmi)) continue;
+                var req = reqs[ri];
+                if (req.WeekType != hint.WeekType) continue;
+                int varWi = VarWeekIndex(req.WeekType);
+                int d = (int)hint.Day - 1;
+                int pp = hint.PairNumber - 1;
+                if (d < 0 || d >= NumDays || pp < 0 || pp >= numPairs) continue;
+                if (!varsByReqCell.TryGetValue((ri, d, pp, varWi), out var cell)) continue;
+                foreach (var (cellRmi, v) in cell)
+                {
+                    if (cellRmi != rmi) continue;
+                    model.AddHint(v, 1);
+                    hintsApplied++;
+                    break;
+                }
+            }
+            ReportSub($"Подсказки CP-SAT: применено {hintsApplied}/{input.Hints.Count}");
+        }
+
         Report("H1: один учитель на группу/предмет/тип занятия");
         {
             var gstTeachers = new Dictionary<(Guid grp, Guid subj, LessonType lt), HashSet<Guid>>();
