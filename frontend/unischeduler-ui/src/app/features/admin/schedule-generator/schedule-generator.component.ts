@@ -238,7 +238,7 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   triggerGeneration(schedule: Schedule): void {
     const ref = this.dialog.open(SolverSettingsDialogComponent, {
       width: '560px',
-      data: { academicYear: schedule.academicYear, term: schedule.term }
+      data: { academicYear: schedule.academicYear, term: schedule.term, scheduleId: schedule.id }
     });
     ref.afterClosed().subscribe((result: { timeoutSeconds: number; planIds: string[] | null; polish: boolean } | null) => {
       if (!result) return;
@@ -487,8 +487,6 @@ export class CreateScheduleDialogComponent {
 
         <section class="block">
           <h3 class="block-title">Запуск</h3>
-          <p class="block-desc">Каждый план решается отдельно: уже сохранённые планы блокируют свои аудитории. Порядок выбора = порядок генерации.</p>
-
           <mat-form-field appearance="outline" class="full-width" *ngIf="studyPlans.length > 0">
             <mat-label>Учебные планы</mat-label>
             <mat-chip-grid #chipGrid aria-label="Выбранные планы">
@@ -519,9 +517,9 @@ export class CreateScheduleDialogComponent {
 
           <div class="row">
             <mat-form-field appearance="outline" class="flex1">
-              <mat-label>Таймаут на план, сек</mat-label>
+              <mat-label>Таймаут решателя, сек</mat-label>
               <input matInput type="number" formControlName="timeoutSeconds" min="10" max="3600">
-              <mat-hint>Применяется к каждому плану отдельно (10–3600).</mat-hint>
+              <mat-hint>Общий таймаут на весь прогон (10–3600). Для 100+ групп ставьте 600+.</mat-hint>
             </mat-form-field>
             <button mat-stroked-button type="button" class="select-all-btn"
                     *ngIf="studyPlans.length > 0"
@@ -696,7 +694,7 @@ export class SolverSettingsDialogComponent implements OnInit {
 
   constructor(
     private dialogRef: MatDialogRef<SolverSettingsDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) private data: { academicYear: number; term: string },
+    @Inject(MAT_DIALOG_DATA) private data: { academicYear: number; term: string; scheduleId: string },
     private api: ApiService,
     private fb: FormBuilder
   ) {}
@@ -704,15 +702,33 @@ export class SolverSettingsDialogComponent implements OnInit {
   ngOnInit(): void {
     forkJoin({
       weights: this.api.getSolverSettings().pipe(catchError(() => of(null))),
-      plans: this.api.getStudyPlans(this.data?.academicYear, this.data?.term).pipe(catchError(() => of([] as StudyPlan[])))
-    }).subscribe(({ weights, plans }) => {
-      this.studyPlans = plans;
+      plans: this.api.getStudyPlans(this.data?.academicYear, this.data?.term).pipe(catchError(() => of([] as StudyPlan[]))),
+      entries: this.data?.scheduleId
+        ? this.api.getScheduleEntries(this.data.scheduleId).pipe(catchError(() => of([] as any[])))
+        : of([] as any[])
+    }).subscribe(({ weights, plans, entries }) => {
+      this.studyPlans = this.sortUnplacedFirst(plans, entries);
       this.form = weights ? this.buildForm(weights) : this.buildDefaultForm();
       this.filteredPlans = this.planSearch.valueChanges.pipe(
         startWith(''),
         map(v => this.filterPlans(typeof v === 'string' ? v : ''))
       );
       this.loading = false;
+    });
+  }
+
+  // Unplaced plans (no entries yet in this schedule)
+  private sortUnplacedFirst(plans: StudyPlan[], entries: any[]): StudyPlan[] {
+    const placedGroupIds = new Set<string>();
+    for (const e of entries)
+      for (const g of (e.studentGroups || []))
+        placedGroupIds.add(g.id);
+    const isPlaced = (sp: StudyPlan) =>
+      sp.groups.some(g => placedGroupIds.has(g.studentGroupId));
+    return [...plans].sort((a, b) => {
+      const ap = isPlaced(a) ? 1 : 0;
+      const bp = isPlaced(b) ? 1 : 0;
+      return ap - bp;
     });
   }
 
