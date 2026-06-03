@@ -2,6 +2,7 @@ using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.OrTools.Sat;
+using UniScheduler.Application.Common.Config;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.Common.Models;
 using UniScheduler.Domain.Enums;
@@ -371,7 +372,10 @@ public class OrToolsSchedulerService : ISchedulerService
                     reqPresences.Add(pres);
                 }
 
-                if (reqPresences.Count > 1) model.AddAtMostOne(reqPresences);
+                // SportsHall is a multi-occupancy venue (many PE groups at once, separated by
+                // teacher/zone). Drop the AddAtMostOne but keep the headcount-vs-capacity check.
+                bool isSportsHall = rooms[rmi].RoomType == RoomType.SportsHall;
+                if (!isSportsHall && reqPresences.Count > 1) model.AddAtMostOne(reqPresences);
                 if (capVars.Count > 0 && rooms[rmi].Capacity > 0)
                     model.Add(LinearExpr.WeightedSum(capVars.ToArray(), capSizes.ToArray()) <= rooms[rmi].Capacity);
             }
@@ -1340,14 +1344,14 @@ public class OrToolsSchedulerService : ISchedulerService
         GC.Collect();
 
         Report($"Запуск решателя (таймаут {input.SolverTimeoutSeconds}с, {objVars.Count} слагаемых)...");
-        var workers = int.TryParse(Environment.GetEnvironmentVariable("SOLVER_NUM_WORKERS"), out var nw) && nw > 0
+        var workers = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.SolverNumWorkers), out var nw) && nw > 0
             ? nw
             : Math.Max(2, Environment.ProcessorCount - 1);
-        int linLevel = int.TryParse(Environment.GetEnvironmentVariable("SOLVER_LINEARIZATION_LEVEL"), out var ll) &&
+        int linLevel = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.SolverLinearizationLevel), out var ll) &&
                        ll >= 0
             ? ll
             : 1;
-        int probingLevel = int.TryParse(Environment.GetEnvironmentVariable("SOLVER_PROBING_LEVEL"), out var pl) &&
+        int probingLevel = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.SolverProbingLevel), out var pl) &&
                            pl >= 0
             ? pl
             : 1;
@@ -1493,6 +1497,11 @@ public class OrToolsSchedulerService : ISchedulerService
         // it, and they may use nothing else. It has no capacity/equipment constraints.
         if (req.RequiresDistributedRoom) return room.IsDistributed;
         if (room.IsDistributed) return false;
+
+        // Sports-hall routing: PE reqs go only to SportsHall rooms; no other req type may pick one.
+        // No equipment / capacity / lesson-type heuristic — the venue type is the whole gate.
+        if (req.RequiresSportsHall) return room.RoomType == RoomType.SportsHall;
+        if (room.RoomType == RoomType.SportsHall) return false;
 
         if (req.IsOnline) return room.IsOnline;
         if (room.IsOnline) return false;

@@ -1,3 +1,4 @@
+using UniScheduler.Application.Common.Config;
 using UniScheduler.Application.Common.Models;
 using UniScheduler.Application.Features.StudyPlans;
 using UniScheduler.Domain.Entities;
@@ -46,7 +47,12 @@ public static class ScheduleRequirementBuilder
                 entry.SeminarHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, isLab: false, subjFacultyId);
 
             AddLanguageRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
-                entry.LanguageHours, studyWeeks, planGroupIds, shared.TeacherSubjects, subjFacultyId);
+                entry.LanguageHours, studyWeeks, planGroupIds, shared.TeacherSubjects,
+                shared.GroupSizes, subjFacultyId);
+
+            AddPhysicalEducationRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
+                entry.PhysicalEducationHours, studyWeeks, planGroupIds, shared.TeacherSubjects,
+                shared.GroupSizes, subjFacultyId);
         }
 
         return requirements;
@@ -106,7 +112,11 @@ public static class ScheduleRequirementBuilder
 
                 AddLanguageRequirements(reqs, ref idx, ref parallelSeq, entry.SubjectId,
                     entry.LanguageHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
-                    shared.TeacherSubjects, subjFacultyId);
+                    shared.TeacherSubjects, shared.GroupSizes, subjFacultyId);
+
+                AddPhysicalEducationRequirements(reqs, ref idx, ref parallelSeq, entry.SubjectId,
+                    entry.PhysicalEducationHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
+                    shared.TeacherSubjects, shared.GroupSizes, subjFacultyId);
             }
             for (int i = before; i < idx; i++) riToPlanId[i] = plan.Id;
         }
@@ -171,7 +181,8 @@ public static class ScheduleRequirementBuilder
     private static void AddLanguageRequirements(
         List<SchedulerRequirement> requirements, ref int idx, ref int parallelSeq,
         Guid subjectId, double totalHours, int studyWeeks,
-        List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects, Guid? subjectFacultyId)
+        List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
+        Dictionary<Guid, int> groupSizes, Guid? subjectFacultyId)
     {
         if (totalHours <= 0) return;
         var teachers = teacherSubjects
@@ -179,20 +190,27 @@ public static class ScheduleRequirementBuilder
             .Select(ts => ts.TeacherId).Distinct().OrderBy(g => g).ToList();
         if (teachers.Count == 0) return;
 
+        int perTeacherCap = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LangPerTeacherCap), out var c) && c > 0 ? c : 15;
+
         foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
         {
             foreach (var gId in planGroupIds)
             {
+                int groupSize = groupSizes.TryGetValue(gId, out var sz) && sz > 0 ? sz : perTeacherCap;
+                int needed = Math.Clamp((int)Math.Ceiling(groupSize / (double)perTeacherCap), 1, teachers.Count);
                 int pkey = parallelSeq++;
-                for (int i = 0; i < teachers.Count; i++)
+                int offset = (pkey * needed) % teachers.Count;
+                int perTeacherHeadcount = (int)Math.Ceiling(groupSize / (double)needed);
+                for (int i = 0; i < needed; i++)
                 {
+                    int tIdx = (offset + i) % teachers.Count;
                     requirements.Add(new SchedulerRequirement(
-                        idx++, new[] { gId }, subjectId, LessonType.Language, teachers[i], wt,
+                        idx++, new[] { gId }, subjectId, LessonType.Language, teachers[tIdx], wt,
                         IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: false,
                         SubjectFacultyId: subjectFacultyId,
                         ParallelKey: pkey,
-                        SubgroupLabel: $"Поток {i + 1}",
-                        HeadcountOverride: null,
+                        SubgroupLabel: needed > 1 ? $"Поток {i + 1}" : null,
+                        HeadcountOverride: perTeacherHeadcount,
                         RequiresDistributedRoom: true));
                 }
             }
@@ -233,5 +251,46 @@ public static class ScheduleRequirementBuilder
             }
         }
         return true;
+    }
+
+    // Same shape as AddLanguageRequirements but routed to the SportsHall pool.
+    private static void AddPhysicalEducationRequirements(
+        List<SchedulerRequirement> requirements, ref int idx, ref int parallelSeq,
+        Guid subjectId, double totalHours, int studyWeeks,
+        List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
+        Dictionary<Guid, int> groupSizes, Guid? subjectFacultyId)
+    {
+        if (totalHours <= 0) return;
+        var teachers = teacherSubjects
+            .Where(ts => ts.SubjectId == subjectId && ts.LessonType == LessonType.PhysicalEducation)
+            .Select(ts => ts.TeacherId).Distinct().OrderBy(g => g).ToList();
+        if (teachers.Count == 0) return;
+
+        int perTeacherCap = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.PePerTeacherCap), out var c) && c > 0 ? c : 40;
+
+        foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
+        {
+            foreach (var gId in planGroupIds)
+            {
+                int groupSize = groupSizes.TryGetValue(gId, out var sz) && sz > 0 ? sz : perTeacherCap;
+                int needed = Math.Clamp((int)Math.Ceiling(groupSize / (double)perTeacherCap), 1, teachers.Count);
+                int pkey = parallelSeq++;
+                int offset = (pkey * needed) % teachers.Count;
+                int perTeacherHeadcount = (int)Math.Ceiling(groupSize / (double)needed);
+                for (int i = 0; i < needed; i++)
+                {
+                    int tIdx = (offset + i) % teachers.Count;
+                    requirements.Add(new SchedulerRequirement(
+                        idx++, new[] { gId }, subjectId, LessonType.PhysicalEducation, teachers[tIdx], wt,
+                        IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: false,
+                        SubjectFacultyId: subjectFacultyId,
+                        ParallelKey: pkey,
+                        SubgroupLabel: needed > 1 ? $"Группа {i + 1}" : null,
+                        HeadcountOverride: perTeacherHeadcount,
+                        RequiresDistributedRoom: false,
+                        RequiresSportsHall: true));
+                }
+            }
+        }
     }
 }

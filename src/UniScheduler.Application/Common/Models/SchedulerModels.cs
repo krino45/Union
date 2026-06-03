@@ -171,7 +171,8 @@ public record SchedulerRequirement(
     int? ParallelKey = null,
     string? SubgroupLabel = null,
     int? HeadcountOverride = null,
-    bool RequiresDistributedRoom = false
+    bool RequiresDistributedRoom = false,
+    bool RequiresSportsHall = false
 );
 
 public record SchedulerBuildingDistance(Guid FromId, Guid ToId, int DistanceMeters);

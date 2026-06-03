@@ -6,5 +6,6 @@ public enum RoomType
     RegularCabinet = 2,
     Lab = 3,
     ComputerLab = 4,
-    Virtual = 5
+    Virtual = 5,
+    SportsHall = 6
 }

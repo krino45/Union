@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using UniScheduler.Application.Common.Config;
 using UniScheduler.Application.Common.Exceptions;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.Common.Models;
@@ -127,7 +128,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             if (e.WeekType != WeekType.Odd) occupiedTeacher.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, 1));
         }
 
-        int batchGroupTarget = int.TryParse(Environment.GetEnvironmentVariable("UNISCHEDULER_BATCH_GROUP_TARGET"), out var t) && t > 0 ? t : 5;
+        int batchGroupTarget = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.BatchGroupTarget), out var t) && t > 0 ? t : 5;
         var batches = BuildBatches(plansToRun, batchGroupTarget);
 
         int totalPlaced = 0;
@@ -297,8 +298,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             try
             {
                 p?.Report("Полировка (LNS)...");
-                int budgetMin = int.TryParse(Environment.GetEnvironmentVariable("UNISCHEDULER_LNS_BUDGET_MIN"), out var bm) && bm > 0 ? bm : 5;
-                int kickSec = int.TryParse(Environment.GetEnvironmentVariable("UNISCHEDULER_LNS_KICK_SEC"), out var ks) && ks > 0 ? ks : 10;
+                int budgetMin = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsBudgetMin), out var bm) && bm > 0 ? bm : 5;
+                int kickSec = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsKickSec), out var ks) && ks > 0 ? ks : 10;
                 var opts = new LnsOptions(
                     TotalBudget: TimeSpan.FromMinutes(budgetMin),
                     KickTimeoutSeconds: kickSec,

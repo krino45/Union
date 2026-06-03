@@ -221,33 +221,36 @@ internal static class BackfillEngine
 
     private static (string Field, string Label) FieldFor(LessonType lt) => lt switch
     {
-        LessonType.Lecture   => ("LectureHours",   "Лекции"),
-        LessonType.Practical => ("PracticalHours", "Практики"),
-        LessonType.Lab       => ("LabHours",       "Лабораторные"),
-        LessonType.Seminar   => ("SeminarHours",   "Семинары"),
-        LessonType.Language  => ("LanguageHours",  "Язык"),
-        _                    => ("", "")
+        LessonType.Lecture           => ("LectureHours",           "Лекции"),
+        LessonType.Practical         => ("PracticalHours",         "Практики"),
+        LessonType.Lab               => ("LabHours",               "Лабораторные"),
+        LessonType.Seminar           => ("SeminarHours",           "Семинары"),
+        LessonType.Language          => ("LanguageHours",          "Язык"),
+        LessonType.PhysicalEducation => ("PhysicalEducationHours", "Физкультура"),
+        _                            => ("", "")
     };
 
     private static double GetField(StudyPlanEntry e, LessonType lt) => lt switch
     {
-        LessonType.Lecture   => e.LectureHours,
-        LessonType.Practical => e.PracticalHours,
-        LessonType.Lab       => e.LabHours,
-        LessonType.Seminar   => e.SeminarHours,
-        LessonType.Language  => e.LanguageHours,
-        _                    => 0
+        LessonType.Lecture           => e.LectureHours,
+        LessonType.Practical         => e.PracticalHours,
+        LessonType.Lab               => e.LabHours,
+        LessonType.Seminar           => e.SeminarHours,
+        LessonType.Language          => e.LanguageHours,
+        LessonType.PhysicalEducation => e.PhysicalEducationHours,
+        _                            => 0
     };
 
     private static void SetField(StudyPlanEntry e, string field, double value)
     {
         switch (field)
         {
-            case "LectureHours":   e.LectureHours   = value; break;
-            case "PracticalHours": e.PracticalHours = value; break;
-            case "LabHours":       e.LabHours       = value; break;
-            case "SeminarHours":   e.SeminarHours   = value; break;
-            case "LanguageHours":  e.LanguageHours  = value; break;
+            case "LectureHours":           e.LectureHours           = value; break;
+            case "PracticalHours":         e.PracticalHours         = value; break;
+            case "LabHours":               e.LabHours               = value; break;
+            case "SeminarHours":           e.SeminarHours           = value; break;
+            case "LanguageHours":          e.LanguageHours          = value; break;
+            case "PhysicalEducationHours": e.PhysicalEducationHours = value; break;
         }
     }
 }

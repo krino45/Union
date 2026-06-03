@@ -137,7 +137,8 @@ public static class StudyPlanQ
         sp.Groups.Select(g => new StudyPlanGroupDto(g.StudentGroupId, g.StudentGroup.Name)).ToList(),
         sp.Entries.Select(e => new StudyPlanEntryDto(
             e.Id, e.SubjectId, e.Subject.Name, e.Subject.ShortName,
-            e.LectureHours, e.PracticalHours, e.LabHours, e.SeminarHours, e.ThesisHours, e.LanguageHours
+            e.LectureHours, e.PracticalHours, e.LabHours, e.SeminarHours, e.ThesisHours,
+            e.LanguageHours, e.PhysicalEducationHours
         )).OrderBy(e => e.SubjectName).ToList()
     );
 
@@ -146,7 +147,7 @@ public static class StudyPlanQ
         StudyPlanId = planId, SubjectId = e.SubjectId,
         LectureHours = e.LectureHours, PracticalHours = e.PracticalHours,
         LabHours = e.LabHours, SeminarHours = e.SeminarHours, ThesisHours = e.ThesisHours,
-        LanguageHours = e.LanguageHours
+        LanguageHours = e.LanguageHours, PhysicalEducationHours = e.PhysicalEducationHours
     };
 
     public static int StudyWeeksFromPlan(CalendarPlan? cp)

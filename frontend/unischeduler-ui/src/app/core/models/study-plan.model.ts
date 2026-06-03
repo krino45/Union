@@ -27,6 +27,7 @@ export interface StudyPlanEntry {
   seminarHours: number;
   thesisHours: number;
   languageHours: number;
+  physicalEducationHours: number;
 }
 
 export interface CalendarPlan {
@@ -79,6 +80,7 @@ export interface UpsertStudyPlanEntryDto {
   seminarHours: number;
   thesisHours: number;
   languageHours: number;
+  physicalEducationHours: number;
 }
 
 export interface UpsertCalendarPlanDto {
