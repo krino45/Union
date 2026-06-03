@@ -477,7 +477,7 @@ export class CreateScheduleDialogComponent {
     CommonModule, ReactiveFormsModule,
     MatButtonModule, MatFormFieldModule, MatInputModule, MatDialogModule,
     MatProgressSpinnerModule, MatSelectModule, MatChipsModule,
-    MatAutocompleteModule, MatIconModule
+    MatCheckboxModule, MatAutocompleteModule, MatIconModule
   ],
   template: `
     <h2 mat-dialog-title>Параметры генерации</h2>
