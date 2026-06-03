@@ -15,6 +15,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { RouterModule } from '@angular/router';
 import { ApiService } from '../../../../core/services/api.service';
 import { Room, Building, Department } from '../../../../core/models';
 import { LessonType, RoomType } from '../../../../core/models/enums';
@@ -26,7 +27,7 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
   selector: 'app-rooms',
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule, FormsModule,
+    CommonModule, ReactiveFormsModule, FormsModule, RouterModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatCheckboxModule, MatSnackBarModule, MatTooltipModule, MatChipsModule,
@@ -109,10 +110,12 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
         <ng-container matColumnDef="utilization">
           <th mat-header-cell *matHeaderCellDef>Загруженность</th>
           <td mat-cell *matCellDef="let r">
-            <mat-chip [class]="'util-chip util-' + utilizationBand(r.utilizationPercent)"
-                      [matTooltip]="utilizationTooltip(r.utilizationPercent)">
-              {{ r.utilizationPercent || 0 }}%
-            </mat-chip>
+            <a [routerLink]="['/admin/schedule-viewer']" [queryParams]="{roomId: r.id}"
+               class="util-link" [matTooltip]="utilizationTooltip(r.utilizationPercent)">
+              <mat-chip [class]="'util-chip util-' + utilizationBand(r.utilizationPercent)">
+                {{ r.utilizationPercent || 0 }}%
+              </mat-chip>
+            </a>
           </td>
         </ng-container>
         <ng-container matColumnDef="actions">
@@ -148,6 +151,8 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
     .chip-disabled { background: #fce4ec; color: #880e4f; font-size: 11px; }
     .row-disabled td { opacity: 0.5; }
 
+    .util-link { text-decoration: none; display: inline-block; }
+    .util-link:hover mat-chip { filter: brightness(0.92); }
     /* Utilization chip — value-graded green→amber→red, paired light/dark */
     .util-chip { font-size: 11px; font-weight: 600; }
     .util-empty   { background: #f5f5f5; color: #9e9e9e; }

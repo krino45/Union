@@ -67,6 +67,9 @@ interface AuditResult {
           <app-search-select class="filter-field" label="Преподаватель" [options]="teachers"
             displayField="displayName" [allowNull]="true" nullLabel="Все"
             [(ngModel)]="selectedTeacherId" (ngModelChange)="onFilterChange()"></app-search-select>
+          <app-search-select class="filter-field" label="Аудитория" [options]="rooms"
+            [displayWith]="roomLabel" [allowNull]="true" nullLabel="Все"
+            [(ngModel)]="selectedRoomId" (ngModelChange)="onFilterChange()"></app-search-select>
         </div>
         <mat-button-toggle-group [(ngModel)]="weekFilter" class="week-toggle">
           <mat-button-toggle value="Both">Обе</mat-button-toggle>
@@ -268,6 +271,7 @@ export class ScheduleEditorComponent implements OnInit {
   loading = true;
   selectedGroupId: string | null = null;
   selectedTeacherId: string | null = null;
+  selectedRoomId: string | null = null;
   weekFilter = 'Both';
   audit: AuditResult | null = null;
   conflictsExpanded = true;
@@ -307,7 +311,8 @@ export class ScheduleEditorComponent implements OnInit {
     this.loading = true;
     this.api.getScheduleEntries(this.schedule.id, {
       groupId: this.selectedGroupId ?? undefined,
-      teacherId: this.selectedTeacherId ?? undefined
+      teacherId: this.selectedTeacherId ?? undefined,
+      roomId: this.selectedRoomId ?? undefined
     }).subscribe({
       next: data => {
         this.entries = data;
@@ -343,6 +348,8 @@ export class ScheduleEditorComponent implements OnInit {
   get planNames(): string {
     return this.studyPlans.map(p => p.name).join(', ');
   }
+
+  roomLabel = (r: Room): string => r.buildingShortCode ? `${r.buildingShortCode}-${r.number}` : r.number;
 
   onFilterChange(): void { this.loadEntries(); }
 

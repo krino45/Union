@@ -10,7 +10,8 @@ public record GetScheduleEntriesQuery(
     Guid ScheduleId,
     Guid? GroupId = null,
     Guid? TeacherId = null,
-    RussianDayOfWeek? DayOfWeek = null) : IRequest<List<ScheduleEntryDto>>;
+    RussianDayOfWeek? DayOfWeek = null,
+    Guid? RoomId = null) : IRequest<List<ScheduleEntryDto>>;
 
 public class GetScheduleEntriesQueryHandler : IRequestHandler<GetScheduleEntriesQuery, List<ScheduleEntryDto>>
 {
@@ -33,6 +34,8 @@ public class GetScheduleEntriesQueryHandler : IRequestHandler<GetScheduleEntries
             query = query.Where(e => e.TeacherId == request.TeacherId);
         if (request.DayOfWeek.HasValue)
             query = query.Where(e => e.DayOfWeek == request.DayOfWeek);
+        if (request.RoomId.HasValue)
+            query = query.Where(e => e.RoomId == request.RoomId);
 
         var entries = await query.ToListAsync(cancellationToken);
 

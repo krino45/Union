@@ -343,10 +343,11 @@ export class ApiService {
   updateScore(scheduleId: string): Observable<number> {
     return this.http.post<number>(`${this.base}/schedules/${scheduleId}/update-score`, {});
   }
-  getScheduleEntries(scheduleId: string, filters?: { groupId?: string; teacherId?: string }): Observable<ScheduleEntry[]> {
+  getScheduleEntries(scheduleId: string, filters?: { groupId?: string; teacherId?: string; roomId?: string }): Observable<ScheduleEntry[]> {
     let params = new HttpParams();
     if (filters?.groupId) params = params.set('groupId', filters.groupId);
     if (filters?.teacherId) params = params.set('teacherId', filters.teacherId);
+    if (filters?.roomId) params = params.set('roomId', filters.roomId);
     return this.http.get<ScheduleEntry[]>(`${this.base}/schedules/${scheduleId}/entries`, { params });
   }
 

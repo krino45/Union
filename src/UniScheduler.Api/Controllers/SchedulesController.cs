@@ -147,8 +147,9 @@ public class SchedulesController : ControllerBase
     [HttpGet("{id:guid}/entries")]
     public async Task<ActionResult<List<ScheduleEntryDto>>> GetEntries(
         Guid id, [FromQuery] Guid? groupId, [FromQuery] Guid? teacherId, [FromQuery] RussianDayOfWeek? dayOfWeek,
+        [FromQuery] Guid? roomId,
         CancellationToken ct)
-        => Ok(await mediator.Send(new GetScheduleEntriesQuery(id, groupId, teacherId, dayOfWeek), ct));
+        => Ok(await mediator.Send(new GetScheduleEntriesQuery(id, groupId, teacherId, dayOfWeek, roomId), ct));
 
     [Authorize(Roles = AdminOnly)]
     [HttpGet("{id:guid}/plan-progress")]
