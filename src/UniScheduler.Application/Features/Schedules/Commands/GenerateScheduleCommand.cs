@@ -7,6 +7,7 @@ using UniScheduler.Application.DTOs;
 using UniScheduler.Application.Features.Schedules.Internal;
 using UniScheduler.Application.Features.Schedules.Lns;
 using UniScheduler.Domain.Entities;
+using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.Schedules.Commands;
 
@@ -119,6 +120,13 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .Select(e => new SchedulerBlock(e.TeacherId, e.DayOfWeek, e.PairNumber, e.WeekType))
             .ToList();
 
+        var occupiedTeacher = new HashSet<(Guid, RussianDayOfWeek, int, int)>();
+        foreach (var e in keptEntries)
+        {
+            if (e.WeekType != WeekType.Even) occupiedTeacher.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, 0));
+            if (e.WeekType != WeekType.Odd) occupiedTeacher.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, 1));
+        }
+
         int batchGroupTarget = int.TryParse(Environment.GetEnvironmentVariable("UNISCHEDULER_BATCH_GROUP_TARGET"), out var t) && t > 0 ? t : 5;
         var batches = BuildBatches(plansToRun, batchGroupTarget);
 
@@ -188,9 +196,27 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             var parallelGuids = new Dictionary<int, Guid>();
             var newEntries = new List<ScheduleEntry>();
             var countByPlan = new Dictionary<Guid, int>();
+            int skippedDups = 0;
+            var skippedSamples = new List<string>();
             foreach (var assignment in output.Assignments)
             {
                 var req = input.Requirements[assignment.RequirementIndex];
+
+                int awi0 = assignment.WeekType != WeekType.Even ? 0 : -1;
+                int awi1 = assignment.WeekType != WeekType.Odd ? 1 : -1;
+                bool conflict =
+                    (awi0 >= 0 && occupiedTeacher.Contains((req.TeacherId, assignment.Day, assignment.PairNumber, awi0))) ||
+                    (awi1 >= 0 && occupiedTeacher.Contains((req.TeacherId, assignment.Day, assignment.PairNumber, awi1)));
+                if (conflict)
+                {
+                    skippedDups++;
+                    if (skippedSamples.Count < 5)
+                        skippedSamples.Add($"…{req.TeacherId.ToString()[..8]} @ {assignment.Day} пара {assignment.PairNumber} ({assignment.WeekType})");
+                    continue;
+                }
+                if (awi0 >= 0) occupiedTeacher.Add((req.TeacherId, assignment.Day, assignment.PairNumber, awi0));
+                if (awi1 >= 0) occupiedTeacher.Add((req.TeacherId, assignment.Day, assignment.PairNumber, awi1));
+
                 Guid? parallelGroupId = null;
                 if (req.ParallelKey is int pk)
                 {
@@ -233,6 +259,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 var cnt = countByPlan.GetValueOrDefault(plan.Id, 0);
                 perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: {cnt} занятий");
             }
+            if (skippedDups > 0)
+                perPlanMessages.Add($"⚠ Партия {bi + 1}: пропущено {skippedDups} конфликтующих назначений ({string.Join("; ", skippedSamples)})");
 
             foreach (var e in newEntries)
             {
@@ -322,8 +350,19 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             await db.SaveChangesAsync(ct);
         }
 
+        var occupied = new HashSet<(Guid, RussianDayOfWeek, int, int)>();
+        int skipped = 0;
         foreach (var e in newEntries)
         {
+            int awi0 = e.WeekType != WeekType.Even ? 0 : -1;
+            int awi1 = e.WeekType != WeekType.Odd ? 1 : -1;
+            bool conflict =
+                (awi0 >= 0 && occupied.Contains((e.TeacherId, e.DayOfWeek, e.PairNumber, awi0))) ||
+                (awi1 >= 0 && occupied.Contains((e.TeacherId, e.DayOfWeek, e.PairNumber, awi1)));
+            if (conflict) { skipped++; continue; }
+            if (awi0 >= 0) occupied.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, awi0));
+            if (awi1 >= 0) occupied.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, awi1));
+
             e.Id = Guid.Empty; // ensure EF treats it as a fresh insert
             e.ScheduleId = scheduleId;
             db.ScheduleEntries.Add(e);
@@ -334,6 +373,15 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             }
         }
         await db.SaveChangesAsync(ct);
+        if (skipped > 0)
+        {
+            var sched = await db.Schedules.FirstOrDefaultAsync(s => s.Id == scheduleId, ct);
+            if (sched != null)
+            {
+                sched.GenerationNotes = (sched.GenerationNotes ?? "") + $" | LNS dedup: пропущено {skipped} конфликтующих записей";
+                await db.SaveChangesAsync(ct);
+            }
+        }
     }
 
     // Greedy bin-packing: walk plans in the caller-given order (priority order from the UI, or
