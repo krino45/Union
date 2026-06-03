@@ -15,9 +15,9 @@ public class OrToolsSchedulerService : ISchedulerService
 
     public Task<SchedulerOutput> SolveAsync(SchedulerInput input, CancellationToken cancellationToken = default,
         IProgress<string>? progress = null)
-        => Task.FromResult(Solve(input, progress));
+        => Task.Run(() => Solve(input, progress, cancellationToken), cancellationToken);
 
-    private SchedulerOutput Solve(SchedulerInput input, IProgress<string>? progress)
+    private SchedulerOutput Solve(SchedulerInput input, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         const int TotalStages = 28;
         int stage = 0;
@@ -142,8 +142,11 @@ public class OrToolsSchedulerService : ISchedulerService
             for (int ri = 0; ri < reqs.Count; ri++)
             {
                 if (ri % reportEvery == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
                     ReportSub(
                         $"Переменные: занятие {ri}/{reqs.Count} ({100 * ri / Math.Max(1, reqs.Count)}%), создано {totalVarCount} перем.");
+                }
                 var req = reqs[ri];
                 int varWi = VarWeekIndex(req.WeekType);
                 var compatRmis = compatibleRooms[ri];
@@ -337,7 +340,10 @@ public class OrToolsSchedulerService : ISchedulerService
             foreach (var ((rmi, d, p, wi), entries) in byCellRoom)
             {
                 if (h4Done % h4Report == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
                     ReportSub($"H4: ячейка {h4Done}/{h4Total} ({100 * h4Done / Math.Max(1, h4Total)}%)");
+                }
                 h4Done++;
                 if (rooms[rmi].IsDistributed) continue;
 
@@ -382,7 +388,10 @@ public class OrToolsSchedulerService : ISchedulerService
             foreach (var ((tId, d, p, wi), entries) in byCellTeacher)
             {
                 if (h5Done % h5Report == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
                     ReportSub($"H5: ячейка {h5Done}/{h5Total} ({100 * h5Done / Math.Max(1, h5Total)}%)");
+                }
                 h5Done++;
 
                 var byReq = new Dictionary<int, List<BoolVar>>();
@@ -424,7 +433,10 @@ public class OrToolsSchedulerService : ISchedulerService
             foreach (var (gKey, grIdxs) in groupReqs)
             {
                 if (h6done % h6Report == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
                     ReportSub($"H6: группа {h6done}/{h6total} ({100 * h6done / Math.Max(1, h6total)}%)");
+                }
                 h6done++;
                 if (grIdxs.Count <= 1) continue;
                 for (int d = 0; d < NumDays; d++)
@@ -1347,7 +1359,13 @@ public class OrToolsSchedulerService : ISchedulerService
             $"cp_model_probing_level:{probingLevel}," +
             "log_search_progress:false";
 
-        var status = solver.Solve(model);
+        CpSolverStatus status;
+        using (cancellationToken.Register(() => solver.StopSearch()))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            status = solver.Solve(model);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
 
         switch (status)
         {
