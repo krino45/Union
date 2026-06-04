@@ -122,10 +122,12 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .ToList();
 
         var occupiedTeacher = new HashSet<(Guid, RussianDayOfWeek, int, int)>();
+        var teacherLoad = new Dictionary<Guid, int>();
         foreach (var e in keptEntries)
         {
             if (e.WeekType != WeekType.Even) occupiedTeacher.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, 0));
             if (e.WeekType != WeekType.Odd) occupiedTeacher.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, 1));
+            teacherLoad[e.TeacherId] = teacherLoad.GetValueOrDefault(e.TeacherId, 0) + 1;
         }
 
         int batchGroupTarget = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.BatchGroupTarget), out var t) && t > 0 ? t : 5;
@@ -148,7 +150,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
             var requirements = new List<SchedulerRequirement>();
             foreach (var plan in batch)
-                requirements.AddRange(ScheduleRequirementBuilder.BuildRequirementsForPlan(plan, shared, ref idx, ref parallelSeq));
+                requirements.AddRange(ScheduleRequirementBuilder.BuildRequirementsForPlan(plan, shared, ref idx, ref parallelSeq, teacherLoad));
 
             if (requirements.Count == 0)
             {
@@ -268,6 +270,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 if (e.RoomId.HasValue && !e.IsOnline)
                     roomBlocks.Add(new SchedulerRoomBlock(e.RoomId.Value, e.DayOfWeek, e.PairNumber, e.WeekType));
                 dynamicTeacherBlocks.Add(new SchedulerBlock(e.TeacherId, e.DayOfWeek, e.PairNumber, e.WeekType));
+                teacherLoad[e.TeacherId] = teacherLoad.GetValueOrDefault(e.TeacherId, 0) + 1;
             }
         }
 

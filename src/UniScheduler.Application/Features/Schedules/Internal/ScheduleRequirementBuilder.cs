@@ -10,7 +10,8 @@ public static class ScheduleRequirementBuilder
 {
     // Per-plan emitter — used by the batched seed pass.
     public static List<SchedulerRequirement> BuildRequirementsForPlan(
-        StudyPlan plan, SharedData shared, ref int idx, ref int parallelSeq)
+        StudyPlan plan, SharedData shared, ref int idx, ref int parallelSeq,
+        Dictionary<Guid, int>? teacherLoad = null)
     {
         var requirements = new List<SchedulerRequirement>();
         int studyWeeks = StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan);
@@ -48,11 +49,11 @@ public static class ScheduleRequirementBuilder
 
             AddLanguageRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
                 entry.LanguageHours, studyWeeks, planGroupIds, shared.TeacherSubjects,
-                shared.GroupSizes, subjFacultyId);
+                shared.GroupSizes, subjFacultyId, teacherLoad);
 
             AddPhysicalEducationRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
                 entry.PhysicalEducationHours, studyWeeks, planGroupIds, shared.TeacherSubjects,
-                shared.GroupSizes, subjFacultyId);
+                shared.GroupSizes, subjFacultyId, teacherLoad);
         }
 
         return requirements;
@@ -182,7 +183,8 @@ public static class ScheduleRequirementBuilder
         List<SchedulerRequirement> requirements, ref int idx, ref int parallelSeq,
         Guid subjectId, double totalHours, int studyWeeks,
         List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
-        Dictionary<Guid, int> groupSizes, Guid? subjectFacultyId)
+        Dictionary<Guid, int> groupSizes, Guid? subjectFacultyId,
+        Dictionary<Guid, int>? teacherLoad = null)
     {
         if (totalHours <= 0) return;
         var teachers = teacherSubjects
@@ -199,13 +201,12 @@ public static class ScheduleRequirementBuilder
                 int groupSize = groupSizes.TryGetValue(gId, out var sz) && sz > 0 ? sz : perTeacherCap;
                 int needed = Math.Clamp((int)Math.Ceiling(groupSize / (double)perTeacherCap), 1, teachers.Count);
                 int pkey = parallelSeq++;
-                int offset = (pkey * needed) % teachers.Count;
                 int perTeacherHeadcount = (int)Math.Ceiling(groupSize / (double)needed);
+                var picks = PickLeastLoadedTeachers(teachers, needed, pkey, teacherLoad);
                 for (int i = 0; i < needed; i++)
                 {
-                    int tIdx = (offset + i) % teachers.Count;
                     requirements.Add(new SchedulerRequirement(
-                        idx++, new[] { gId }, subjectId, LessonType.Language, teachers[tIdx], wt,
+                        idx++, new[] { gId }, subjectId, LessonType.Language, picks[i], wt,
                         IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: false,
                         SubjectFacultyId: subjectFacultyId,
                         ParallelKey: pkey,
@@ -215,6 +216,30 @@ public static class ScheduleRequirementBuilder
                 }
             }
         }
+    }
+
+    private static List<Guid> PickLeastLoadedTeachers(
+        IReadOnlyList<Guid> teachers, int needed, int pkey, Dictionary<Guid, int>? teacherLoad)
+    {
+        if (teacherLoad == null)
+        {
+            int offset = (pkey * needed) % teachers.Count;
+            return Enumerable.Range(0, needed).Select(i => teachers[(offset + i) % teachers.Count]).ToList();
+        }
+        int n = Math.Min(needed, teachers.Count);
+        var ordered = teachers
+            .OrderBy(t => teacherLoad.GetValueOrDefault(t, 0))
+            .ThenBy(t => t)
+            .ToList();
+        int off = pkey % ordered.Count;
+        var picks = new List<Guid>(n);
+        for (int i = 0; i < n; i++)
+        {
+            var t = ordered[(off + i) % ordered.Count];
+            picks.Add(t);
+            teacherLoad[t] = (teacherLoad.GetValueOrDefault(t, 0)) + 1;
+        }
+        return picks;
     }
 
     private static bool AddSubgroupLabRequirements(
@@ -258,7 +283,8 @@ public static class ScheduleRequirementBuilder
         List<SchedulerRequirement> requirements, ref int idx, ref int parallelSeq,
         Guid subjectId, double totalHours, int studyWeeks,
         List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
-        Dictionary<Guid, int> groupSizes, Guid? subjectFacultyId)
+        Dictionary<Guid, int> groupSizes, Guid? subjectFacultyId,
+        Dictionary<Guid, int>? teacherLoad = null)
     {
         if (totalHours <= 0) return;
         var teachers = teacherSubjects
@@ -275,13 +301,12 @@ public static class ScheduleRequirementBuilder
                 int groupSize = groupSizes.TryGetValue(gId, out var sz) && sz > 0 ? sz : perTeacherCap;
                 int needed = Math.Clamp((int)Math.Ceiling(groupSize / (double)perTeacherCap), 1, teachers.Count);
                 int pkey = parallelSeq++;
-                int offset = (pkey * needed) % teachers.Count;
                 int perTeacherHeadcount = (int)Math.Ceiling(groupSize / (double)needed);
+                var picks = PickLeastLoadedTeachers(teachers, needed, pkey, teacherLoad);
                 for (int i = 0; i < needed; i++)
                 {
-                    int tIdx = (offset + i) % teachers.Count;
                     requirements.Add(new SchedulerRequirement(
-                        idx++, new[] { gId }, subjectId, LessonType.PhysicalEducation, teachers[tIdx], wt,
+                        idx++, new[] { gId }, subjectId, LessonType.PhysicalEducation, picks[i], wt,
                         IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: false,
                         SubjectFacultyId: subjectFacultyId,
                         ParallelKey: pkey,
