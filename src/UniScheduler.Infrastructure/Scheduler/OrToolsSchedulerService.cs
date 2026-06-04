@@ -182,7 +182,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     {
                         if (isPinned && rmi != pinRmi) continue;
 
-                        if (blockedRoomSlots.Count > 0)
+                        if (blockedRoomSlots.Count > 0 && !rooms[rmi].IsDistributed)
                         {
                             var roomId = rooms[rmi].Id;
                             bool roomTaken = false;
