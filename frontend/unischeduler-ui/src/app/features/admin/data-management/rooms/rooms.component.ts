@@ -271,6 +271,7 @@ export class RoomsComponent implements OnInit {
             <mat-option value="Lab">Лаборатория</mat-option>
             <mat-option value="ComputerLab">Компьютерный класс</mat-option>
             <mat-option value="Virtual">Дистанционно</mat-option>
+            <mat-option value="SportsHall">Спортзал</mat-option>
           </mat-select>
         </mat-form-field>
         <mat-form-field appearance="outline" class="full-width">
@@ -290,6 +291,7 @@ export class RoomsComponent implements OnInit {
             <mat-option value="Practical">Практика</mat-option>
             <mat-option value="Lab">Лабораторная</mat-option>
             <mat-option value="Seminar">Семинар</mat-option>
+            <mat-option value="PhysicalEducation">Физическая Культура</mat-option>
           </mat-select>
           <mat-hint>Оставьте пустым — допускаются все типы</mat-hint>
         </mat-form-field>
@@ -334,6 +336,7 @@ export class RoomDialogComponent implements OnDestroy {
       case RoomType.Lab:           return [LessonType.Lab];
       case RoomType.ComputerLab:   return [LessonType.Lab, LessonType.Practical];
       case RoomType.RegularCabinet: return [LessonType.Lecture, LessonType.Practical, LessonType.Seminar];
+      case RoomType.SportsHall:    return [LessonType.PhysicalEducation]
       default:                     return [];
     }
   }

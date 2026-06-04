@@ -3,7 +3,8 @@ export enum RoomType {
   RegularCabinet = 'RegularCabinet',
   Lab = 'Lab',
   ComputerLab = 'ComputerLab',
-  Virtual = 'Virtual'
+  Virtual = 'Virtual',
+  SportsHall = 'SportsHall'
 }
 
 export enum LessonType {
@@ -11,7 +12,8 @@ export enum LessonType {
   Practical = 'Practical',
   Lab = 'Lab',
   Seminar = 'Seminar',
-  Language = 'Language'
+  Language = 'Language',
+  PhysicalEducation = 'PhysicalEducation'
 }
 
 export enum WeekType {

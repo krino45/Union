@@ -290,9 +290,6 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         schedule.BaseScore = ScheduleScoreCalculator.Compute(scoreEntries, shared.ScoreCtx);
         await db.SaveChangesAsync(cancellationToken);
 
-        // Optional polish phase: LNS-based improvement using the same CP-SAT model as repair.
-        // Touches the entire schedule (not just the planned plans), so it runs once at the very
-        // end. Score-gated — we only commit if the polish improved the schedule overall.
         if (request.Polish)
         {
             try
@@ -309,7 +306,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
                 if (result.AcceptedAny && result.AfterBreakdown.Total < result.BeforeBreakdown.Total)
                 {
-                    p?.Report($"LNS: применение результата ({result.BeforeBreakdown.Total} → {result.AfterBreakdown.Total})...");
+                    p?.Report($"LNS: применение результата ({result.BeforeBreakdown.Total} = {result.AfterBreakdown.Total})...");
                     await ReplaceAllEntriesAsync(request.ScheduleId, result.Entries, cancellationToken);
                     schedule.BaseScore = result.AfterBreakdown.Total;
                     schedule.GenerationNotes = (schedule.GenerationNotes ?? "") +

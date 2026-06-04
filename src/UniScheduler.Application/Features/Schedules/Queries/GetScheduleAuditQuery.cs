@@ -47,7 +47,6 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             .Where(sp => sp.AcademicYear == schedule.AcademicYear && sp.Term == schedule.Term)
             .ToListAsync(ct);
 
-        // group → its plan (take first if somehow in multiple plans for same semester)
         var planByGroup = studyPlans
             .SelectMany(sp => sp.Groups.Select(g => (g.StudentGroupId, sp)))
             .GroupBy(x => x.StudentGroupId)
@@ -71,13 +70,13 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
 
             // Parallel sessions of one logical class (language streams / lab subgroups) share the
             // group/teacher/room slot by design — never a real conflict.
-            if (a.ParallelGroupId.HasValue && a.ParallelGroupId == b.ParallelGroupId) continue;
+            if (a.ParallelGroupId.HasValue && a.ParallelGroupId == b.ParallelGroupId ) continue;
 
-            // Same teacher + same physical room = same combined lecture split across week types by the scraper.
-            // Not a real conflict — the teacher is in one place teaching one session.
-            bool samePhysicalSession = a.TeacherId == b.TeacherId
-                && !a.IsOnline && !b.IsOnline
-                && a.RoomId.HasValue && a.RoomId == b.RoomId;
+            // Language classes and PE can have multiple teachers per requirement
+            bool samePhysicalSession = (a.TeacherId == b.TeacherId ||
+                                        a.LessonType is LessonType.Language or LessonType.PhysicalEducation)
+                                       && !a.IsOnline && !b.IsOnline
+                                       && a.RoomId.HasValue && a.RoomId == b.RoomId;
 
             string slot = $"{DayLabel(a.DayOfWeek)} пара {a.PairNumber} ({WeekOverlapLabel(a.WeekType, b.WeekType)})";
 
