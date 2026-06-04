@@ -202,7 +202,7 @@ public static class ScheduleRequirementBuilder
                 int needed = Math.Clamp((int)Math.Ceiling(groupSize / (double)perTeacherCap), 1, teachers.Count);
                 int pkey = parallelSeq++;
                 int perTeacherHeadcount = (int)Math.Ceiling(groupSize / (double)needed);
-                var picks = PickLeastLoadedTeachers(teachers, needed, pkey, teacherLoad);
+                var picks = PickLeastLoadedTeachers(teachers, needed, pkey, wt, teacherLoad);
                 for (int i = 0; i < needed; i++)
                 {
                     requirements.Add(new SchedulerRequirement(
@@ -219,7 +219,7 @@ public static class ScheduleRequirementBuilder
     }
 
     private static List<Guid> PickLeastLoadedTeachers(
-        IReadOnlyList<Guid> teachers, int needed, int pkey, Dictionary<Guid, int>? teacherLoad)
+        IReadOnlyList<Guid> teachers, int needed, int pkey, WeekType wt, Dictionary<Guid, int>? teacherLoad)
     {
         if (teacherLoad == null)
         {
@@ -232,12 +232,13 @@ public static class ScheduleRequirementBuilder
             .ThenBy(t => t)
             .ToList();
         int off = pkey % ordered.Count;
+        int cellsPerPick = wt == WeekType.Both ? 2 : 1;
         var picks = new List<Guid>(n);
         for (int i = 0; i < n; i++)
         {
             var t = ordered[(off + i) % ordered.Count];
             picks.Add(t);
-            teacherLoad[t] = (teacherLoad.GetValueOrDefault(t, 0)) + 1;
+            teacherLoad[t] = teacherLoad.GetValueOrDefault(t, 0) + cellsPerPick;
         }
         return picks;
     }
@@ -302,7 +303,7 @@ public static class ScheduleRequirementBuilder
                 int needed = Math.Clamp((int)Math.Ceiling(groupSize / (double)perTeacherCap), 1, teachers.Count);
                 int pkey = parallelSeq++;
                 int perTeacherHeadcount = (int)Math.Ceiling(groupSize / (double)needed);
-                var picks = PickLeastLoadedTeachers(teachers, needed, pkey, teacherLoad);
+                var picks = PickLeastLoadedTeachers(teachers, needed, pkey, wt, teacherLoad);
                 for (int i = 0; i < needed; i++)
                 {
                     requirements.Add(new SchedulerRequirement(

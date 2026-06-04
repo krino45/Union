@@ -122,12 +122,21 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .ToList();
 
         var occupiedTeacher = new HashSet<(Guid, RussianDayOfWeek, int, int)>();
-        var teacherLoad = new Dictionary<Guid, int>();
         foreach (var e in keptEntries)
         {
             if (e.WeekType != WeekType.Even) occupiedTeacher.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, 0));
             if (e.WeekType != WeekType.Odd) occupiedTeacher.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, 1));
-            teacherLoad[e.TeacherId] = teacherLoad.GetValueOrDefault(e.TeacherId, 0) + 1;
+        }
+
+        var teacherLoad = new Dictionary<Guid, int>();
+        static int AwiCellsFor(WeekType wt) => wt == WeekType.Both ? 2 : 1;
+        void RecomputeTeacherLoad()
+        {
+            teacherLoad.Clear();
+            foreach (var ta in shared.TeacherAvailabilities)
+                teacherLoad[ta.TeacherId] = teacherLoad.GetValueOrDefault(ta.TeacherId, 0) + AwiCellsFor(ta.WeekType);
+            foreach (var b in dynamicTeacherBlocks)
+                teacherLoad[b.TeacherId] = teacherLoad.GetValueOrDefault(b.TeacherId, 0) + AwiCellsFor(b.WeekType);
         }
 
         int batchGroupTarget = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.BatchGroupTarget), out var t) && t > 0 ? t : 5;
@@ -147,6 +156,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
             var batchProgress = p == null ? null
                 : (IProgress<string>)new Progress<string>(s => p.Report($"{batchPrefix} | {s}"));
+
+            RecomputeTeacherLoad();
 
             var requirements = new List<SchedulerRequirement>();
             foreach (var plan in batch)
@@ -270,7 +281,6 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 if (e.RoomId.HasValue && !e.IsOnline)
                     roomBlocks.Add(new SchedulerRoomBlock(e.RoomId.Value, e.DayOfWeek, e.PairNumber, e.WeekType));
                 dynamicTeacherBlocks.Add(new SchedulerBlock(e.TeacherId, e.DayOfWeek, e.PairNumber, e.WeekType));
-                teacherLoad[e.TeacherId] = teacherLoad.GetValueOrDefault(e.TeacherId, 0) + 1;
             }
         }
 
