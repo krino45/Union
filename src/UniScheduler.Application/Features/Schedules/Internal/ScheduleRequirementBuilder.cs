@@ -194,7 +194,7 @@ public static class ScheduleRequirementBuilder
 
         int perTeacherCap = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LangPerTeacherCap), out var c) && c > 0 ? c : 15;
 
-        foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
+        foreach (var wt in ExpandBothToOddEven(HoursToWeekTypes(totalHours, studyWeeks)))
         {
             foreach (var gId in planGroupIds)
             {
@@ -215,6 +215,15 @@ public static class ScheduleRequirementBuilder
                         RequiresDistributedRoom: true));
                 }
             }
+        }
+    }
+
+    private static IEnumerable<WeekType> ExpandBothToOddEven(IEnumerable<WeekType> source)
+    {
+        foreach (var wt in source)
+        {
+            if (wt == WeekType.Both) { yield return WeekType.Odd; yield return WeekType.Even; }
+            else yield return wt;
         }
     }
 
@@ -295,7 +304,7 @@ public static class ScheduleRequirementBuilder
 
         int perTeacherCap = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.PePerTeacherCap), out var c) && c > 0 ? c : 40;
 
-        foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
+        foreach (var wt in ExpandBothToOddEven(HoursToWeekTypes(totalHours, studyWeeks)))
         {
             foreach (var gId in planGroupIds)
             {
