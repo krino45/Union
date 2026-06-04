@@ -230,13 +230,35 @@ public class OrToolsSchedulerService : ISchedulerService
             var req = reqs[ri];
             if (compatibleRooms[ri].Length == 0)
             {
-                noRoomLines.Add($"{req.LessonType} (subj {req.SubjectId:D})");
+                noRoomLines.Add(FormatReqLabel(req));
                 continue;
             }
 
             int varWi = VarWeekIndex(req.WeekType);
             if (!varsByReqWi.ContainsKey((ri, varWi)))
-                noSlotLines.Add($"{req.LessonType} (subj {req.SubjectId:D})");
+            {
+                int teacherBlocked = 0;
+                int groupBlocked = 0;
+                var freeCells = new List<string>();
+                int[] calendarWis = req.WeekType == WeekType.Both ? new[] { 0, 1 } : new[] { varWi };
+                for (int d = 0; d < NumDays; d++)
+                for (int p = 0; p < numPairs; p++)
+                {
+                    bool dayBlockedForGroup = req.GroupIds.Any(gId =>
+                        groupBlockedDays.TryGetValue(gId, out var bd) && bd.Contains(d));
+                    bool slotBlockedTeacher = req.WeekType == WeekType.Both
+                        ? blocked.Contains((req.TeacherId, d, p, 0)) || blocked.Contains((req.TeacherId, d, p, 1))
+                        : blocked.Contains((req.TeacherId, d, p, varWi));
+                    if (dayBlockedForGroup) groupBlocked++;
+                    if (slotBlockedTeacher) teacherBlocked++;
+                    if (!dayBlockedForGroup && !slotBlockedTeacher && freeCells.Count < 3)
+                        freeCells.Add($"д{d + 1}п{p + 1}");
+                }
+                int totalCells = NumDays * numPairs;
+                string detail = $"teach={teacherBlocked}/{totalCells}, group-days={groupBlocked}/{totalCells}";
+                if (freeCells.Count > 0) detail += $", free=[{string.Join(",", freeCells)}]";
+                noSlotLines.Add($"{FormatReqLabel(req)} [{detail}]");
+            }
         }
 
         if (noRoomLines.Count > 0 || noSlotLines.Count > 0)
@@ -247,7 +269,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     $"{noRoomLines.Count} requirement(s) have no compatible rooms — check AllowedLessonTypes, room type, and capacity: {string.Join("; ", noRoomLines.Take(5))}");
             if (noSlotLines.Count > 0)
                 parts.Add(
-                    $"{noSlotLines.Count} requirement(s) have all time slots blocked by teacher availability: {string.Join("; ", noSlotLines.Take(5))}");
+                    $"{noSlotLines.Count} requirement(s) have no feasible (day, pair) cell: {string.Join(" || ", noSlotLines.Take(5))}");
             return new SchedulerOutput(SolverStatus.Infeasible, string.Join(" | ", parts),
                 Array.Empty<SchedulerAssignment>());
         }
@@ -1404,6 +1426,13 @@ public class OrToolsSchedulerService : ISchedulerService
     /// The variable key wi used for a requirement. Both/Odd use wi=0; Even uses wi=1.
     /// </summary>
     private static int VarWeekIndex(WeekType wt) => wt == WeekType.Even ? 1 : 0;
+
+    private static string FormatReqLabel(SchedulerRequirement req)
+    {
+        var grp = req.GroupIds.Count > 0 ? $"…{req.GroupIds[0].ToString("D")[..8]}" : "—";
+        var sub = req.SubgroupLabel != null ? $" [{req.SubgroupLabel}]" : "";
+        return $"{req.LessonType}{sub} teacher=…{req.TeacherId.ToString("D")[..8]} subj=…{req.SubjectId.ToString("D")[..8]} grp={grp} wk={req.WeekType}";
+    }
 
     /// <summary>
     /// True if a requirement with this WeekType fires during calendar week wi (0=odd, 1=even).
