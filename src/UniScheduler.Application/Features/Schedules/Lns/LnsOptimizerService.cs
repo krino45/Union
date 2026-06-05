@@ -93,6 +93,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             {
                 MarkFailed(telemetry, op.Name);
                 kicks++;
+                progress?.Report($"LNS kick failed! k={kicks}/{opts.MaxIterations} op={op.Name} score={currentBreakdown.Total} (best {bestScore})");
                 continue;
             }
 
@@ -173,7 +174,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                 {
                     MarkAccepted(telemetry, op.Name, 0);
                 }
-                progress?.Report($"LNS k={kicks}/{opts.MaxIterations} op={op.Name} score={currentBreakdown.Total} (best {bestScore})");
+                progress?.Report($"LNS kick success! k={kicks}/{opts.MaxIterations} op={op.Name} score={currentBreakdown.Total} (best {bestScore})");
             }
             else
             {

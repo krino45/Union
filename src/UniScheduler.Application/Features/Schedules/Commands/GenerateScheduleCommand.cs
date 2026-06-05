@@ -83,8 +83,27 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 .ThenByDescending(sp => sp.Entries.Count)
                 .ToList();
             if (plansToRun.Count == 0)
+            {
+                if (request.Polish)
+                {
+                    p?.Report("Вычисление оценки...");
+                    var prescoreEntries = await db.ScheduleEntries
+                        .Include(e => e.StudentGroups)
+                        .Where(e => e.ScheduleId == request.ScheduleId)
+                        .ToListAsync(cancellationToken);
+                    schedule.BaseScore = ScheduleScoreCalculator.Compute(prescoreEntries, shared.ScoreCtx);
+                    await db.SaveChangesAsync(cancellationToken);
+
+                    if (request.Polish)
+                    {
+                        await Polish(request, p, prescoreEntries, shared, schedule, cancellationToken);
+                    }
+                }
                 return new GenerateScheduleResult(true, "Feasible",
-                    "Все планы уже сгенерированы. Чтобы перегенерировать — выберите планы явно.", 0);
+                    request.Polish
+                        ? schedule.GenerationNotes
+                        : "Все планы уже сгенерированы. Чтобы перегенерировать — выберите планы явно.", 0);
+            }
         }
 
         var plansToRunIds = plansToRun.Select(sp => sp.Id).ToHashSet();
@@ -305,42 +324,48 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
         if (request.Polish)
         {
-            try
-            {
-                p?.Report("Полировка (LNS)...");
-                int budgetMin = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsBudgetMin), out var bm) && bm > 0 ? bm : 5;
-                int kickSec = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsKickSec), out var ks) && ks > 0 ? ks : 10;
-                var opts = new LnsOptions(
-                    TotalBudget: TimeSpan.FromMinutes(budgetMin),
-                    KickTimeoutSeconds: kickSec,
-                    MaxIterations: 200,
-                    Seed: 12345);
-                var result = await lns.OptimizeAsync(request.ScheduleId, scoreEntries, shared, opts, p, cancellationToken);
-
-                if (result.AcceptedAny && result.AfterBreakdown.Total < result.BeforeBreakdown.Total)
-                {
-                    p?.Report($"LNS: применение результата ({result.BeforeBreakdown.Total} = {result.AfterBreakdown.Total})...");
-                    await ReplaceAllEntriesAsync(request.ScheduleId, result.Entries, cancellationToken);
-                    schedule.BaseScore = result.AfterBreakdown.Total;
-                    schedule.GenerationNotes = (schedule.GenerationNotes ?? "") +
-                        $" | LNS: {result.BeforeBreakdown.Total} → {result.AfterBreakdown.Total} ({result.AcceptedKicks}/{result.TotalKicks} kicks)";
-                    await db.SaveChangesAsync(cancellationToken);
-                }
-                else
-                {
-                    p?.Report($"LNS: улучшений не найдено ({result.TotalKicks} kicks)");
-                }
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
-            {
-                schedule.GenerationNotes = (schedule.GenerationNotes ?? "") + $" | LNS error: {ex.Message}";
-                await db.SaveChangesAsync(cancellationToken);
-            }
+            await Polish(request, p, scoreEntries, shared, schedule, cancellationToken);
         }
 
         return new GenerateScheduleResult(true, "Feasible",
             string.Join(" | ", perPlanMessages), totalPlaced);
+    }
+
+    private async Task Polish(GenerateScheduleCommand request, IProgress<string>? p,
+        List<ScheduleEntry> scoreEntries, SharedData shared, Schedule schedule, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            p?.Report("Полировка (LNS)...");
+            int budgetMin = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsBudgetMin), out var bm) && bm > 0 ? bm : 5;
+            int kickSec = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsKickSec), out var ks) && ks > 0 ? ks : 10;
+            var opts = new LnsOptions(
+                TotalBudget: TimeSpan.FromMinutes(budgetMin),
+                KickTimeoutSeconds: kickSec,
+                MaxIterations: 200,
+                Seed: 12345);
+            var result = await lns.OptimizeAsync(request.ScheduleId, scoreEntries, shared, opts, p, cancellationToken);
+
+            if (result.AcceptedAny && result.AfterBreakdown.Total < result.BeforeBreakdown.Total)
+            {
+                p?.Report($"LNS: применение результата ({result.BeforeBreakdown.Total} = {result.AfterBreakdown.Total})...");
+                await ReplaceAllEntriesAsync(request.ScheduleId, result.Entries, cancellationToken);
+                schedule.BaseScore = result.AfterBreakdown.Total;
+                schedule.GenerationNotes = (schedule.GenerationNotes ?? "") +
+                                           $" | LNS: {result.BeforeBreakdown.Total} → {result.AfterBreakdown.Total} ({result.AcceptedKicks}/{result.TotalKicks} kicks)";
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            else
+            {
+                p?.Report($"LNS: улучшений не найдено ({result.TotalKicks} kicks)");
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            schedule.GenerationNotes = (schedule.GenerationNotes ?? "") + $" | LNS error: {ex.Message}";
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     // Whole-schedule swap used by the polish phase. We mirror the per-batch delete (cascade

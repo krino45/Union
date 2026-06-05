@@ -1372,17 +1372,19 @@ public class OrToolsSchedulerService : ISchedulerService
         int linLevel = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.SolverLinearizationLevel), out var ll) &&
                        ll >= 0
             ? ll
-            : 1;
+            : 0;
         int probingLevel = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.SolverProbingLevel), out var pl) &&
                            pl >= 0
             ? pl
-            : 1;
+            : 0;
         var solver = new CpSolver();
         solver.StringParameters =
             $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
             $"num_search_workers:{workers}," +
             $"linearization_level:{linLevel}," +
             $"cp_model_probing_level:{probingLevel}," +
+            "search_branching:PORTFOLIO_SEARCH," +
+            "max_presolve_iterations:2," +
             "log_search_progress:false";
 
         CpSolverStatus status;

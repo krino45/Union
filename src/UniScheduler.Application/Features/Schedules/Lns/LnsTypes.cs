@@ -9,12 +9,8 @@ public record LnsOptions(
     int KickTimeoutSeconds,
     int MaxIterations,
     int Seed = 12345,
-    // Minimum number of requirement indices a destroy operator is asked to free.
-    // Most operators clamp their natural selection to at least this many.
     int MinDestroySize = 8,
-    // Soft target for destroy size. Operators may exceed when their natural unit is bigger
-    // (a teacher's full week, all reqs of a parallel group, etc.).
-    int TargetDestroySize = 30);
+    int TargetDestroySize = 40);
 
 public record LnsResult(
     IReadOnlyList<ScheduleEntry> Entries,
