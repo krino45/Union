@@ -70,7 +70,6 @@ public static class DependencyInjection
                 Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : string.Empty,
                 Database = uri.AbsolutePath.TrimStart('/'),
                 SslMode = SslMode.Prefer,
-                TrustServerCertificate = true,
                 IncludeErrorDetail = includeErrorDetail
             }.ConnectionString;
         }

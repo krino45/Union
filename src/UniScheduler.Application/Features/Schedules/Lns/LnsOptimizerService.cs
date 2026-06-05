@@ -72,6 +72,12 @@ public class LnsOptimizerService : ILnsOptimizerService
         while (DateTime.UtcNow < deadline && kicks < opts.MaxIterations && !ct.IsCancellationRequested)
         {
             var op = PickOperator(operators, weights, rng);
+            int attemptNum = kicks + 1;
+            var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}";
+            var kickProgress = progress == null
+                ? null
+                : (IProgress<string>)new Progress<string>(s => progress.Report($"{kickPrefix} | {s}"));
+
             var kickCtx = new LnsKickContext(
                 Incumbent: incumbent,
                 EntryByRi: entryByRi,
@@ -93,7 +99,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             {
                 MarkFailed(telemetry, op.Name);
                 kicks++;
-                progress?.Report($"LNS kick failed! k={kicks}/{opts.MaxIterations} op={op.Name} score={currentBreakdown.Total} (best {bestScore})");
+                progress?.Report($"{kickPrefix} | пустое разрушение, пропуск (score={currentBreakdown.Total}, best={bestScore})");
                 continue;
             }
 
@@ -124,19 +130,21 @@ public class LnsOptimizerService : ILnsOptimizerService
                 timeoutSeconds: opts.KickTimeoutSeconds,
                 weights: shared.Weights,
                 pinnings: pins,
-                hints: hints);
+                hints: hints,
+                isRepairSolve: true);
 
             SchedulerOutput? output;
             try
             {
-                output = await scheduler.SolveAsync(input, ct);
+                output = await scheduler.SolveAsync(input, ct, kickProgress);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "LNS kick {Kick} failed in solver ({Op})", kicks, op.Name);
+                logger.LogWarning(ex, "LNS kick {Kick} failed in solver ({Op})", attemptNum, op.Name);
                 MarkFailed(telemetry, op.Name);
                 kicks++;
+                progress?.Report($"{kickPrefix} | исключение в решателе: {ex.Message}");
                 continue;
             }
 
@@ -145,6 +153,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             if (output.Status != SolverStatus.Feasible && output.Status != SolverStatus.Optimal)
             {
                 MarkFailed(telemetry, op.Name);
+                progress?.Report($"{kickPrefix} | решатель: {output.Status} (best {bestScore})");
                 continue;
             }
 
@@ -174,12 +183,13 @@ public class LnsOptimizerService : ILnsOptimizerService
                 {
                     MarkAccepted(telemetry, op.Name, 0);
                 }
-                progress?.Report($"LNS kick success! k={kicks}/{opts.MaxIterations} op={op.Name} score={currentBreakdown.Total} (best {bestScore})");
+                progress?.Report($"{kickPrefix} | принято score={currentBreakdown.Total} (best {bestScore})");
             }
             else
             {
                 DecayWeight(weights, op.Name);
                 MarkRejected(telemetry, op.Name);
+                progress?.Report($"{kickPrefix} | отклонено score={newBreakdown.Total} (best {bestScore})");
             }
         }
 

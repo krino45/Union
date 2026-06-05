@@ -98,7 +98,9 @@ public record SchedulerInput(
     // LNS warm-start: advisory placements for freed reqs. The solver calls AddHint(v, 1) for
     // the matching BoolVar — no constraint, just a search heuristic that gives CP-SAT a cheap
     // initial upper bound. Hints with no matching candidate cell are silently ignored.
-    IReadOnlyList<SchedulerHint>? Hints = null
+    IReadOnlyList<SchedulerHint>? Hints = null,
+    // True for LNS repair solves (pins + small free core)
+    bool IsRepairSolve = false
 );
 
 // LNS: hard-fix one requirement to a specific placement. WeekType must equal the requirement's

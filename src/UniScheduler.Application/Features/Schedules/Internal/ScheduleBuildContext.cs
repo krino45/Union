@@ -128,7 +128,8 @@ public static class ScheduleBuildContext
         IReadOnlyList<SchedulerRoomBlock> roomBlocks, IReadOnlyList<SchedulerBlock> extraTeacherBlocks,
         int timeoutSeconds, SolverWeights weights,
         IReadOnlyList<SchedulerPin>? pinnings = null,
-        IReadOnlyList<SchedulerHint>? hints = null)
+        IReadOnlyList<SchedulerHint>? hints = null,
+        bool isRepairSolve = false)
     {
         var requirementGroupIds = requirements.SelectMany(r => r.GroupIds).ToHashSet();
         var relevantGroups = shared.Groups.Where(g => requirementGroupIds.Contains(g.Id)).ToList();
@@ -166,7 +167,8 @@ public static class ScheduleBuildContext
             ZoneEntryDistances: zoneEntryList,
             RoomBlocks: roomBlocks,
             Pinnings: pinnings,
-            Hints: hints
+            Hints: hints,
+            IsRepairSolve: isRepairSolve
         );
     }
 }

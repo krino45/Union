@@ -1369,23 +1369,33 @@ public class OrToolsSchedulerService : ISchedulerService
         var workers = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.SolverNumWorkers), out var nw) && nw > 0
             ? nw
             : Math.Max(2, Environment.ProcessorCount - 1);
-        int linLevel = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.SolverLinearizationLevel), out var ll) &&
-                       ll >= 0
-            ? ll
-            : 0;
-        int probingLevel = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.SolverProbingLevel), out var pl) &&
-                           pl >= 0
-            ? pl
-            : 0;
         var solver = new CpSolver();
-        solver.StringParameters =
-            $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
-            $"num_search_workers:{workers}," +
-            $"linearization_level:{linLevel}," +
-            $"cp_model_probing_level:{probingLevel}," +
-            "search_branching:PORTFOLIO_SEARCH," +
-            "max_presolve_iterations:2," +
-            "log_search_progress:false";
+        if (input.IsRepairSolve)
+        {
+            solver.StringParameters =
+                $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
+                $"num_search_workers:{workers}," +
+                "log_search_progress:false";
+        }
+        else
+        {
+            int linLevel = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.SolverLinearizationLevel), out var ll) &&
+                           ll >= 0
+                ? ll
+                : 0;
+            int probingLevel = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.SolverProbingLevel), out var pl) &&
+                               pl >= 0
+                ? pl
+                : 0;
+            solver.StringParameters =
+                $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
+                $"num_search_workers:{workers}," +
+                $"linearization_level:{linLevel}," +
+                $"cp_model_probing_level:{probingLevel}," +
+                "search_branching:PORTFOLIO_SEARCH," +
+                "max_presolve_iterations:2," +
+                "log_search_progress:false";
+        }
 
         CpSolverStatus status;
         using (cancellationToken.Register(() => solver.StopSearch()))
