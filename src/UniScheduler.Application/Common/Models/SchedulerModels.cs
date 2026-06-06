@@ -19,7 +19,11 @@ public record SolverWeights(
     int SaturdayPenalty = 30,
     int DepartmentMismatchPenalty = 50,
     int WalkingPenaltyMax = 120,
-    int StairFloorMeters = 20)
+    int StairFloorMeters = 20,
+    // SanPiN PE rules.
+    int MaxPePerDay = 1,
+    int PeNotLastPenalty = 40,
+    int PeConsecutiveReward = 30)
 {
     #region  Constructors
 
@@ -47,6 +51,9 @@ public record SolverWeights(
         DepartmentMismatchPenalty = solverSettings.DepartmentMismatchPenalty;
         WalkingPenaltyMax = solverSettings.WalkingPenaltyMax;
         StairFloorMeters = solverSettings.StairFloorMeters;
+        MaxPePerDay = solverSettings.MaxPePerDay;
+        PeNotLastPenalty = solverSettings.PeNotLastPenalty;
+        PeConsecutiveReward = solverSettings.PeConsecutiveReward;
     }
 
     public SolverSettings ToSolverSettings()
@@ -68,7 +75,10 @@ public record SolverWeights(
             SaturdayPenalty = SaturdayPenalty,
             DepartmentMismatchPenalty = DepartmentMismatchPenalty,
             WalkingPenaltyMax = WalkingPenaltyMax,
-            StairFloorMeters = StairFloorMeters
+            StairFloorMeters = StairFloorMeters,
+            MaxPePerDay = MaxPePerDay,
+            PeNotLastPenalty = PeNotLastPenalty,
+            PeConsecutiveReward = PeConsecutiveReward
         };
     }
 

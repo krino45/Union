@@ -457,6 +457,13 @@ export class ApiService {
     return this.http.get<PlanProgressItem[]>(`${this.base}/schedules/${scheduleId}/plan-progress`);
   }
 
+  // Best-effort fill of one not-placed plan item into free slots.
+  insertUnplaced(scheduleId: string, body: { subjectId: string; groupId: string; lessonType: string }):
+    Observable<{ inserted: number; failed: number; message: string }> {
+    return this.http.post<{ inserted: number; failed: number; message: string }>(
+      `${this.base}/schedules/${scheduleId}/insert-unplaced`, body);
+  }
+
   //  Backfill catalog settings from a schedule
   previewBackfill(scheduleId: string, targets: BackfillTargets): Observable<BackfillPreview> {
     return this.http.post<BackfillPreview>(`${this.base}/schedules/${scheduleId}/backfill/preview`, targets);

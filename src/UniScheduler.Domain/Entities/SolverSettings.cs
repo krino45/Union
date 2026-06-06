@@ -38,5 +38,14 @@ public class SolverSettings : Entity
     // S4 - fixed walking-distance equivalent (metres) per floor climbed via stairs/elevators
     public int StairFloorMeters { get; set; } = 20;
 
+    // SanPiN - max physical-education pair-slots per group per day (1 or 2; varies by university)
+    public int MaxPePerDay { get; set; } = 1;
+
+    // SanPiN - penalty when PE is not the day's last lesson
+    public int PeNotLastPenalty { get; set; } = 40;
+
+    // Reward (applied as a negative S6 weight) for placing two same-day PE pairs consecutively
+    public int PeConsecutiveReward { get; set; } = 30;
+
     public University University { get; set; } = null!;
 }

@@ -626,12 +626,31 @@ export class CreateScheduleDialogComponent {
         </section>
 
         <section class="block">
-          <h3 class="block-title">Сверхнормативная нагрузка</h3>
-          <p class="block-desc">Штраф СанПиН за каждую пару сверх четырёх в день (S5).</p>
+          <h3 class="block-title">Сверхнормативная нагрузка (S5)</h3>
+          <p class="block-desc">Штраф СанПиН за каждую пару сверх четырёх в день.</p>
           <div class="row">
             <mat-form-field appearance="outline" class="flex1">
               <mat-label>Штраф за пару &gt; 4 в день</mat-label>
               <input matInput type="number" formControlName="sanPinOverload" min="0">
+            </mat-form-field>
+          </div>
+        </section>
+
+        <section class="block">
+          <h3 class="block-title">Физкультура (СанПиН)</h3>
+          <p class="block-desc">Предел пар в день, штраф если физкультура не последней парой, и поощрение ставить две пары подряд (когда предел ≥ 2). Пятая пара физкультуры не считается перегрузом.</p>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Макс. в день</mat-label>
+              <input matInput type="number" formControlName="maxPePerDay" min="1" max="4">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Штраф «не последняя»</mat-label>
+              <input matInput type="number" formControlName="peNotLastPenalty" min="0">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Поощрение за пары подряд</mat-label>
+              <input matInput type="number" formControlName="peConsecutiveReward" min="0">
             </mat-form-field>
           </div>
         </section>
@@ -728,22 +747,25 @@ export class CreateScheduleDialogComponent {
     </mat-dialog-actions>
   `,
   styles: [`
-    .settings-form { display: flex; flex-direction: column; padding-top: 4px; min-width: 480px; }
-    .block { margin-bottom: 14px; }
-    .block-title { margin: 4px 0 2px; font-size: 13px; font-weight: 600; color: #2d2d2d; }
-    .block-desc { margin: 0 0 10px; font-size: 12px; color: #666; line-height: 1.4; }
-    .row { display: flex; gap: 8px; align-items: flex-start; }
+    .settings-form { display: flex; flex-direction: column; padding-top: 4px; min-width: 500px; }
+    .block { padding: 12px 0; border-top: 1px solid #ececec; }
+    .block:first-child { padding-top: 0; border-top: none; }
+    .block-title { margin: 0 0 3px; font-size: 13px; font-weight: 600; color: #2d2d2d; }
+    .block-desc { margin: 0 0 8px; font-size: 12px; color: #777; line-height: 1.4; }
+    .row { display: flex; gap: 10px; align-items: flex-start; }
+    .row + .row { margin-top: 4px; }
     .flex1 { flex: 1; min-width: 0; }
     .full-width { width: 100%; }
     .plan-meta { color: #888; font-size: 12px; margin-left: 4px; }
     .chip-order { font-weight: 600; color: #1976d2; margin-right: 4px; }
     .select-all-btn, .clear-btn { height: 40px; align-self: flex-start; margin-top: 6px; font-size: 12px; }
-    .polish-row { align-items: center; gap: 10px; margin-top: -4px; flex-wrap: wrap; }
-    .polish-hint { font-size: 12px; color: #666; }
+    .polish-row { align-items: center; gap: 10px; margin-top: 2px; flex-wrap: wrap; }
+    .polish-hint { font-size: 12px; color: #777; flex: 1 1 100%; }
     .spinner-wrap { display: flex; justify-content: center; padding: 32px; }
-    /* Let multi-line hints push the field taller instead of overlapping the row below. */
-    ::ng-deep .settings-form .mat-mdc-form-field-subscript-wrapper,
-    ::ng-deep .settings-form .mat-mdc-form-field-hint-wrapper { position: static; }
+    ::ng-deep .settings-form .mat-mdc-form-field-subscript-wrapper { position: static; padding: 0; }
+    ::ng-deep .settings-form .mat-mdc-form-field-bottom-align::before { content: none; }
+    ::ng-deep .settings-form .mat-mdc-form-field-hint-wrapper { position: static; padding: 2px 4px 0; }
+    ::ng-deep .settings-form mat-hint { font-size: 11px; line-height: 1.35; color: #888; }
   `]
 })
 export class SolverSettingsDialogComponent implements OnInit {
@@ -864,6 +886,9 @@ export class SolverSettingsDialogComponent implements OnInit {
       departmentMismatchPenalty:[w.departmentMismatchPenalty,[Validators.required, Validators.min(0)]],
       walkingPenaltyMax:        [w.walkingPenaltyMax,        [Validators.required, Validators.min(1)]],
       stairFloorMeters:         [w.stairFloorMeters ?? 20,   [Validators.required, Validators.min(0)]],
+      maxPePerDay:              [w.maxPePerDay ?? 1,         [Validators.required, Validators.min(1), Validators.max(4)]],
+      peNotLastPenalty:         [w.peNotLastPenalty ?? 40,   [Validators.required, Validators.min(0)]],
+      peConsecutiveReward:      [w.peConsecutiveReward ?? 30,[Validators.required, Validators.min(0)]],
     });
   }
 
@@ -875,7 +900,7 @@ export class SolverSettingsDialogComponent implements OnInit {
       consecLecture: [70], consecSeminar: [40], consecPractical: [30], consecLab: [10],
       earlyPair: [15], middlePair: [0], latePair: [25], consecRunScalar: [3],
       saturdayPenalty: [30], departmentMismatchPenalty: [50], walkingPenaltyMax: [120],
-      stairFloorMeters: [20],
+      stairFloorMeters: [20], maxPePerDay: [1], peNotLastPenalty: [40], peConsecutiveReward: [30],
     });
   }
 }

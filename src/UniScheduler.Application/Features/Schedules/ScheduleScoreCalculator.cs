@@ -17,7 +17,10 @@ public record ScoreContext(
     IReadOnlyDictionary<Guid, Guid?>? RoomDeptFacultyId = null,
     IReadOnlyDictionary<Guid, Guid?>? SubjectDeptFacultyId = null,
     SolverWeights? Penalties = null,
-    IReadOnlyDictionary<Guid, int>? RoomEntryDistances = null);
+    IReadOnlyDictionary<Guid, int>? RoomEntryDistances = null,
+    // Rooms exempt from room double-booking: the distributed placeholder room and sports halls are
+    // multi-occupancy by design (many parallel classes share them). Mirrors the solver's H4 skip.
+    IReadOnlySet<Guid>? MultiOccupancyRoomIds = null);
 
 public record ScoreBreakdown(
     int HardConflicts,
@@ -74,6 +77,13 @@ public static class ScheduleScoreCalculator
         var roomToBuilding = roomList.ToDictionary(r => r.Id, r => r.BuildingId);
         var breakMins = ComputeBreakMinutes(pairSlots);
 
+        // Distributed sentinel + sports halls are shared concurrently by many classes - never a
+        // room double-book. Matches OrToolsSchedulerService H4 (skips AddAtMostOne for these).
+        var multiOccupancy = roomList
+            .Where(r => r.IsDistributed || r.RoomType == RoomType.SportsHall)
+            .Select(r => r.Id)
+            .ToHashSet();
+
         IReadOnlyDictionary<Guid, Guid?>? roomDeptFacultyId = penalties.DepartmentMismatchPenalty > 0
             ? roomList.ToDictionary(r => r.Id, r => r.Department?.FacultyId)
             : null;
@@ -89,7 +99,8 @@ public static class ScheduleScoreCalculator
             roomDeptFacultyId,
             subjectDeptFacultyId,
             penalties,
-            roomEntryDists);
+            roomEntryDists,
+            multiOccupancy);
     }
 
     public static int Compute(IReadOnlyList<ScheduleEntry> entries, ScoreContext ctx)
@@ -98,7 +109,7 @@ public static class ScheduleScoreCalculator
     public static ScoreBreakdown ComputeBreakdown(IReadOnlyList<ScheduleEntry> entries, ScoreContext ctx)
     {
         var w = ctx?.Penalties ?? new SolverWeights();
-        var hard = Score_HardConflicts(entries);
+        var hard = Score_HardConflicts(entries, ctx);
 
         int s1 = 0, s3 = 0, s4 = 0, s5 = 0, s6 = 0, s7 = 0, s8 = 0;
 
@@ -117,7 +128,7 @@ public static class ScheduleScoreCalculator
 
             s3 += Score_S3_ActiveDay(w);
             s1 += Score_S1_StudentWindows(pairs, onlineByPair, w);
-            s5 += Score_S5_SanPinOverload(pairs, w);
+            s5 += Score_S5_SanPin(slot, pairs, w);
             s8 += Score_S8_Saturday(day, pairs.Count, w);
             s6 += Score_S6_ConsecSameLesson(slot, w);
             s7 += Score_S7_TimeOfDay(pairs, w);
@@ -147,18 +158,22 @@ public static class ScheduleScoreCalculator
             S10_Overflow: s10);
     }
 
-    public static int Score_HardConflicts(IReadOnlyList<ScheduleEntry> entries)
+    public static int Score_HardConflicts(IReadOnlyList<ScheduleEntry> entries, ScoreContext? ctx = null)
     {
         int score = 0;
         var seen = new HashSet<string>();
+        var multiOcc = ctx?.MultiOccupancyRoomIds;
         for (int i = 0; i < entries.Count; i++)
         for (int j = i + 1; j < entries.Count; j++)
         {
             var a = entries[i]; var b = entries[j];
             if (!Overlaps(a, b)) continue;
 
+            if (a.ParallelGroupId.HasValue && a.ParallelGroupId == b.ParallelGroupId) continue;
+
             if (!a.IsOnline && !b.IsOnline && a.RoomId.HasValue && a.RoomId == b.RoomId
-                && a.RoomId != SchedulerSentinels.OverflowRoomId)
+                && a.RoomId != SchedulerSentinels.OverflowRoomId
+                && (multiOcc == null || !multiOcc.Contains(a.RoomId.Value)))
                 if (seen.Add($"r:{a.RoomId}:{a.DayOfWeek}:{a.PairNumber}"))
                     score += 100000;
 
@@ -250,9 +265,31 @@ public static class ScheduleScoreCalculator
         return score;
     }
 
-    // S5: SanPIN overload (+w.SanPinOverload per pair beyond 4 in a single day).
-    public static int Score_S5_SanPinOverload(IReadOnlyList<int> pairs, SolverWeights w)
-        => Math.Max(0, pairs.Count - 4) * w.SanPinOverload;
+    // S5: SanPiN day rules for one (group, day, week) slot. Combines:
+    //  - daily overload (+SanPinOverload per pair beyond 4), with PE at the 5th pair exempt from the count
+    //  - the PE-per-day cap (+SanPinOverload per PE pair-slot beyond MaxPePerDay)
+    //  - PE should be the day's last lesson (+PeNotLastPenalty per PE pair with any later class).
+    public static int Score_S5_SanPin(
+        IReadOnlyList<ScheduleEntry> slot, IReadOnlyList<int> pairs, SolverWeights w)
+    {
+        bool PeFifth(int p) => p == 5 &&
+            slot.Where(e => e.PairNumber == p).All(e => e.LessonType == LessonType.PhysicalEducation);
+
+        int load = pairs.Count(p => !PeFifth(p));
+        int score = Math.Max(0, load - 4) * w.SanPinOverload;
+
+        var pePairs = slot.Where(e => e.LessonType == LessonType.PhysicalEducation)
+            .Select(e => e.PairNumber).Distinct().ToList();
+        if (pePairs.Count == 0) return score;
+
+        score += Math.Max(0, pePairs.Count - Math.Max(1, w.MaxPePerDay)) * w.SanPinOverload;
+
+        int lastPair = pairs.Count > 0 ? pairs[^1] : 0;
+        foreach (var pp in pePairs)
+            if (pp < lastPair) score += w.PeNotLastPenalty;
+
+        return score;
+    }
 
     // S6: consecutive same (subject, lessonType); +scalar uplift for runs of 3+.
     public static int Score_S6_ConsecSameLesson(IReadOnlyList<ScheduleEntry> slot, SolverWeights w)
@@ -267,6 +304,9 @@ public static class ScheduleScoreCalculator
                 LessonType.Practical => w.ConsecPractical,
                 LessonType.Seminar   => w.ConsecSeminar,
                 LessonType.Lab       => w.ConsecLab,
+                // PE is the exception: a negative weight REWARDS consecutive PE, so two PE on one day
+                // (where MaxPePerDay allows it) get paired into a single block rather than scattered.
+                LessonType.PhysicalEducation => -w.PeConsecutiveReward,
                 _                    => 0
             };
             for (var k = 0; k < sp.Count - 1; k++)

@@ -167,6 +167,14 @@ public class SchedulesController : ControllerBase
     public async Task<ActionResult<List<PlanProgressItem>>> PlanProgress(Guid id, CancellationToken ct)
         => Ok(await mediator.Send(new GetPlanProgressQuery(id), ct));
 
+    // Best-effort filler for one not-placed plan item - respects hard rules only.
+    [Authorize(Roles = AdminOnly)]
+    [HttpPost("{id:guid}/insert-unplaced")]
+    public async Task<ActionResult<InsertUnplacedResult>> InsertUnplaced(
+        Guid id, [FromBody] InsertUnplacedRequest body, CancellationToken ct)
+        => Ok(await mediator.Send(
+            new InsertUnplacedEntriesCommand(id, body.SubjectId, body.GroupId, body.LessonType), ct));
+
     [HttpGet("{id:guid}/export/json")]
     public async Task<IActionResult> ExportJson(Guid id, CancellationToken ct)
     {
@@ -222,6 +230,7 @@ public record ImportFromJsonBody(bool Replace, List<JsonEntryImport> Entries);
 public record GenerateRequest(int TimeoutSeconds = 120, List<Guid>? PlanIds = null, bool Polish = false);
 public record SetScheduleAccessRequest(bool IsOpenToAdmins);
 public record RenameScheduleRequest(string Name);
+public record InsertUnplacedRequest(Guid SubjectId, Guid GroupId, LessonType LessonType);
 public record ValidateEditBody(
     Guid? EntryId,
     Guid SubjectId,

@@ -77,6 +77,10 @@ public class GetPlanProgressQueryHandler : IRequestHandler<GetPlanProgressQuery,
                     spe.LabHours, groupEntries, studyWeeks);
                 AddIfNeeded(result, spe.Subject, groupId, groupName, LessonType.Seminar,
                     spe.SeminarHours, groupEntries, studyWeeks);
+                AddIfNeeded(result, spe.Subject, groupId, groupName, LessonType.Language,
+                    spe.LanguageHours, groupEntries, studyWeeks);
+                AddIfNeeded(result, spe.Subject, groupId, groupName, LessonType.PhysicalEducation,
+                    spe.PhysicalEducationHours, groupEntries, studyWeeks);
             }
         }
 
@@ -91,7 +95,9 @@ public class GetPlanProgressQueryHandler : IRequestHandler<GetPlanProgressQuery,
         if (expectedHours <= 0) return;
         double actualPerWeek = groupEntries
             .Where(e => e.SubjectId == subject.Id && e.LessonType == lt)
-            .Sum(e => e.WeekType == WeekType.Both ? 1.0 : 0.5);
+            .Select(e => (e.DayOfWeek, e.PairNumber, e.WeekType))
+            .Distinct()
+            .Sum(s => s.WeekType == WeekType.Both ? 1.0 : 0.5);
         result.Add(new PlanProgressItem(
             subject.Id, subject.Name, subject.ShortName,
             groupId, groupName,

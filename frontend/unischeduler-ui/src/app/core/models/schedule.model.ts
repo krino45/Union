@@ -174,4 +174,7 @@ export interface SolverWeights {
   departmentMismatchPenalty: number;
   walkingPenaltyMax: number;
   stairFloorMeters: number;
+  maxPePerDay: number;
+  peNotLastPenalty: number;
+  peConsecutiveReward: number;
 }

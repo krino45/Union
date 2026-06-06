@@ -20,7 +20,8 @@ public class ConflictDetector : IConflictDetector
         IEnumerable<ScheduleEntry> existingEntries,
         Guid? parallelGroupId = null,
         bool roomIsDistributed = false,
-        string? subgroupLabel = null)
+        string? subgroupLabel = null,
+        bool roomIsSportsHall = false)
     {
         var conflicts = new List<ConflictInfo>();
         var groupIdSet = groupIds.ToHashSet();
@@ -40,9 +41,9 @@ public class ConflictDetector : IConflictDetector
 
             if (!slotsOverlap) continue;
 
-            // Room double-booking (non-online). The distributed sentinel room is a placeholder for
-            // classes with no fixed location, so multiple classes may share it without conflict.
-            if (!isOnline && !roomIsDistributed && roomId.HasValue && entry.RoomId == roomId)
+            // Room double-booking (non-online). The distributed sentinel room and sports halls are
+            // multi-occupancy placeholders/venues, so multiple classes may share them without conflict.
+            if (!isOnline && !roomIsDistributed && !roomIsSportsHall && roomId.HasValue && entry.RoomId == roomId)
             {
                 conflicts.Add(new ConflictInfo(ConflictType.RoomDoubleBooked,
                     $"Room is already booked at {dayOfWeek} pair {pairNumber} ({weekType})"));

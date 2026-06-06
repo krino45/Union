@@ -170,6 +170,11 @@ interface AuditResult {
                 <span *ngIf="p.isUnplaced" class="badge unplaced-badge">Не размещено</span>
                 <span *ngIf="!p.isUnplaced && isPartial(p)" class="badge partial-badge">Частично</span>
                 <span *ngIf="!p.isUnplaced && !isPartial(p)" class="badge ok-badge">✓</span>
+                <button mat-icon-button class="insert-btn" *ngIf="p.isUnplaced && !isArchived"
+                        [disabled]="inserting"
+                        title="Вставить в свободные слоты" (click)="insertUnplaced(p)">
+                  <mat-icon>auto_fix_high</mat-icon>
+                </button>
               </td>
             </tr>
           </tbody>
@@ -342,6 +347,26 @@ export class ScheduleEditorComponent implements OnInit {
     this.api.getPlanProgress(this.schedule.id).subscribe(items => {
       this.planProgress = items;
       this.progressExpanded = items.some(i => i.isUnplaced || this.isPartial(i));
+    });
+  }
+
+  inserting = false;
+  insertUnplaced(p: PlanProgressItem): void {
+    if (!this.schedule || this.inserting) return;
+    this.inserting = true;
+    this.api.insertUnplaced(this.schedule.id, {
+      subjectId: p.subjectId, groupId: p.groupId, lessonType: p.lessonType
+    }).subscribe({
+      next: (r) => {
+        this.inserting = false;
+        this.snackBar.open(r.message, 'OK', { duration: 3500 });
+        this.loadEntries();
+        this.loadPlanProgress();
+      },
+      error: (e) => {
+        this.inserting = false;
+        this.snackBar.open(e.error?.title || 'Не удалось вставить занятие', 'OK', { duration: 4000 });
+      }
     });
   }
 

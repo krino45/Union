@@ -48,7 +48,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             settingsEntity.ConsecLecture, settingsEntity.ConsecSeminar, settingsEntity.ConsecPractical, settingsEntity.ConsecLab,
             settingsEntity.EarlyPair, settingsEntity.MiddlePair, settingsEntity.LatePair, settingsEntity.ConsecRunScalar,
             settingsEntity.SaturdayPenalty, settingsEntity.DepartmentMismatchPenalty, settingsEntity.WalkingPenaltyMax,
-            settingsEntity.StairFloorMeters);
+            settingsEntity.StairFloorMeters, MaxPePerDay: settingsEntity.MaxPePerDay,
+            PeNotLastPenalty: settingsEntity.PeNotLastPenalty, PeConsecutiveReward: settingsEntity.PeConsecutiveReward);
 
         var shared = await ScheduleBuildContext.LoadSharedDataAsync(db, schedule, weights, cancellationToken);
 

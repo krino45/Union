@@ -962,6 +962,54 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
+        // PE-specific occupancy: "group gi has a PE class at (d,p,wi)". Sparse - only built for
+        // groups that actually have PE requirements, and only at cells with PE candidate vars.
+        // Feeds the two SanPiN PE rules below.
+        var peReqByGroup = new Dictionary<int, List<int>>();
+        for (int gi = 0; gi < groups.Count; gi++)
+        {
+            var pe = groupReqs[groups[gi].Id].Where(ri => reqs[ri].RequiresSportsHall).ToList();
+            if (pe.Count > 0) peReqByGroup[gi] = pe;
+        }
+        var isGroupPeUsed = new Dictionary<(int gi, int d, int p, int wi), BoolVar>();
+        foreach (var (gi, peRis) in peReqByGroup)
+        {
+            for (int d = 0; d < NumDays; d++)
+            for (int p = 0; p < numPairs; p++)
+            for (int wi = 0; wi < 2; wi++)
+            {
+                var slotVars = new List<BoolVar>();
+                foreach (int ri in peRis)
+                {
+                    if (!AffectsWeekIndex(reqs[ri].WeekType, wi)) continue;
+                    int varWi = VarWeekIndex(reqs[ri].WeekType);
+                    if (!varsByReqCell.TryGetValue((ri, d, p, varWi), out var cell)) continue;
+                    foreach (var (_, v) in cell) slotVars.Add(v);
+                }
+                if (slotVars.Count == 0) continue;
+                BoolVar bv;
+                if (slotVars.Count == 1) bv = slotVars[0];
+                else
+                {
+                    bv = model.NewBoolVar($"gpe_{gi}_{d}_{p}_{wi}");
+                    model.AddMaxEquality(bv, slotVars.Select(v => (IntVar)v).ToArray());
+                }
+                isGroupPeUsed[(gi, d, p, wi)] = bv;
+            }
+        }
+
+        // H_PE: SanPiN caps physical education per group per day (university-configurable).
+        int maxPePerDay = Math.Max(1, w.MaxPePerDay);
+        foreach (var gi in peReqByGroup.Keys)
+        for (int d = 0; d < NumDays; d++)
+        for (int wi = 0; wi < 2; wi++)
+        {
+            var peVars = new List<IntVar>();
+            for (int p = 0; p < numPairs; p++)
+                if (isGroupPeUsed.TryGetValue((gi, d, p, wi), out var bv)) peVars.Add(bv);
+            if (peVars.Count > maxPePerDay) model.Add(LinearExpr.Sum(peVars.ToArray()) <= maxPePerDay);
+        }
+
         var isTeacherUsed = new BoolVar[teachers.Count, NumDays, numPairs, 2];
         {
             int tReport = Math.Max(1, teachers.Count / 20);
@@ -1269,9 +1317,41 @@ public class OrToolsSchedulerService : ISchedulerService
         {
             var dayUsed = Enumerable.Range(0, numPairs).Select(p => (IntVar)isGroupUsed[gi, d, p, wi]).ToArray();
             var overload = model.NewIntVar(0, numPairs - sanPinMax, $"spov_{gi}_{d}_{wi}");
-            model.Add(overload >= LinearExpr.Sum(dayUsed) - sanPinMax);
+            // SanPiN: physical education placed as the 5th pair (index 4) is exempt from the daily
+            // overload count, so subtract it from the load when the group has PE there.
+            var loadVars = dayUsed.ToList();
+            var loadCoeffs = Enumerable.Repeat(1L, dayUsed.Length).ToList();
+            if (isGroupPeUsed.TryGetValue((gi, d, 4, wi), out var pe5))
+            {
+                loadVars.Add(pe5);
+                loadCoeffs.Add(-1L);
+            }
+            model.Add(overload >= LinearExpr.WeightedSum(loadVars.ToArray(), loadCoeffs.ToArray()) - sanPinMax);
             objVars.Add(overload);
             objCoeffs.Add(w.SanPinOverload);
+        }
+
+        // S_PE_last: SanPiN wants PE as the day's last lesson. Penalise each PE pair-slot that has
+        // any later class on the same (group, day, week). Sparse - only groups that have PE.
+        if (w.PeNotLastPenalty > 0)
+        {
+            foreach (var gi in peReqByGroup.Keys)
+            for (int d = 0; d < NumDays; d++)
+            for (int wi = 0; wi < 2; wi++)
+            for (int p = 0; p < numPairs - 1; p++)
+            {
+                if (!isGroupPeUsed.TryGetValue((gi, d, p, wi), out var peHere)) continue;
+                var later = new List<IntVar>();
+                for (int q = p + 1; q < numPairs; q++) later.Add(isGroupUsed[gi, d, q, wi]);
+                var laterUsed = model.NewBoolVar($"pelater_{gi}_{d}_{p}_{wi}");
+                model.AddMaxEquality(laterUsed, later.ToArray());
+                var pen = model.NewBoolVar($"penotlast_{gi}_{d}_{p}_{wi}");
+                model.Add(pen <= peHere);
+                model.Add(pen <= laterUsed);
+                model.Add(LinearExpr.Sum(new IntVar[] { peHere, laterUsed }) <= 1 + pen);
+                objVars.Add(pen);
+                objCoeffs.Add(w.PeNotLastPenalty);
+            }
         }
 
         // S6: Penalize consecutive pairs of the same (subject, lessonType) for a group
@@ -1644,6 +1724,8 @@ public class OrToolsSchedulerService : ISchedulerService
         LessonType.Practical => w.ConsecPractical,
         LessonType.Seminar => w.ConsecSeminar,
         LessonType.Lab => w.ConsecLab,
+        // Negative => reward: pair two same-day PE into one consecutive block instead of scattering.
+        LessonType.PhysicalEducation => -w.PeConsecutiveReward,
         _ => 0L
     };
 
