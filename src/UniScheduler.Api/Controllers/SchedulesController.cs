@@ -117,16 +117,27 @@ public class SchedulesController : ControllerBase
         var current = jobQueue.GetStatus(id);
         if (current.Status == "queued" || current.Status == "running")
             return Conflict(new { error = "Генерация уже выполняется для этого расписания", status = current.Status, stage = current.Stage });
-        var jobId = jobQueue.Enqueue(id, body?.TimeoutSeconds ?? 120, body?.PlanIds);
+        var jobId = jobQueue.Enqueue(id, body?.TimeoutSeconds ?? 120, body?.PlanIds, body?.Polish ?? false);
         return Accepted(new { jobId, scheduleId = id, status = "queued" });
     }
 
     [Authorize(Roles = AdminOnly)]
     [HttpGet("{id:guid}/generate/status")]
-    public IActionResult GetGenerationStatus(Guid id)
+    public IActionResult GetGenerationStatus(Guid id, [FromQuery] long afterSeq = 0)
     {
         var status = jobQueue.GetStatus(id);
-        return Ok(status);
+        var (log, latestSeq) = jobQueue.GetLog(id, afterSeq);
+        return Ok(new
+        {
+            status.ScheduleId,
+            status.Status,
+            status.Message,
+            status.Stage,
+            status.EntriesCreated,
+            status.CompletedAt,
+            log,
+            latestSeq
+        });
     }
 
     [Authorize(Roles = AdminOnly)]
@@ -147,13 +158,22 @@ public class SchedulesController : ControllerBase
     [HttpGet("{id:guid}/entries")]
     public async Task<ActionResult<List<ScheduleEntryDto>>> GetEntries(
         Guid id, [FromQuery] Guid? groupId, [FromQuery] Guid? teacherId, [FromQuery] RussianDayOfWeek? dayOfWeek,
+        [FromQuery] Guid? roomId,
         CancellationToken ct)
-        => Ok(await mediator.Send(new GetScheduleEntriesQuery(id, groupId, teacherId, dayOfWeek), ct));
+        => Ok(await mediator.Send(new GetScheduleEntriesQuery(id, groupId, teacherId, dayOfWeek, roomId), ct));
 
     [Authorize(Roles = AdminOnly)]
     [HttpGet("{id:guid}/plan-progress")]
     public async Task<ActionResult<List<PlanProgressItem>>> PlanProgress(Guid id, CancellationToken ct)
         => Ok(await mediator.Send(new GetPlanProgressQuery(id), ct));
+
+    // Best-effort filler for one not-placed plan item - respects hard rules only.
+    [Authorize(Roles = AdminOnly)]
+    [HttpPost("{id:guid}/insert-unplaced")]
+    public async Task<ActionResult<InsertUnplacedResult>> InsertUnplaced(
+        Guid id, [FromBody] InsertUnplacedRequest body, CancellationToken ct)
+        => Ok(await mediator.Send(
+            new InsertUnplacedEntriesCommand(id, body.SubjectId, body.GroupId, body.LessonType), ct));
 
     [HttpGet("{id:guid}/export/json")]
     public async Task<IActionResult> ExportJson(Guid id, CancellationToken ct)
@@ -207,9 +227,10 @@ public class SchedulesController : ControllerBase
 }
 
 public record ImportFromJsonBody(bool Replace, List<JsonEntryImport> Entries);
-public record GenerateRequest(int TimeoutSeconds = 120, List<Guid>? PlanIds = null);
+public record GenerateRequest(int TimeoutSeconds = 120, List<Guid>? PlanIds = null, bool Polish = false);
 public record SetScheduleAccessRequest(bool IsOpenToAdmins);
 public record RenameScheduleRequest(string Name);
+public record InsertUnplacedRequest(Guid SubjectId, Guid GroupId, LessonType LessonType);
 public record ValidateEditBody(
     Guid? EntryId,
     Guid SubjectId,

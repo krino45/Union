@@ -20,6 +20,7 @@ public class GetSolverSettingsQueryHandler : IRequestHandler<GetSolverSettingsQu
             s.ConsecLecture, s.ConsecSeminar, s.ConsecPractical, s.ConsecLab,
             s.EarlyPair, s.MiddlePair, s.LatePair, s.ConsecRunScalar,
             s.SaturdayPenalty, s.DepartmentMismatchPenalty, s.WalkingPenaltyMax,
-            s.StairFloorMeters);
+            s.StairFloorMeters, MaxPePerDay: s.MaxPePerDay,
+            PeNotLastPenalty: s.PeNotLastPenalty, PeConsecutiveReward: s.PeConsecutiveReward);
     }
 }

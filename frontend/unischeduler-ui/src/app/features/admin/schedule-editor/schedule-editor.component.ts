@@ -67,6 +67,9 @@ interface AuditResult {
           <app-search-select class="filter-field" label="Преподаватель" [options]="teachers"
             displayField="displayName" [allowNull]="true" nullLabel="Все"
             [(ngModel)]="selectedTeacherId" (ngModelChange)="onFilterChange()"></app-search-select>
+          <app-search-select class="filter-field" label="Аудитория" [options]="rooms"
+            [displayWith]="roomLabel" [allowNull]="true" nullLabel="Все"
+            [(ngModel)]="selectedRoomId" (ngModelChange)="onFilterChange()"></app-search-select>
         </div>
         <mat-button-toggle-group [(ngModel)]="weekFilter" class="week-toggle">
           <mat-button-toggle value="Both">Обе</mat-button-toggle>
@@ -167,6 +170,11 @@ interface AuditResult {
                 <span *ngIf="p.isUnplaced" class="badge unplaced-badge">Не размещено</span>
                 <span *ngIf="!p.isUnplaced && isPartial(p)" class="badge partial-badge">Частично</span>
                 <span *ngIf="!p.isUnplaced && !isPartial(p)" class="badge ok-badge">✓</span>
+                <button mat-icon-button class="insert-btn" *ngIf="p.isUnplaced && !isArchived"
+                        [disabled]="inserting"
+                        title="Вставить в свободные слоты" (click)="insertUnplaced(p)">
+                  <mat-icon>auto_fix_high</mat-icon>
+                </button>
               </td>
             </tr>
           </tbody>
@@ -268,6 +276,7 @@ export class ScheduleEditorComponent implements OnInit {
   loading = true;
   selectedGroupId: string | null = null;
   selectedTeacherId: string | null = null;
+  selectedRoomId: string | null = null;
   weekFilter = 'Both';
   audit: AuditResult | null = null;
   conflictsExpanded = true;
@@ -307,7 +316,8 @@ export class ScheduleEditorComponent implements OnInit {
     this.loading = true;
     this.api.getScheduleEntries(this.schedule.id, {
       groupId: this.selectedGroupId ?? undefined,
-      teacherId: this.selectedTeacherId ?? undefined
+      teacherId: this.selectedTeacherId ?? undefined,
+      roomId: this.selectedRoomId ?? undefined
     }).subscribe({
       next: data => {
         this.entries = data;
@@ -340,9 +350,31 @@ export class ScheduleEditorComponent implements OnInit {
     });
   }
 
+  inserting = false;
+  insertUnplaced(p: PlanProgressItem): void {
+    if (!this.schedule || this.inserting) return;
+    this.inserting = true;
+    this.api.insertUnplaced(this.schedule.id, {
+      subjectId: p.subjectId, groupId: p.groupId, lessonType: p.lessonType
+    }).subscribe({
+      next: (r) => {
+        this.inserting = false;
+        this.snackBar.open(r.message, 'OK', { duration: 3500 });
+        this.loadEntries();
+        this.loadPlanProgress();
+      },
+      error: (e) => {
+        this.inserting = false;
+        this.snackBar.open(e.error?.title || 'Не удалось вставить занятие', 'OK', { duration: 4000 });
+      }
+    });
+  }
+
   get planNames(): string {
     return this.studyPlans.map(p => p.name).join(', ');
   }
+
+  roomLabel = (r: Room): string => r.buildingShortCode ? `${r.buildingShortCode}-${r.number}` : r.number;
 
   onFilterChange(): void { this.loadEntries(); }
 
@@ -572,6 +604,7 @@ export class ScheduleEditorComponent implements OnInit {
     if (lt === 'Lab') return 'Лаб.';
     if (lt === 'Seminar') return 'Сем.';
     if (lt === 'Language') return 'Ин.яз';
+    if (lt === 'PhysicalEducation') return 'Физ-ра';
     return lt;
   }
 

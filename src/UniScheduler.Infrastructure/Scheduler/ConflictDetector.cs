@@ -20,7 +20,8 @@ public class ConflictDetector : IConflictDetector
         IEnumerable<ScheduleEntry> existingEntries,
         Guid? parallelGroupId = null,
         bool roomIsDistributed = false,
-        string? subgroupLabel = null)
+        string? subgroupLabel = null,
+        bool roomIsSportsHall = false)
     {
         var conflicts = new List<ConflictInfo>();
         var groupIdSet = groupIds.ToHashSet();
@@ -30,7 +31,7 @@ public class ConflictDetector : IConflictDetector
             if (entry.Id == entryId) continue;
 
             // Parallel sessions of the same logical class (language streams / lab subgroups)
-            // share teacher slots, groups, and the distributed room by design — never conflict.
+            // share teacher slots, groups, and the distributed room by design - never conflict.
             if (parallelGroupId.HasValue && entry.ParallelGroupId == parallelGroupId) continue;
 
             // Only compare entries that could overlap (same slot)
@@ -40,9 +41,9 @@ public class ConflictDetector : IConflictDetector
 
             if (!slotsOverlap) continue;
 
-            // Room double-booking (non-online). The distributed sentinel room is a placeholder for
-            // classes with no fixed location, so multiple classes may share it without conflict.
-            if (!isOnline && !roomIsDistributed && roomId.HasValue && entry.RoomId == roomId)
+            // Room double-booking (non-online). The distributed sentinel room and sports halls are
+            // multi-occupancy placeholders/venues, so multiple classes may share them without conflict.
+            if (!isOnline && !roomIsDistributed && !roomIsSportsHall && roomId.HasValue && entry.RoomId == roomId)
             {
                 conflicts.Add(new ConflictInfo(ConflictType.RoomDoubleBooked,
                     $"Room is already booked at {dayOfWeek} pair {pairNumber} ({weekType})"));
@@ -68,7 +69,7 @@ public class ConflictDetector : IConflictDetector
         return conflicts;
     }
 
-    // True when both entries are explicitly labelled subgroups with different labels — they may
+    // True when both entries are explicitly labelled subgroups with different labels - they may
     // legitimately occupy the same group + slot simultaneously.
     private static bool AreDistinctSubgroups(string? a, string? b)
         => !string.IsNullOrWhiteSpace(a)

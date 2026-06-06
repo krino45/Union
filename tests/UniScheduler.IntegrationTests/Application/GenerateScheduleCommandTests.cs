@@ -4,6 +4,7 @@ using UniScheduler.Application.Common.Exceptions;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.Common.Models;
 using UniScheduler.Application.Features.Schedules.Commands;
+using UniScheduler.Application.Features.Schedules.Lns;
 using UniScheduler.Domain.Entities;
 using UniScheduler.Domain.Enums;
 using UniScheduler.IntegrationTests.Helpers;
@@ -24,7 +25,7 @@ public class GenerateScheduleCommandTests
     public async Task Handle_MissingSchedule_ThrowsNotFoundException()
     {
         await using var db = DbContextFactory.Create();
-        var handler = new GenerateScheduleCommandHandler(db, new Mock<ISchedulerService>().Object);
+        var handler = new GenerateScheduleCommandHandler(db, new Mock<ISchedulerService>().Object, new Mock<ILnsOptimizerService>().Object);
 
         var act = async () => await handler.Handle(
             new GenerateScheduleCommand(Guid.NewGuid()), CancellationToken.None);
@@ -44,7 +45,7 @@ public class GenerateScheduleCommandTests
         mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<string>?>()))
             .ReturnsAsync(new SchedulerOutput(SolverStatus.Infeasible, "No solution", []));
 
-        var result = await new GenerateScheduleCommandHandler(db, mockSolver.Object)
+        var result = await new GenerateScheduleCommandHandler(db, mockSolver.Object, new Mock<ILnsOptimizerService>().Object)
             .Handle(new GenerateScheduleCommand(schedule.Id), CancellationToken.None);
 
         result.Success.Should().BeFalse();
@@ -77,7 +78,7 @@ public class GenerateScheduleCommandTests
         mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<string>?>()))
             .ReturnsAsync(new SchedulerOutput(SolverStatus.Optimal, null, []));
 
-        await new GenerateScheduleCommandHandler(db, mockSolver.Object)
+        await new GenerateScheduleCommandHandler(db, mockSolver.Object, new Mock<ILnsOptimizerService>().Object)
             .Handle(new GenerateScheduleCommand(schedule.Id), CancellationToken.None);
 
         db.ScheduleEntries.Should().BeEmpty();
@@ -117,7 +118,7 @@ public class GenerateScheduleCommandTests
         mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<string>?>()))
             .ReturnsAsync(new SchedulerOutput(SolverStatus.Optimal, null, [assignment]));
 
-        var result = await new GenerateScheduleCommandHandler(db, mockSolver.Object)
+        var result = await new GenerateScheduleCommandHandler(db, mockSolver.Object, new Mock<ILnsOptimizerService>().Object)
             .Handle(new GenerateScheduleCommand(schedule.Id), CancellationToken.None);
 
         result.Success.Should().BeTrue();
@@ -137,7 +138,7 @@ public class GenerateScheduleCommandTests
         mockSolver.Setup(s => s.SolveAsync(It.IsAny<SchedulerInput>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<string>?>()))
             .ReturnsAsync(new SchedulerOutput(SolverStatus.Optimal, null, []));
 
-        await new GenerateScheduleCommandHandler(db, mockSolver.Object)
+        await new GenerateScheduleCommandHandler(db, mockSolver.Object, new Mock<ILnsOptimizerService>().Object)
             .Handle(new GenerateScheduleCommand(schedule.Id), CancellationToken.None);
 
         (await db.Schedules.FindAsync(schedule.Id))!.GeneratedAt.Should().NotBeNull();

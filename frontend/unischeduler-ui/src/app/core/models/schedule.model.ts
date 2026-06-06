@@ -134,6 +134,12 @@ export interface BackfillResult {
   studyPlanFieldsUpdated: number;
 }
 
+export interface StageLogItem {
+  seq: number;
+  at: string;
+  message: string;
+}
+
 export interface GenerationJobStatus {
   scheduleId: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'not_found';
@@ -141,11 +147,14 @@ export interface GenerationJobStatus {
   stage?: string;
   entriesCreated: number;
   completedAt?: string;
+  log?: StageLogItem[];
+  latestSeq?: number;
 }
 
 export interface GenerateScheduleRequest {
   timeoutSeconds: number;
   planIds?: string[] | null;
+  polish?: boolean;
 }
 
 export interface SolverWeights {
@@ -165,4 +174,7 @@ export interface SolverWeights {
   departmentMismatchPenalty: number;
   walkingPenaltyMax: number;
   stairFloorMeters: number;
+  maxPePerDay: number;
+  peNotLastPenalty: number;
+  peConsecutiveReward: number;
 }

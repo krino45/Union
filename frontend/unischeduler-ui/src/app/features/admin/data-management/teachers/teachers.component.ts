@@ -12,7 +12,9 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatChipsModule } from '@angular/material/chips';
 import { forkJoin } from 'rxjs';
+import { RouterModule } from '@angular/router';
 import { ApiService } from '../../../../core/services/api.service';
 import { AuthService } from '../../../../core/services/auth.service';
 import { Teacher, Subject } from '../../../../core/models';
@@ -23,10 +25,10 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
   selector: 'app-teachers',
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule, FormsModule,
+    CommonModule, ReactiveFormsModule, FormsModule, RouterModule,
     MatTableModule, MatButtonModule, MatIconModule, MatCardModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
-    MatSnackBarModule, MatTooltipModule, LessonTypePipe, MatProgressSpinnerModule
+    MatSnackBarModule, MatTooltipModule, LessonTypePipe, MatProgressSpinnerModule, MatChipsModule
   ],
   template: `
     <div class="page-header">
@@ -60,9 +62,12 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
         <ng-container matColumnDef="load">
           <th mat-header-cell *matHeaderCellDef>Нагрузка</th>
           <td mat-cell *matCellDef="let t">
-            <span [matTooltip]="loadTooltip(t.loadHoursPerWeek)" class="load-cell">
-              {{ t.loadHoursPerWeek ?? 0 }} ч/нед
-            </span>
+            <a [routerLink]="['/admin/schedule-viewer']" [queryParams]="{teacherId: t.id}"
+               class="load-link" [matTooltip]="loadTooltip(t.loadHoursPerWeek)">
+              <mat-chip [class]="'load-chip load-' + loadBand(t.loadHoursPerWeek)">
+                {{ t.loadHoursPerWeek ?? 0 }} ч/нед
+              </mat-chip>
+            </a>
           </td>
         </ng-container>
         <ng-container matColumnDef="actions">
@@ -96,7 +101,17 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
     .full-width { width: 100%; }
     .search-field { width: 100%; max-width: 420px; margin-top: 8px; margin-bottom: 8px; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
-    .load-cell { font-weight: 500; }
+    .load-link { text-decoration: none; display: inline-block; }
+    .load-link:hover mat-chip { filter: brightness(0.92); }
+    .load-chip { font-size: 11px; font-weight: 600; }
+    .load-empty  { background: #f5f5f5; color: #9e9e9e; }
+    .load-low    { background: #e8f5e9; color: #1b5e20; }
+    .load-medium { background: #fff3e0; color: #e65100; }
+    .load-high   { background: #ffebee; color: #b71c1c; }
+    :host-context(body.dark-mode) .load-empty  { background: #2a2a2a; color: #777; }
+    :host-context(body.dark-mode) .load-low    { background: #1b3a1d; color: #a5d6a7; }
+    :host-context(body.dark-mode) .load-medium { background: #4a2c10; color: #ffb74d; }
+    :host-context(body.dark-mode) .load-high   { background: #4a1818; color: #ef9a9a; }
   `]
 })
 export class TeachersComponent implements OnInit {
@@ -111,6 +126,14 @@ export class TeachersComponent implements OnInit {
     if (!q) return this.teachers;
     return this.teachers.filter(t =>
       t.displayName.toLowerCase().includes(q) || (t.email ?? '').toLowerCase().includes(q));
+  }
+
+  loadBand(hours: number | undefined): 'empty' | 'low' | 'medium' | 'high' {
+    const h = hours ?? 0;
+    if (h === 0) return 'empty';
+    if (h < 10) return 'low';
+    if (h < 20) return 'medium';
+    return 'high';
   }
 
   loadTooltip(hours: number | undefined): string {
@@ -267,6 +290,7 @@ export class TeacherDialogComponent {
             <mat-option value="Lab">Лабораторная</mat-option>
             <mat-option value="Seminar">Семинар</mat-option>
             <mat-option value="Language">Ин. язык</mat-option>
+            <mat-option value="PhysicalEducation">Физ-ра</mat-option>
           </mat-select>
         </mat-form-field>
         <button mat-icon-button color="warn" (click)="removeRow(i)"><mat-icon>remove_circle</mat-icon></button>

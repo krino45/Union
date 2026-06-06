@@ -147,7 +147,7 @@ public class ConflictDetectorTests
     {
         var teacherId = Guid.NewGuid();
         var entry = MakeEntry(teacherId: teacherId, day: RussianDayOfWeek.Monday, pair: 1);
-        // Passing the same entry's own Id — it must be skipped
+        // Passing the same entry's own Id - it must be skipped
         var result = _sut.DetectConflicts(
             entry.Id, ScheduleId, null, teacherId, [],
             RussianDayOfWeek.Monday, 1, WeekType.Both, false, [entry]);

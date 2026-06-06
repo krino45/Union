@@ -21,5 +21,6 @@ public class StudyPlanEntryConfiguration : IEntityTypeConfiguration<StudyPlanEnt
         builder.Property(e => e.PracticalHours).HasDefaultValue(0.0);
         builder.Property(e => e.LabHours).HasDefaultValue(0.0);
         builder.Property(e => e.SeminarHours).HasDefaultValue(0.0);
+        builder.Property(e => e.PhysicalEducationHours).HasDefaultValue(0.0);
     }
 }

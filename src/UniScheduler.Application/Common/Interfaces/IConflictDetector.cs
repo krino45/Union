@@ -19,5 +19,6 @@ public interface IConflictDetector
         IEnumerable<ScheduleEntry> existingEntries,
         Guid? parallelGroupId = null,
         bool roomIsDistributed = false,
-        string? subgroupLabel = null);
+        string? subgroupLabel = null,
+        bool roomIsSportsHall = false);
 }

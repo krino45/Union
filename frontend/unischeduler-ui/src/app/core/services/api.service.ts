@@ -294,8 +294,10 @@ export class ApiService {
   generateSchedule(id: string, dto: GenerateScheduleRequest): Observable<{ jobId: string }> {
     return this.http.post<{ jobId: string }>(`${this.base}/schedules/${id}/generate`, dto);
   }
-  getGenerationStatus(id: string): Observable<GenerationJobStatus> {
-    return this.http.get<GenerationJobStatus>(`${this.base}/schedules/${id}/generate/status`);
+  getGenerationStatus(id: string, afterSeq = 0): Observable<GenerationJobStatus> {
+    return this.http.get<GenerationJobStatus>(`${this.base}/schedules/${id}/generate/status`, {
+      params: { afterSeq }
+    });
   }
   cancelGeneration(id: string): Observable<void> {
     return this.http.post<void>(`${this.base}/schedules/${id}/generate/cancel`, {});
@@ -343,10 +345,11 @@ export class ApiService {
   updateScore(scheduleId: string): Observable<number> {
     return this.http.post<number>(`${this.base}/schedules/${scheduleId}/update-score`, {});
   }
-  getScheduleEntries(scheduleId: string, filters?: { groupId?: string; teacherId?: string }): Observable<ScheduleEntry[]> {
+  getScheduleEntries(scheduleId: string, filters?: { groupId?: string; teacherId?: string; roomId?: string }): Observable<ScheduleEntry[]> {
     let params = new HttpParams();
     if (filters?.groupId) params = params.set('groupId', filters.groupId);
     if (filters?.teacherId) params = params.set('teacherId', filters.teacherId);
+    if (filters?.roomId) params = params.set('roomId', filters.roomId);
     return this.http.get<ScheduleEntry[]>(`${this.base}/schedules/${scheduleId}/entries`, { params });
   }
 
@@ -452,6 +455,13 @@ export class ApiService {
   //  Plan progress
   getPlanProgress(scheduleId: string): Observable<PlanProgressItem[]> {
     return this.http.get<PlanProgressItem[]>(`${this.base}/schedules/${scheduleId}/plan-progress`);
+  }
+
+  // Best-effort fill of one not-placed plan item into free slots.
+  insertUnplaced(scheduleId: string, body: { subjectId: string; groupId: string; lessonType: string }):
+    Observable<{ inserted: number; failed: number; message: string }> {
+    return this.http.post<{ inserted: number; failed: number; message: string }>(
+      `${this.base}/schedules/${scheduleId}/insert-unplaced`, body);
   }
 
   //  Backfill catalog settings from a schedule

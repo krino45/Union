@@ -19,7 +19,11 @@ public record SolverWeights(
     int SaturdayPenalty = 30,
     int DepartmentMismatchPenalty = 50,
     int WalkingPenaltyMax = 120,
-    int StairFloorMeters = 20)
+    int StairFloorMeters = 20,
+    // SanPiN PE rules.
+    int MaxPePerDay = 1,
+    int PeNotLastPenalty = 40,
+    int PeConsecutiveReward = 30)
 {
     #region  Constructors
 
@@ -47,6 +51,9 @@ public record SolverWeights(
         DepartmentMismatchPenalty = solverSettings.DepartmentMismatchPenalty;
         WalkingPenaltyMax = solverSettings.WalkingPenaltyMax;
         StairFloorMeters = solverSettings.StairFloorMeters;
+        MaxPePerDay = solverSettings.MaxPePerDay;
+        PeNotLastPenalty = solverSettings.PeNotLastPenalty;
+        PeConsecutiveReward = solverSettings.PeConsecutiveReward;
     }
 
     public SolverSettings ToSolverSettings()
@@ -68,12 +75,36 @@ public record SolverWeights(
             SaturdayPenalty = SaturdayPenalty,
             DepartmentMismatchPenalty = DepartmentMismatchPenalty,
             WalkingPenaltyMax = WalkingPenaltyMax,
-            StairFloorMeters = StairFloorMeters
+            StairFloorMeters = StairFloorMeters,
+            MaxPePerDay = MaxPePerDay,
+            PeNotLastPenalty = PeNotLastPenalty,
+            PeConsecutiveReward = PeConsecutiveReward
         };
     }
 
     #endregion
 };
+
+// Which axis an LNS repair frees.
+// Time: rooms locked to {own room + overflow sentinel}, (day,pair) free.
+// Space: (day,pair) locked, room free across compatible rooms.
+// Full: free both
+public enum RepairAxis { Full, Time, Space }
+
+// A req the repair solve may move, plus its current placement
+public record SchedulerFreedReq(
+    int RequirementIndex,
+    RepairAxis Axis,
+    RussianDayOfWeek Day,
+    int PairNumber,
+    WeekType WeekType,
+    Guid RoomId);
+
+public static class SchedulerSentinels
+{
+    public static readonly Guid OverflowRoomId = new("ffffffff-0000-0000-0000-0000000000f1");
+    public const long OverflowPenalty = 50_000;
+}
 
 public record SchedulerInput(
     Guid ScheduleId,
@@ -91,7 +122,47 @@ public record SchedulerInput(
     SolverWeights? Weights = null,
     IReadOnlyList<SchedulerZoneEntryDistance>? ZoneEntryDistances = null,
     // Cells the scheduler must treat as already taken
-    IReadOnlyList<SchedulerRoomBlock>? RoomBlocks = null
+    IReadOnlyList<SchedulerRoomBlock>? RoomBlocks = null,
+    // LNS repair mode: each pin forces its requirement onto the given (day, pair, week, room).
+    // Pinned reqs emit a single BoolVar (the matching cell); reqs not in this list are free.
+    IReadOnlyList<SchedulerPin>? Pinnings = null,
+    // LNS warm-start: advisory placements for freed reqs. The solver calls AddHint(v, 1) for
+    // the matching BoolVar - no constraint, just a search heuristic that gives CP-SAT a cheap
+    // initial upper bound. Hints with no matching candidate cell are silently ignored.
+    IReadOnlyList<SchedulerHint>? Hints = null,
+    // True for LNS repair solves (pins + small free core)
+    bool IsRepairSolve = false,
+    // Skip ALL travel/distance machinery (zone + room H_travel and S4).
+    bool SkipTravel = false,
+    // When non-empty, each listed req is freed along its axis instead of full;
+    // reqs here must not be pinned..
+    IReadOnlyList<SchedulerFreedReq>? FreedReqs = null,
+    // Penalty for the overflow sentinel
+    long OverflowPenalty = 0,
+    // Requirement indices to leave out of the model
+    IReadOnlyList<int>? ExcludedReqs = null
+);
+
+// LNS: hard-fix one requirement to a specific placement. WeekType must equal the requirement's
+// own WeekType (Both/Odd/Even). Validation in the solver rejects pins that conflict with room
+// compatibility, teacher availability blocks, room blocks, or group day blocks.
+public record SchedulerPin(
+    int RequirementIndex,
+    RussianDayOfWeek Day,
+    int PairNumber,
+    WeekType WeekType,
+    Guid RoomId
+);
+
+// LNS: advisory "try this first" placement. Same shape as a pin but never constraining -
+// solver may ignore. Used to warm-start kicks from the current incumbent placements of freed
+// reqs so CP-SAT finds the existing solution quickly and prunes worse branches.
+public record SchedulerHint(
+    int RequirementIndex,
+    RussianDayOfWeek Day,
+    int PairNumber,
+    WeekType WeekType,
+    Guid RoomId
 );
 
 public record SchedulerZoneEntryDistance(Guid BuildingId, int Floor, int EntryDistanceMeters);
@@ -111,7 +182,8 @@ public record SchedulerRoom(
     IReadOnlyList<LessonType>? AllowedLessonTypes = null,
     Guid? DepartmentFacultyId = null,
     bool IsDistributed = false,
-    int EntryDistanceMeters = 0
+    int EntryDistanceMeters = 0,
+    bool IsOverflow = false
 );
 
 public record SchedulerRoomDistance(Guid FromRoomId, Guid ToRoomId, int DistanceMeters);
@@ -142,7 +214,8 @@ public record SchedulerRequirement(
     int? ParallelKey = null,
     string? SubgroupLabel = null,
     int? HeadcountOverride = null,
-    bool RequiresDistributedRoom = false
+    bool RequiresDistributedRoom = false,
+    bool RequiresSportsHall = false
 );
 
 public record SchedulerBuildingDistance(Guid FromId, Guid ToId, int DistanceMeters);

@@ -1,10 +1,12 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using UniScheduler.Application.Common.Config;
 using UniScheduler.Application.Common.Exceptions;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.Common.Models;
 using UniScheduler.Application.DTOs;
-using UniScheduler.Application.Features.StudyPlans;
+using UniScheduler.Application.Features.Schedules.Internal;
+using UniScheduler.Application.Features.Schedules.Lns;
 using UniScheduler.Domain.Entities;
 using UniScheduler.Domain.Enums;
 
@@ -14,18 +16,21 @@ public record GenerateScheduleCommand(
     Guid ScheduleId,
     int SolverTimeoutSeconds = 60,
     IProgress<string>? Progress = null,
-    IReadOnlyList<Guid>? PlanIds = null
+    IReadOnlyList<Guid>? PlanIds = null,
+    bool Polish = false
 ) : IRequest<GenerateScheduleResult>;
 
 public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCommand, GenerateScheduleResult>
 {
     private readonly IApplicationDbContext db;
     private readonly ISchedulerService scheduler;
+    private readonly ILnsOptimizerService lns;
 
-    public GenerateScheduleCommandHandler(IApplicationDbContext db, ISchedulerService scheduler)
+    public GenerateScheduleCommandHandler(IApplicationDbContext db, ISchedulerService scheduler, ILnsOptimizerService lns)
     {
         this.db = db;
         this.scheduler = scheduler;
+        this.lns = lns;
     }
 
     public async Task<GenerateScheduleResult> Handle(GenerateScheduleCommand request, CancellationToken cancellationToken)
@@ -43,9 +48,10 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             settingsEntity.ConsecLecture, settingsEntity.ConsecSeminar, settingsEntity.ConsecPractical, settingsEntity.ConsecLab,
             settingsEntity.EarlyPair, settingsEntity.MiddlePair, settingsEntity.LatePair, settingsEntity.ConsecRunScalar,
             settingsEntity.SaturdayPenalty, settingsEntity.DepartmentMismatchPenalty, settingsEntity.WalkingPenaltyMax,
-            settingsEntity.StairFloorMeters);
+            settingsEntity.StairFloorMeters, MaxPePerDay: settingsEntity.MaxPePerDay,
+            PeNotLastPenalty: settingsEntity.PeNotLastPenalty, PeConsecutiveReward: settingsEntity.PeConsecutiveReward);
 
-        var shared = await LoadSharedDataAsync(schedule, weights, cancellationToken);
+        var shared = await ScheduleBuildContext.LoadSharedDataAsync(db, schedule, weights, cancellationToken);
 
         var groupToPlanId = new Dictionary<Guid, Guid>();
         foreach (var sp in shared.StudyPlans)
@@ -78,8 +84,27 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 .ThenByDescending(sp => sp.Entries.Count)
                 .ToList();
             if (plansToRun.Count == 0)
+            {
+                if (request.Polish)
+                {
+                    p?.Report("Вычисление оценки...");
+                    var prescoreEntries = await db.ScheduleEntries
+                        .Include(e => e.StudentGroups)
+                        .Where(e => e.ScheduleId == request.ScheduleId)
+                        .ToListAsync(cancellationToken);
+                    schedule.BaseScore = ScheduleScoreCalculator.Compute(prescoreEntries, shared.ScoreCtx);
+                    await db.SaveChangesAsync();
+
+                    if (request.Polish)
+                    {
+                        await Polish(request, p, prescoreEntries, shared, schedule, cancellationToken);
+                    }
+                }
                 return new GenerateScheduleResult(true, "Feasible",
-                    "Все планы уже сгенерированы. Чтобы перегенерировать — выберите планы явно.", 0);
+                    request.Polish
+                        ? schedule.GenerationNotes
+                        : "Все планы уже сгенерированы. Чтобы перегенерировать — выберите планы явно.", 0);
+            }
         }
 
         var plansToRunIds = plansToRun.Select(sp => sp.Id).ToHashSet();
@@ -116,7 +141,25 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .Select(e => new SchedulerBlock(e.TeacherId, e.DayOfWeek, e.PairNumber, e.WeekType))
             .ToList();
 
-        int batchGroupTarget = int.TryParse(Environment.GetEnvironmentVariable("UNISCHEDULER_BATCH_GROUP_TARGET"), out var t) && t > 0 ? t : 5;
+        var occupiedTeacher = new HashSet<(Guid, RussianDayOfWeek, int, int)>();
+        foreach (var e in keptEntries)
+        {
+            if (e.WeekType != WeekType.Even) occupiedTeacher.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, 0));
+            if (e.WeekType != WeekType.Odd) occupiedTeacher.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, 1));
+        }
+
+        var teacherLoad = new Dictionary<Guid, int>();
+        static int AwiCellsFor(WeekType wt) => wt == WeekType.Both ? 2 : 1;
+        void RecomputeTeacherLoad()
+        {
+            teacherLoad.Clear();
+            foreach (var ta in shared.TeacherAvailabilities)
+                teacherLoad[ta.TeacherId] = teacherLoad.GetValueOrDefault(ta.TeacherId, 0) + AwiCellsFor(ta.WeekType);
+            foreach (var b in dynamicTeacherBlocks)
+                teacherLoad[b.TeacherId] = teacherLoad.GetValueOrDefault(b.TeacherId, 0) + AwiCellsFor(b.WeekType);
+        }
+
+        int batchGroupTarget = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.BatchGroupTarget), out var t) && t > 0 ? t : 5;
         var batches = BuildBatches(plansToRun, batchGroupTarget);
 
         int totalPlaced = 0;
@@ -134,9 +177,11 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             var batchProgress = p == null ? null
                 : (IProgress<string>)new Progress<string>(s => p.Report($"{batchPrefix} | {s}"));
 
+            RecomputeTeacherLoad();
+
             var requirements = new List<SchedulerRequirement>();
             foreach (var plan in batch)
-                requirements.AddRange(BuildRequirementsForPlan(plan, shared, ref idx, ref parallelSeq));
+                requirements.AddRange(ScheduleRequirementBuilder.BuildRequirementsForPlan(plan, shared, ref idx, ref parallelSeq, teacherLoad));
 
             if (requirements.Count == 0)
             {
@@ -145,7 +190,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 continue;
             }
 
-            var input = BuildSchedulerInputForPlan(
+            var input = ScheduleBuildContext.BuildSchedulerInputForPlan(
                 schedule.Id, shared, requirements, roomBlocks, dynamicTeacherBlocks,
                 request.SolverTimeoutSeconds, weights);
 
@@ -156,7 +201,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 var labels = string.Join(", ", batch.Select(pl => pl.Name ?? pl.Id.ToString()[..8]));
                 perPlanMessages.Add($"Партия [{labels}]: НЕРАЗРЕШИМО: {output.Message}");
                 schedule.GenerationNotes = $"Партия {bi + 1} неразрешима. {string.Join(" | ", perPlanMessages)}";
-                await db.SaveChangesAsync(cancellationToken);
+                await db.SaveChangesAsync();
                 return new GenerateScheduleResult(false, "Infeasible",
                     $"Batch {bi + 1} ({labels}): {output.Message}", totalPlaced);
             }
@@ -185,9 +230,27 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             var parallelGuids = new Dictionary<int, Guid>();
             var newEntries = new List<ScheduleEntry>();
             var countByPlan = new Dictionary<Guid, int>();
+            int skippedDups = 0;
+            var skippedSamples = new List<string>();
             foreach (var assignment in output.Assignments)
             {
                 var req = input.Requirements[assignment.RequirementIndex];
+
+                int awi0 = assignment.WeekType != WeekType.Even ? 0 : -1;
+                int awi1 = assignment.WeekType != WeekType.Odd ? 1 : -1;
+                bool conflict =
+                    (awi0 >= 0 && occupiedTeacher.Contains((req.TeacherId, assignment.Day, assignment.PairNumber, awi0))) ||
+                    (awi1 >= 0 && occupiedTeacher.Contains((req.TeacherId, assignment.Day, assignment.PairNumber, awi1)));
+                if (conflict)
+                {
+                    skippedDups++;
+                    if (skippedSamples.Count < 5)
+                        skippedSamples.Add($"…{req.TeacherId.ToString()[..8]} @ {assignment.Day} пара {assignment.PairNumber} ({assignment.WeekType})");
+                    continue;
+                }
+                if (awi0 >= 0) occupiedTeacher.Add((req.TeacherId, assignment.Day, assignment.PairNumber, awi0));
+                if (awi1 >= 0) occupiedTeacher.Add((req.TeacherId, assignment.Day, assignment.PairNumber, awi1));
+
                 Guid? parallelGroupId = null;
                 if (req.ParallelKey is int pk)
                 {
@@ -223,13 +286,15 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 if (groupToPlanId.TryGetValue(firstGroup, out var pid))
                     countByPlan[pid] = countByPlan.GetValueOrDefault(pid) + 1;
             }
-            await db.SaveChangesAsync(cancellationToken);
+            await db.SaveChangesAsync();
             totalPlaced += newEntries.Count;
             foreach (var plan in batch)
             {
                 var cnt = countByPlan.GetValueOrDefault(plan.Id, 0);
                 perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: {cnt} занятий");
             }
+            if (skippedDups > 0)
+                perPlanMessages.Add($"⚠ Партия {bi + 1}: пропущено {skippedDups} конфликтующих назначений ({string.Join("; ", skippedSamples)})");
 
             foreach (var e in newEntries)
             {
@@ -241,7 +306,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
         schedule.GeneratedAt = DateTime.UtcNow;
         schedule.GenerationNotes = string.Join(" | ", perPlanMessages);
-        await db.SaveChangesAsync(cancellationToken);
+        await db.SaveChangesAsync();
 
         if (totalPlaced == 0)
         {
@@ -256,96 +321,112 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .Where(e => e.ScheduleId == request.ScheduleId)
             .ToListAsync(cancellationToken);
         schedule.BaseScore = ScheduleScoreCalculator.Compute(scoreEntries, shared.ScoreCtx);
-        await db.SaveChangesAsync(cancellationToken);
+        await db.SaveChangesAsync();
+
+        if (request.Polish)
+        {
+            await Polish(request, p, scoreEntries, shared, schedule, cancellationToken);
+        }
 
         return new GenerateScheduleResult(true, "Feasible",
             string.Join(" | ", perPlanMessages), totalPlaced);
     }
 
-    private record SharedData(
-        Schedule Schedule,
-        List<Room> Rooms,
-        List<Teacher> Teachers,
-        List<StudentGroup> Groups,
-        HashSet<Guid> GroupIds,
-        List<StudyPlan> StudyPlans,
-        List<TeacherSubject> TeacherSubjects,
-        Dictionary<Guid, Subject> SubjectsById,
-        Dictionary<Guid, Guid?> SubjectFacultyIds,
-        Dictionary<Guid, int> GroupSizes,
-        List<BuildingDistance> BuildingDistances,
-        List<FloorPlanNode> FloorPlanNodes,
-        List<FloorPlanEdge> FloorPlanEdges,
-        List<UniScheduler.Domain.Entities.TeacherAvailability> TeacherAvailabilities,
-        List<PairTimeSlot> PairSlots,
-        int PairsPerDay,
-        List<int> BreakMinutes,
-        List<SchedulerRoomDistance> RoomDistList,
-        IReadOnlyDictionary<Guid, int> EntryDistByRoom,
-        IReadOnlyDictionary<(Guid buildingId, int floor), int> ZoneEntryDistByZone,
-        List<SchedulerBuildingDistance> BldgDistList,
-        ScoreContext ScoreCtx);
-
-    private async Task<SharedData> LoadSharedDataAsync(Schedule schedule, SolverWeights weights, CancellationToken ct)
+    private async Task Polish(GenerateScheduleCommand request, IProgress<string>? p,
+        List<ScheduleEntry> scoreEntries, SharedData shared, Schedule schedule, CancellationToken cancellationToken = default)
     {
-        var rooms = await db.Rooms.Include(r => r.Building).Include(r => r.Department).Where(r => r.IsEnabled).ToListAsync(ct);
-        var distributedRoom = await EnsureDistributedRoomAsync(ct);
-        if (distributedRoom != null && rooms.All(r => r.Id != distributedRoom.Id))
-            rooms.Add(distributedRoom);
-        var teachers = await db.Teachers.ToListAsync(ct);
+        try
+        {
+            p?.Report("Полировка (LNS)...");
+            int budgetMin = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsBudgetMin), out var bm) && bm > 0 ? bm : 5;
+            int kickSec = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsKickSec), out var ks) && ks > 0 ? ks : 10;
+            int lahc = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsLahcHistory), out var lh) && lh > 0 ? lh : 20;
+            int destroyTarget = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsDestroyTarget), out var dt) && dt > 0 ? dt : 80;
+            int destroyMin = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsDestroyMin), out var dm) && dm > 0 ? dm : 20;
+            int spaceEvery = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsSpaceEvery), out var se) && se > 0 ? se : 3;
+            var opts = new LnsOptions(
+                TotalBudget: TimeSpan.FromMinutes(budgetMin),
+                KickTimeoutSeconds: kickSec,
+                MaxIterations: 2000,
+                Seed: 23456,
+                MinDestroySize: destroyMin,
+                TargetDestroySize: destroyTarget,
+                LahcHistory: lahc,
+                SpaceKickEvery: spaceEvery);
+            var result = await lns.OptimizeAsync(request.ScheduleId, scoreEntries, shared, opts, p, cancellationToken);
 
-        var groupsQuery = db.StudentGroups.Include(g => g.BlockedDays).AsQueryable();
-        if (schedule.FacultyId.HasValue && !schedule.AllowCrossFacultyLessons)
-            groupsQuery = groupsQuery.Where(g => g.FacultyId == schedule.FacultyId);
-        var groups = await groupsQuery.ToListAsync(ct);
-        var groupIds = groups.Select(g => g.Id).ToHashSet();
+            if (result.AfterBreakdown.Total < result.BeforeBreakdown.Total)
+            {
+                p?.Report($"LNS: применение результата ({result.BeforeBreakdown.Total} = {result.AfterBreakdown.Total})...");
+                await ReplaceAllEntriesAsync(request.ScheduleId, result.Entries);
+                schedule.BaseScore = result.AfterBreakdown.Total;
+                schedule.GenerationNotes = (schedule.GenerationNotes ?? "") +
+                                           $" | LNS: {result.BeforeBreakdown.Total} -> {result.AfterBreakdown.Total} ({result.AcceptedKicks}/{result.TotalKicks} kicks)";
+                await db.SaveChangesAsync();
+            }
+            else
+            {
+                p?.Report($"LNS: улучшений не найдено ({result.TotalKicks} kicks)");
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            schedule.GenerationNotes = (schedule.GenerationNotes ?? "") + $" | LNS error: {ex.Message}";
+            await db.SaveChangesAsync();
+        }
+    }
 
-        var studyPlans = await StudyPlanQ.BaseQuery(db)
-            .Where(sp => sp.AcademicYear == schedule.AcademicYear && sp.Term == schedule.Term)
-            .ToListAsync(ct);
+    // Whole-schedule swap used by the polish phase. We mirror the per-batch delete (cascade
+    // reschedule requests), then re-add fresh entries with new IDs and group rows.
+    private async Task ReplaceAllEntriesAsync(Guid scheduleId, IReadOnlyList<ScheduleEntry> newEntries)
+    {
+        var existing = await db.ScheduleEntries
+            .Where(e => e.ScheduleId == scheduleId)
+            .ToListAsync();
+        if (existing.Count > 0)
+        {
+            var oldIds = existing.Select(e => e.Id).ToList();
+            var relatedRequests = await db.RescheduleRequests
+                .Where(r => oldIds.Contains(r.OriginalEntryId))
+                .ToListAsync();
+            if (relatedRequests.Count > 0) db.RescheduleRequests.RemoveRange(relatedRequests);
+            db.ScheduleEntries.RemoveRange(existing);
+            await db.SaveChangesAsync();
+        }
 
-        var subjectIds = studyPlans.SelectMany(sp => sp.Entries.Select(e => e.SubjectId)).ToHashSet();
-        var teacherSubjects = await db.TeacherSubjects
-            .Where(ts => subjectIds.Contains(ts.SubjectId))
-            .ToListAsync(ct);
-        var subjectsWithDepts = await db.Subjects
-            .Include(s => s.Department)
-            .Where(s => subjectIds.Contains(s.Id))
-            .ToListAsync(ct);
-        var subjectFacultyIds = subjectsWithDepts.ToDictionary(s => s.Id, s => s.Department?.FacultyId);
-        var subjectsById = subjectsWithDepts.ToDictionary(s => s.Id);
-        var groupSizes = groups.ToDictionary(g => g.Id, g => g.StudentCount);
+        var occupied = new HashSet<(Guid, RussianDayOfWeek, int, int)>();
+        int skipped = 0;
+        foreach (var e in newEntries)
+        {
+            int awi0 = e.WeekType != WeekType.Even ? 0 : -1;
+            int awi1 = e.WeekType != WeekType.Odd ? 1 : -1;
+            bool conflict =
+                (awi0 >= 0 && occupied.Contains((e.TeacherId, e.DayOfWeek, e.PairNumber, awi0))) ||
+                (awi1 >= 0 && occupied.Contains((e.TeacherId, e.DayOfWeek, e.PairNumber, awi1)));
+            if (conflict) { skipped++; continue; }
+            if (awi0 >= 0) occupied.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, awi0));
+            if (awi1 >= 0) occupied.Add((e.TeacherId, e.DayOfWeek, e.PairNumber, awi1));
 
-        var distances = await db.BuildingDistances.ToListAsync(ct);
-        var floorPlanNodes = await db.FloorPlanNodes.ToListAsync(ct);
-        var floorPlanEdges = await db.FloorPlanEdges.ToListAsync(ct);
-        var teacherAvail = await db.TeacherAvailabilities.ToListAsync(ct);
-        var pairSlots = await db.PairTimeSlots.OrderBy(p => p.PairNumber).ToListAsync(ct);
-        int pairsPerDay = pairSlots.Count > 0 ? pairSlots.Max(p => p.PairNumber) : 6;
-        var breakMinutes = ScheduleScoreCalculator.ComputeBreakMinutes(pairSlots);
-
-        var roomDistMap = ScheduleScoreCalculator.ComputeRoomDistances(floorPlanNodes, floorPlanEdges, weights.StairFloorMeters);
-        var roomDistList = roomDistMap
-            .Select(kv => new SchedulerRoomDistance(kv.Key.Item1, kv.Key.Item2, kv.Value))
-            .ToList();
-
-        var entryDistByRoom = ScheduleScoreCalculator.ComputeRoomEntryDistances(
-            floorPlanNodes, floorPlanEdges, weights.StairFloorMeters);
-        var zoneEntryDist = ScheduleScoreCalculator.ComputeZoneEntryDistances(
-            floorPlanNodes, floorPlanEdges, weights.StairFloorMeters);
-
-        var bldDistMap = ScheduleScoreCalculator.ComputeAllPairsBuildingDistances(distances);
-        var bldDistList = bldDistMap
-            .Select(kv => new SchedulerBuildingDistance(kv.Key.Item1, kv.Key.Item2, kv.Value))
-            .ToList();
-
-        var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(
-            floorPlanNodes, floorPlanEdges, distances, rooms, pairSlots, subjectsWithDepts, weights);
-
-        return new SharedData(schedule, rooms, teachers, groups, groupIds, studyPlans, teacherSubjects,
-            subjectsById, subjectFacultyIds, groupSizes, distances, floorPlanNodes, floorPlanEdges,
-            teacherAvail, pairSlots, pairsPerDay, breakMinutes, roomDistList, entryDistByRoom,
-            zoneEntryDist, bldDistList, scoreCtx);
+            e.Id = Guid.Empty; // ensure EF treats it as a fresh insert
+            e.ScheduleId = scheduleId;
+            db.ScheduleEntries.Add(e);
+            foreach (var sg in e.StudentGroups)
+            {
+                sg.ScheduleEntry = e;
+                db.ScheduleEntryStudentGroups.Add(sg);
+            }
+        }
+        await db.SaveChangesAsync();
+        if (skipped > 0)
+        {
+            var sched = await db.Schedules.FirstOrDefaultAsync(s => s.Id == scheduleId);
+            if (sched != null)
+            {
+                sched.GenerationNotes = (sched.GenerationNotes ?? "") + $" | LNS dedup: пропущено {skipped} конфликтующих записей";
+                await db.SaveChangesAsync();
+            }
+        }
     }
 
     // Greedy bin-packing: walk plans in the caller-given order (priority order from the UI, or
@@ -377,245 +458,4 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         if (current.Count > 0) batches.Add(current);
         return batches;
     }
-
-    private static List<SchedulerRequirement> BuildRequirementsForPlan(
-        StudyPlan plan, SharedData shared, ref int idx, ref int parallelSeq)
-    {
-        var requirements = new List<SchedulerRequirement>();
-        int studyWeeks = StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan);
-        var planGroupIds = plan.Groups
-            .Select(g => g.StudentGroupId)
-            .Where(gid => shared.GroupIds.Contains(gid))
-            .ToList();
-        if (planGroupIds.Count == 0) return requirements;
-
-        foreach (var entry in plan.Entries)
-        {
-            shared.SubjectFacultyIds.TryGetValue(entry.SubjectId, out var subjFacultyId);
-            shared.SubjectsById.TryGetValue(entry.SubjectId, out var subj);
-
-            AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lecture,
-                entry.LectureHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: true, isLab: false, subjFacultyId);
-            AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Practical,
-                entry.PracticalHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, isLab: false, subjFacultyId);
-
-            if (subj is { AllowsSubgroups: true } &&
-                AddSubgroupLabRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
-                    entry.LabHours, studyWeeks, planGroupIds, shared.TeacherSubjects,
-                    subj.SubgroupCount, shared.GroupSizes, subjFacultyId))
-            {
-                // emitted as subgroups
-            }
-            else
-            {
-                AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lab,
-                    entry.LabHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, isLab: true, subjFacultyId);
-            }
-
-            AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Seminar,
-                entry.SeminarHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, isLab: false, subjFacultyId);
-
-            AddLanguageRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
-                entry.LanguageHours, studyWeeks, planGroupIds, shared.TeacherSubjects, subjFacultyId);
-        }
-
-        return requirements;
-    }
-
-    private static SchedulerInput BuildSchedulerInputForPlan(
-        Guid scheduleId, SharedData shared, List<SchedulerRequirement> requirements,
-        IReadOnlyList<SchedulerRoomBlock> roomBlocks, IReadOnlyList<SchedulerBlock> extraTeacherBlocks,
-        int timeoutSeconds, SolverWeights weights)
-    {
-        var requirementGroupIds = requirements.SelectMany(r => r.GroupIds).ToHashSet();
-        var relevantGroups = shared.Groups.Where(g => requirementGroupIds.Contains(g.Id)).ToList();
-
-        var requirementTeacherIds = requirements.Select(r => r.TeacherId).ToHashSet();
-        foreach (var b in extraTeacherBlocks) requirementTeacherIds.Add(b.TeacherId);
-        var relevantTeachers = shared.Teachers.Where(t => requirementTeacherIds.Contains(t.Id)).ToList();
-
-        var teacherBlocks = shared.TeacherAvailabilities
-            .Where(ta => requirementTeacherIds.Contains(ta.TeacherId))
-            .Select(b => new SchedulerBlock(b.TeacherId, b.DayOfWeek, b.PairNumber, b.WeekType))
-            .Concat(extraTeacherBlocks)
-            .ToList();
-
-        var zoneEntryList = shared.ZoneEntryDistByZone
-            .Select(kv => new SchedulerZoneEntryDistance(kv.Key.buildingId, kv.Key.floor, kv.Value))
-            .ToList();
-
-        return new SchedulerInput(
-            scheduleId,
-            shared.Rooms.Select(r => new SchedulerRoom(r.Id, r.BuildingId, r.RoomType, r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
-                r.Floor, r.AllowedLessonTypes, r.Department?.FacultyId, r.IsDistributed,
-                EntryDistanceMeters: shared.EntryDistByRoom.TryGetValue(r.Id, out var ed) ? ed : 0)).ToList(),
-            relevantTeachers.Select(t => new SchedulerTeacher(t.Id)).ToList(),
-            relevantGroups.Select(g => new SchedulerGroup(g.Id, g.StudentCount,
-                g.BlockedDays.Select(bd => (int)bd.DayOfWeek - 1).ToList())).ToList(),
-            requirements,
-            shared.BldgDistList,
-            teacherBlocks,
-            PairsPerDay: shared.PairsPerDay,
-            BreakMinutesBetweenPairs: shared.BreakMinutes,
-            SolverTimeoutSeconds: timeoutSeconds,
-            RoomDistances: shared.RoomDistList,
-            Weights: weights,
-            ZoneEntryDistances: zoneEntryList,
-            RoomBlocks: roomBlocks
-        );
-    }
-
-    // Creates requirements for one lesson type based on total semester hours
-    private static void AddRequirements(
-        List<SchedulerRequirement> requirements, ref int idx,
-        Guid subjectId, LessonType lt, double totalHours, int studyWeeks,
-        List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
-        bool merged, bool isLab, Guid? subjectFacultyId = null)
-    {
-        if (totalHours <= 0) return;
-        var teachers = teacherSubjects
-            .Where(ts => ts.SubjectId == subjectId && ts.LessonType == lt)
-            .Select(ts => ts.TeacherId).ToList();
-        if (teachers.Count == 0) return;
-
-        foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
-        {
-            if (merged)
-            {
-                // Lectures: groups split across available teachers
-                var chunks = SplitRoundRobin(planGroupIds, teachers.Count);
-                for (int i = 0; i < teachers.Count; i++)
-                {
-                    if (chunks[i].Count == 0) continue;
-                    requirements.Add(new SchedulerRequirement(idx++, chunks[i], subjectId, lt, teachers[i], wt, false, lt == LessonType.Lecture, false, isLab, subjectFacultyId));
-                }
-            }
-            else
-            {
-                // Per-group: each group assigned round-robin to a teacher
-                for (int gi = 0; gi < planGroupIds.Count; gi++)
-                {
-                    var teacherId = teachers[gi % teachers.Count];
-                    requirements.Add(new SchedulerRequirement(idx++, [planGroupIds[gi]], subjectId, lt, teacherId, wt, false, false, false, isLab, subjectFacultyId));
-                }
-            }
-        }
-    }
-
-    // Converts total semester hours to a list of WeekType occurrences per week
-    private static List<WeekType> HoursToWeekTypes(double totalHours, int studyWeeks)
-    {
-        if (studyWeeks <= 0 || totalHours <= 0) return [];
-        double pairsPerWeek = totalHours / 2.0 / studyWeeks;
-        var result = new List<WeekType>();
-        int whole = (int)pairsPerWeek;
-        for (int i = 0; i < whole; i++) result.Add(WeekType.Both);
-        double frac = pairsPerWeek - whole;
-        if (frac >= 0.25) result.Add(WeekType.Odd);
-        return result;
-    }
-
-    private static List<List<Guid>> SplitRoundRobin(List<Guid> items, int buckets)
-    {
-        var result = Enumerable.Range(0, buckets).Select(_ => new List<Guid>()).ToList();
-        for (int i = 0; i < items.Count; i++)
-            result[i % buckets].Add(items[i]);
-        return result;
-    }
-
-    // Emits parallel language streams (one requirement per language teacher) for each group.
-    // All streams of a group share a ParallelKey, are co-scheduled, and use the distributed room.
-    private static void AddLanguageRequirements(
-        List<SchedulerRequirement> requirements, ref int idx, ref int parallelSeq,
-        Guid subjectId, double totalHours, int studyWeeks,
-        List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects, Guid? subjectFacultyId)
-    {
-        if (totalHours <= 0) return;
-        var teachers = teacherSubjects
-            .Where(ts => ts.SubjectId == subjectId && ts.LessonType == LessonType.Language)
-            .Select(ts => ts.TeacherId).Distinct().ToList();
-        if (teachers.Count == 0) return;
-
-        foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
-        {
-            foreach (var gId in planGroupIds)
-            {
-                int pkey = parallelSeq++;
-                for (int i = 0; i < teachers.Count; i++)
-                {
-                    requirements.Add(new SchedulerRequirement(
-                        idx++, new[] { gId }, subjectId, LessonType.Language, teachers[i], wt,
-                        IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: false,
-                        SubjectFacultyId: subjectFacultyId,
-                        ParallelKey: pkey,
-                        SubgroupLabel: $"Поток {i + 1}",
-                        HeadcountOverride: null,
-                        RequiresDistributedRoom: true));
-                }
-            }
-        }
-    }
-
-    // Emits a lab as parallel subgroups, each its own teacher and (real) room, seating a fraction of
-    // the group. Returns false when the split is impossible (needs ≥2 distinct lab teachers).
-    private static bool AddSubgroupLabRequirements(
-        List<SchedulerRequirement> requirements, ref int idx, ref int parallelSeq,
-        Guid subjectId, double totalHours, int studyWeeks,
-        List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
-        int subgroupCount, Dictionary<Guid, int> groupSizes, Guid? subjectFacultyId)
-    {
-        if (totalHours <= 0) return false;
-        var teachers = teacherSubjects
-            .Where(ts => ts.SubjectId == subjectId && ts.LessonType == LessonType.Lab)
-            .Select(ts => ts.TeacherId).Distinct().ToList();
-        int n = Math.Min(Math.Max(2, subgroupCount), teachers.Count);
-        if (n < 2) return false;
-
-        foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
-        {
-            foreach (var gId in planGroupIds)
-            {
-                int pkey = parallelSeq++;
-                int total = groupSizes.TryGetValue(gId, out var sz) ? sz : 0;
-                int per = total > 0 ? (int)Math.Ceiling(total / (double)n) : 0;
-                for (int s = 0; s < n; s++)
-                {
-                    requirements.Add(new SchedulerRequirement(
-                        idx++, new[] { gId }, subjectId, LessonType.Lab, teachers[s], wt,
-                        IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: true,
-                        SubjectFacultyId: subjectFacultyId,
-                        ParallelKey: pkey,
-                        SubgroupLabel: $"Подгр. {s + 1}",
-                        HeadcountOverride: per > 0 ? per : (int?)null,
-                        RequiresDistributedRoom: false));
-                }
-            }
-        }
-        return true;
-    }
-
-    // Gets or creates the per-university distributed sentinel room (placeholder for classes with no
-    // fixed location). Buildings are already scoped to the current university by the query filter.
-    private async Task<Room?> EnsureDistributedRoomAsync(CancellationToken ct)
-    {
-        var buildingIds = await db.Buildings.Select(b => b.Id).ToListAsync(ct);
-        if (buildingIds.Count == 0) return null;
-
-        var existing = await db.Rooms.FirstOrDefaultAsync(r => r.IsDistributed && buildingIds.Contains(r.BuildingId), ct);
-        if (existing != null) return existing;
-
-        var room = new Room
-        {
-            BuildingId = buildingIds[0],
-            Number = "— по подгруппам —",
-            RoomType = RoomType.RegularCabinet,
-            Capacity = 0,
-            IsDistributed = true,
-            IsEnabled = true
-        };
-        db.Rooms.Add(room);
-        await db.SaveChangesAsync(ct);
-        return room;
-    }
-
 }

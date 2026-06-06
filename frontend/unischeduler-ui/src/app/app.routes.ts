@@ -94,6 +94,10 @@ export const routes: Routes = [
       {
         path: 'floor-plan',
         loadComponent: () => import('./features/admin/floor-plan-editor/floor-plan-editor.component').then(m => m.FloorPlanEditorComponent)
+      },
+      {
+        path: 'schedule-viewer',
+        loadComponent: () => import('./features/admin/schedule-viewer/schedule-viewer.component').then(m => m.ScheduleViewerComponent)
       }
     ]
   },

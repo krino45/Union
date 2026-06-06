@@ -70,7 +70,7 @@ internal static class BackfillEngine
         var planChanges = new List<StudyPlanBackfillChange>();
         var planApply = new List<(StudyPlan Plan, List<StudyPlanHourChangeDto> Changes)>();
 
-        //  Rooms — observed lesson types per room
+        //  Rooms - observed lesson types per room
         if (targets.Rooms)
         {
             var usedByRoom = entries
@@ -97,7 +97,7 @@ internal static class BackfillEngine
             }
         }
 
-        //  Teachers — observed (subject, lesson type) pairs
+        //  Teachers - observed (subject, lesson type) pairs
         if (targets.Teachers)
         {
             var usedByTeacher = entries
@@ -144,7 +144,7 @@ internal static class BackfillEngine
                 int weeks = StudyPlanQ.StudyWeeksFromPlan(sp.CalendarPlan);
 
                 // Hours are per-student, so we measure each group separately and take the fullest
-                // group as the plan figure — never the sum across groups (labs/practicals are taught
+                // group as the plan figure - never the sum across groups (labs/practicals are taught
                 // group-by-group, which would multiply the curriculum hours by the group count).
                 var computed = new Dictionary<(Guid Subj, LessonType Lt), double>();
                 foreach (var g in sp.Groups)
@@ -155,7 +155,7 @@ internal static class BackfillEngine
                         .ToDictionary(
                             grp => grp.Key,
                             // Distinct weekly slots: parallel siblings / subgroups share a slot and
-                            // collapse here. Both = 1 pair/week, Odd|Even = 0.5 — the plan-progress metric.
+                            // collapse here. Both = 1 pair/week, Odd|Even = 0.5 - the plan-progress metric.
                             grp => grp.Select(e => (e.DayOfWeek, e.PairNumber, e.WeekType)).Distinct()
                                       .Sum(s => s.WeekType == WeekType.Both ? 1.0 : 0.5));
                     foreach (var kv in perGroup)
@@ -221,33 +221,36 @@ internal static class BackfillEngine
 
     private static (string Field, string Label) FieldFor(LessonType lt) => lt switch
     {
-        LessonType.Lecture   => ("LectureHours",   "Лекции"),
-        LessonType.Practical => ("PracticalHours", "Практики"),
-        LessonType.Lab       => ("LabHours",       "Лабораторные"),
-        LessonType.Seminar   => ("SeminarHours",   "Семинары"),
-        LessonType.Language  => ("LanguageHours",  "Язык"),
-        _                    => ("", "")
+        LessonType.Lecture           => ("LectureHours",           "Лекции"),
+        LessonType.Practical         => ("PracticalHours",         "Практики"),
+        LessonType.Lab               => ("LabHours",               "Лабораторные"),
+        LessonType.Seminar           => ("SeminarHours",           "Семинары"),
+        LessonType.Language          => ("LanguageHours",          "Язык"),
+        LessonType.PhysicalEducation => ("PhysicalEducationHours", "Физкультура"),
+        _                            => ("", "")
     };
 
     private static double GetField(StudyPlanEntry e, LessonType lt) => lt switch
     {
-        LessonType.Lecture   => e.LectureHours,
-        LessonType.Practical => e.PracticalHours,
-        LessonType.Lab       => e.LabHours,
-        LessonType.Seminar   => e.SeminarHours,
-        LessonType.Language  => e.LanguageHours,
-        _                    => 0
+        LessonType.Lecture           => e.LectureHours,
+        LessonType.Practical         => e.PracticalHours,
+        LessonType.Lab               => e.LabHours,
+        LessonType.Seminar           => e.SeminarHours,
+        LessonType.Language          => e.LanguageHours,
+        LessonType.PhysicalEducation => e.PhysicalEducationHours,
+        _                            => 0
     };
 
     private static void SetField(StudyPlanEntry e, string field, double value)
     {
         switch (field)
         {
-            case "LectureHours":   e.LectureHours   = value; break;
-            case "PracticalHours": e.PracticalHours = value; break;
-            case "LabHours":       e.LabHours       = value; break;
-            case "SeminarHours":   e.SeminarHours   = value; break;
-            case "LanguageHours":  e.LanguageHours  = value; break;
+            case "LectureHours":           e.LectureHours           = value; break;
+            case "PracticalHours":         e.PracticalHours         = value; break;
+            case "LabHours":               e.LabHours               = value; break;
+            case "SeminarHours":           e.SeminarHours           = value; break;
+            case "LanguageHours":          e.LanguageHours          = value; break;
+            case "PhysicalEducationHours": e.PhysicalEducationHours = value; break;
         }
     }
 }

@@ -8,7 +8,7 @@ public class Invitation : Entity
     public string Email { get; set; } = string.Empty;
     public Guid UniversityId { get; set; }
     public UniversityRole UniversityRole { get; set; }
-    // "Admin" | "Teacher" — system role granted on registration
+    // "Admin" | "Teacher" - system role granted on registration
     public string SystemRole { get; set; } = "Teacher";
     // Optional: when set, registration links AppUser.TeacherId to this teacher,
     // and only the AppUser already linked to this teacher may accept the invitation while logged in.

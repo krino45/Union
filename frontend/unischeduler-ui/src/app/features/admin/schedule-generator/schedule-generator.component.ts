@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, Inject, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, Inject, ViewChild, ElementRef, Directive } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -20,10 +20,39 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { Subscription, timer, of, EMPTY, forkJoin, Observable } from 'rxjs';
 import { exhaustMap, takeWhile, catchError, filter, map, startWith } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
-import { Schedule, GenerationJobStatus, Faculty, SolverWeights, StudyPlan } from '../../../core/models';
+import { Schedule, GenerationJobStatus, StageLogItem, Faculty, SolverWeights, StudyPlan } from '../../../core/models';
 import { ScheduleStatus, Term } from '../../../core/models/enums';
 
 const CURRENT_YEAR = new Date().getFullYear();
+
+@Directive({ selector: '[appStickToBottom]', standalone: true })
+export class StickToBottomDirective implements OnInit, OnDestroy {
+  private atBottom = true;
+  private observer?: MutationObserver;
+  private readonly threshold = 40;
+
+  constructor(private el: ElementRef<HTMLElement>) {}
+
+  ngOnInit(): void {
+    const node = this.el.nativeElement;
+    node.addEventListener('scroll', this.onScroll, { passive: true });
+    this.observer = new MutationObserver(() => {
+      if (this.atBottom) node.scrollTop = node.scrollHeight;
+    });
+    this.observer.observe(node, { childList: true, subtree: true });
+    queueMicrotask(() => { node.scrollTop = node.scrollHeight; }); // open pinned to newest
+  }
+
+  private onScroll = (): void => {
+    const n = this.el.nativeElement;
+    this.atBottom = n.scrollHeight - n.scrollTop - n.clientHeight <= this.threshold;
+  };
+
+  ngOnDestroy(): void {
+    this.el.nativeElement.removeEventListener('scroll', this.onScroll);
+    this.observer?.disconnect();
+  }
+}
 
 @Component({
   selector: 'app-schedule-generator',
@@ -33,7 +62,7 @@ const CURRENT_YEAR = new Date().getFullYear();
     MatButtonModule, MatIconModule, MatCardModule, MatSlideToggleModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatProgressBarModule, MatChipsModule, MatTooltipModule, MatSnackBarModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule, StickToBottomDirective
   ],
   template: `
     <div class="page-header">
@@ -87,6 +116,18 @@ const CURRENT_YEAR = new Date().getFullYear();
                     (click)="cancelGeneration(s)">
               <mat-icon>stop</mat-icon> {{ cancelling[s.id] ? 'Отмена...' : 'Отменить' }}
             </button>
+            <button mat-icon-button class="gen-log-toggle"
+                    *ngIf="(generationLog[s.id]?.length || 0) > 0"
+                    (click)="showLog[s.id] = !showLog[s.id]"
+                    [matTooltip]="'Журнал (' + generationLog[s.id].length + ')'">
+              <mat-icon>{{ showLog[s.id] ? 'expand_less' : 'history' }}</mat-icon>
+            </button>
+          </div>
+          <div class="gen-log" appStickToBottom *ngIf="showLog[s.id] && (generationLog[s.id]?.length || 0) > 0">
+            <div class="gen-log-line" *ngFor="let it of generationLog[s.id]">
+              <span class="gen-log-time">{{ it.at | date:'HH:mm:ss' }}</span>
+              <span class="gen-log-msg">{{ it.message }}</span>
+            </div>
           </div>
         </div>
       </mat-card-content>
@@ -142,6 +183,11 @@ const CURRENT_YEAR = new Date().getFullYear();
     .gen-completed { color: #388e3c; }
     .gen-failed { color: #d32f2f; }
     .gen-queued, .gen-running { color: #1976d2; }
+    .gen-log { margin-top: 6px; max-height: 220px; overflow-y: auto; background: #fafafa;
+               border: 1px solid #eee; border-radius: 4px; padding: 6px 8px; }
+    .gen-log-line { display: flex; gap: 8px; font-size: 12px; line-height: 1.5; font-family: monospace; }
+    .gen-log-time { color: #999; flex: 0 0 auto; }
+    .gen-log-msg { color: #333; white-space: pre-wrap; word-break: break-word; }
     .status-draft { background: #fff3e0; color: #e65100; }
     .status-published { background: #e8f5e9; color: #1b5e20; }
     .status-archived { background: #f3e5f5; color: #4a148c; }
@@ -164,6 +210,11 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   cancelling: Record<string, boolean> = {};
   loading = true;
   showArchived = false;
+  // Full run log accumulated from poll deltas (the backend buffer only bridges poll gaps), the last
+  // seq we've consumed, and whether the log dropdown is open — all keyed by schedule id.
+  generationLog: Record<string, StageLogItem[]> = {};
+  showLog: Record<string, boolean> = {};
+  private lastSeq: Record<string, number> = {};
   private pollingSubscriptions: Record<string, Subscription> = {};
 
   get visibleSchedules(): Schedule[] {
@@ -204,6 +255,7 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
         next: status => {
           if (status.status === 'queued' || status.status === 'running') {
             this.generationStatus[s.id] = status;
+            this.resetLog(s.id);
             this.startPolling(s.id);
           }
         },
@@ -238,14 +290,15 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   triggerGeneration(schedule: Schedule): void {
     const ref = this.dialog.open(SolverSettingsDialogComponent, {
       width: '560px',
-      data: { academicYear: schedule.academicYear, term: schedule.term }
+      data: { academicYear: schedule.academicYear, term: schedule.term, scheduleId: schedule.id }
     });
-    ref.afterClosed().subscribe((result: { timeoutSeconds: number; planIds: string[] | null } | null) => {
+    ref.afterClosed().subscribe((result: { timeoutSeconds: number; planIds: string[] | null; polish: boolean } | null) => {
       if (!result) return;
-      const { timeoutSeconds, planIds } = result;
-      this.api.generateSchedule(schedule.id, { timeoutSeconds, planIds }).subscribe({
+      const { timeoutSeconds, planIds, polish } = result;
+      this.api.generateSchedule(schedule.id, { timeoutSeconds, planIds, polish }).subscribe({
         next: () => {
           this.generationStatus[schedule.id] = { scheduleId: schedule.id, status: 'queued', entriesCreated: 0 };
+          this.resetLog(schedule.id); // fresh run — drop any prior log
           this.startPolling(schedule.id);
         },
         error: (e) => {
@@ -257,6 +310,7 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
           if (e.status === 409) {
             this.api.getGenerationStatus(schedule.id).subscribe(s => {
               this.generationStatus[schedule.id] = s;
+              this.resetLog(schedule.id);
               this.startPolling(schedule.id);
             });
           }
@@ -265,16 +319,25 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
     });
   }
 
+  private resetLog(scheduleId: string): void {
+    this.generationLog[scheduleId] = [];
+    this.lastSeq[scheduleId] = 0;
+    this.showLog[scheduleId] = false;
+  }
+
   private startPolling(scheduleId: string): void {
     this.pollingSubscriptions[scheduleId]?.unsubscribe();
+    this.generationLog[scheduleId] ??= [];
     this.pollingSubscriptions[scheduleId] = timer(0, 2500).pipe(
-      exhaustMap(() => this.api.getGenerationStatus(scheduleId).pipe(
+      exhaustMap(() => this.api.getGenerationStatus(scheduleId, this.lastSeq[scheduleId] ?? 0).pipe(
         catchError(() => EMPTY)
       )),
       filter(s => s.status !== 'not_found'),
       takeWhile(s => s.status === 'queued' || s.status === 'running', true)
     ).subscribe({
       next: status => {
+        if (status.log?.length) (this.generationLog[scheduleId] ??= []).push(...status.log);
+        if (typeof status.latestSeq === 'number') this.lastSeq[scheduleId] = status.latestSeq;
         this.generationStatus[scheduleId] = status;
         if (status.status === 'completed') {
           this.cancelling[scheduleId] = false;
@@ -477,7 +540,7 @@ export class CreateScheduleDialogComponent {
     CommonModule, ReactiveFormsModule,
     MatButtonModule, MatFormFieldModule, MatInputModule, MatDialogModule,
     MatProgressSpinnerModule, MatSelectModule, MatChipsModule,
-    MatAutocompleteModule, MatIconModule
+    MatCheckboxModule, MatAutocompleteModule, MatIconModule
   ],
   template: `
     <h2 mat-dialog-title>Параметры генерации</h2>
@@ -487,8 +550,6 @@ export class CreateScheduleDialogComponent {
 
         <section class="block">
           <h3 class="block-title">Запуск</h3>
-          <p class="block-desc">Каждый план решается отдельно: уже сохранённые планы блокируют свои аудитории. Порядок выбора = порядок генерации.</p>
-
           <mat-form-field appearance="outline" class="full-width" *ngIf="studyPlans.length > 0">
             <mat-label>Учебные планы</mat-label>
             <mat-chip-grid #chipGrid aria-label="Выбранные планы">
@@ -519,9 +580,9 @@ export class CreateScheduleDialogComponent {
 
           <div class="row">
             <mat-form-field appearance="outline" class="flex1">
-              <mat-label>Таймаут на план, сек</mat-label>
+              <mat-label>Таймаут решателя, сек</mat-label>
               <input matInput type="number" formControlName="timeoutSeconds" min="10" max="3600">
-              <mat-hint>Применяется к каждому плану отдельно (10–3600).</mat-hint>
+              <mat-hint>Общий таймаут на весь прогон (10–3600). Для 100+ групп ставьте 600+.</mat-hint>
             </mat-form-field>
             <button mat-stroked-button type="button" class="select-all-btn"
                     *ngIf="studyPlans.length > 0"
@@ -534,6 +595,14 @@ export class CreateScheduleDialogComponent {
                     (click)="clearPlans()">
               Очистить
             </button>
+          </div>
+          <div class="row polish-row">
+            <mat-checkbox formControlName="polish">
+              Полировка (LNS) после генерации
+            </mat-checkbox>
+            <span class="polish-hint">
+              Добавляет фазу оптимизации: до 5 минут попыток улучшить оценку перестановкой занятий. Применяется к итогу.
+            </span>
           </div>
         </section>
 
@@ -557,12 +626,31 @@ export class CreateScheduleDialogComponent {
         </section>
 
         <section class="block">
-          <h3 class="block-title">Сверхнормативная нагрузка</h3>
-          <p class="block-desc">Штраф СанПиН за каждую пару сверх четырёх в день (S5).</p>
+          <h3 class="block-title">Сверхнормативная нагрузка (S5)</h3>
+          <p class="block-desc">Штраф СанПиН за каждую пару сверх четырёх в день.</p>
           <div class="row">
             <mat-form-field appearance="outline" class="flex1">
               <mat-label>Штраф за пару &gt; 4 в день</mat-label>
               <input matInput type="number" formControlName="sanPinOverload" min="0">
+            </mat-form-field>
+          </div>
+        </section>
+
+        <section class="block">
+          <h3 class="block-title">Физкультура (СанПиН)</h3>
+          <p class="block-desc">Предел пар в день, штраф если физкультура не последней парой, и поощрение ставить две пары подряд (когда предел ≥ 2). Пятая пара физкультуры не считается перегрузом.</p>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Макс. в день</mat-label>
+              <input matInput type="number" formControlName="maxPePerDay" min="1" max="4">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Штраф «не последняя»</mat-label>
+              <input matInput type="number" formControlName="peNotLastPenalty" min="0">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Поощрение за пары подряд</mat-label>
+              <input matInput type="number" formControlName="peConsecutiveReward" min="0">
             </mat-form-field>
           </div>
         </section>
@@ -659,20 +747,25 @@ export class CreateScheduleDialogComponent {
     </mat-dialog-actions>
   `,
   styles: [`
-    .settings-form { display: flex; flex-direction: column; padding-top: 4px; min-width: 480px; }
-    .block { margin-bottom: 14px; }
-    .block-title { margin: 4px 0 2px; font-size: 13px; font-weight: 600; color: #2d2d2d; }
-    .block-desc { margin: 0 0 10px; font-size: 12px; color: #666; line-height: 1.4; }
-    .row { display: flex; gap: 8px; align-items: flex-start; }
+    .settings-form { display: flex; flex-direction: column; padding-top: 4px; min-width: 500px; }
+    .block { padding: 12px 0; border-top: 1px solid #ececec; }
+    .block:first-child { padding-top: 0; border-top: none; }
+    .block-title { margin: 0 0 3px; font-size: 13px; font-weight: 600; color: #2d2d2d; }
+    .block-desc { margin: 0 0 8px; font-size: 12px; color: #777; line-height: 1.4; }
+    .row { display: flex; gap: 10px; align-items: flex-start; }
+    .row + .row { margin-top: 4px; }
     .flex1 { flex: 1; min-width: 0; }
     .full-width { width: 100%; }
     .plan-meta { color: #888; font-size: 12px; margin-left: 4px; }
     .chip-order { font-weight: 600; color: #1976d2; margin-right: 4px; }
     .select-all-btn, .clear-btn { height: 40px; align-self: flex-start; margin-top: 6px; font-size: 12px; }
+    .polish-row { align-items: center; gap: 10px; margin-top: 2px; flex-wrap: wrap; }
+    .polish-hint { font-size: 12px; color: #777; flex: 1 1 100%; }
     .spinner-wrap { display: flex; justify-content: center; padding: 32px; }
-    /* Let multi-line hints push the field taller instead of overlapping the row below. */
-    ::ng-deep .settings-form .mat-mdc-form-field-subscript-wrapper,
-    ::ng-deep .settings-form .mat-mdc-form-field-hint-wrapper { position: static; }
+    ::ng-deep .settings-form .mat-mdc-form-field-subscript-wrapper { position: static; padding: 0; }
+    ::ng-deep .settings-form .mat-mdc-form-field-bottom-align::before { content: none; }
+    ::ng-deep .settings-form .mat-mdc-form-field-hint-wrapper { position: static; padding: 2px 4px 0; }
+    ::ng-deep .settings-form mat-hint { font-size: 11px; line-height: 1.35; color: #888; }
   `]
 })
 export class SolverSettingsDialogComponent implements OnInit {
@@ -686,7 +779,7 @@ export class SolverSettingsDialogComponent implements OnInit {
 
   constructor(
     private dialogRef: MatDialogRef<SolverSettingsDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) private data: { academicYear: number; term: string },
+    @Inject(MAT_DIALOG_DATA) private data: { academicYear: number; term: string; scheduleId: string },
     private api: ApiService,
     private fb: FormBuilder
   ) {}
@@ -694,15 +787,33 @@ export class SolverSettingsDialogComponent implements OnInit {
   ngOnInit(): void {
     forkJoin({
       weights: this.api.getSolverSettings().pipe(catchError(() => of(null))),
-      plans: this.api.getStudyPlans(this.data?.academicYear, this.data?.term).pipe(catchError(() => of([] as StudyPlan[])))
-    }).subscribe(({ weights, plans }) => {
-      this.studyPlans = plans;
+      plans: this.api.getStudyPlans(this.data?.academicYear, this.data?.term).pipe(catchError(() => of([] as StudyPlan[]))),
+      entries: this.data?.scheduleId
+        ? this.api.getScheduleEntries(this.data.scheduleId).pipe(catchError(() => of([] as any[])))
+        : of([] as any[])
+    }).subscribe(({ weights, plans, entries }) => {
+      this.studyPlans = this.sortUnplacedFirst(plans, entries);
       this.form = weights ? this.buildForm(weights) : this.buildDefaultForm();
       this.filteredPlans = this.planSearch.valueChanges.pipe(
         startWith(''),
         map(v => this.filterPlans(typeof v === 'string' ? v : ''))
       );
       this.loading = false;
+    });
+  }
+
+  // Unplaced plans (no entries yet in this schedule)
+  private sortUnplacedFirst(plans: StudyPlan[], entries: any[]): StudyPlan[] {
+    const placedGroupIds = new Set<string>();
+    for (const e of entries)
+      for (const g of (e.studentGroups || []))
+        placedGroupIds.add(g.id);
+    const isPlaced = (sp: StudyPlan) =>
+      sp.groups.some(g => placedGroupIds.has(g.studentGroupId));
+    return [...plans].sort((a, b) => {
+      const ap = isPlaced(a) ? 1 : 0;
+      const bp = isPlaced(b) ? 1 : 0;
+      return ap - bp;
     });
   }
 
@@ -745,12 +856,12 @@ export class SolverSettingsDialogComponent implements OnInit {
   saveAndRun(): void {
     if (this.form.invalid) return;
     this.loading = true;
-    const { timeoutSeconds, ...weights } = this.form.value;
+    const { timeoutSeconds, polish, ...weights } = this.form.value;
     const planIdsToReturn: string[] | null = this.selectedPlans.length > 0
       ? this.selectedPlans.map(p => p.id)
       : null;
     this.api.updateSolverSettings(weights).subscribe({
-      next: () => this.dialogRef.close({ timeoutSeconds, planIds: planIdsToReturn }),
+      next: () => this.dialogRef.close({ timeoutSeconds, planIds: planIdsToReturn, polish: !!polish }),
       error: () => { this.loading = false; }
     });
   }
@@ -758,6 +869,7 @@ export class SolverSettingsDialogComponent implements OnInit {
   private buildForm(w: SolverWeights): FormGroup {
     return this.fb.group({
       timeoutSeconds:           [120, [Validators.required, Validators.min(10), Validators.max(3600)]],
+      polish:                   [false],
       studentWindow:            [w.studentWindow,            [Validators.required, Validators.min(0)]],
       teacherWindow:            [w.teacherWindow,            [Validators.required, Validators.min(0)]],
       activeDay:                [w.activeDay,                [Validators.required, Validators.min(0)]],
@@ -774,17 +886,21 @@ export class SolverSettingsDialogComponent implements OnInit {
       departmentMismatchPenalty:[w.departmentMismatchPenalty,[Validators.required, Validators.min(0)]],
       walkingPenaltyMax:        [w.walkingPenaltyMax,        [Validators.required, Validators.min(1)]],
       stairFloorMeters:         [w.stairFloorMeters ?? 20,   [Validators.required, Validators.min(0)]],
+      maxPePerDay:              [w.maxPePerDay ?? 1,         [Validators.required, Validators.min(1), Validators.max(4)]],
+      peNotLastPenalty:         [w.peNotLastPenalty ?? 40,   [Validators.required, Validators.min(0)]],
+      peConsecutiveReward:      [w.peConsecutiveReward ?? 30,[Validators.required, Validators.min(0)]],
     });
   }
 
   private buildDefaultForm(): FormGroup {
     return this.fb.group({
       timeoutSeconds: [120, [Validators.required, Validators.min(10), Validators.max(3600)]],
+      polish: [false],
       studentWindow: [100], teacherWindow: [80], activeDay: [60], sanPinOverload: [300],
       consecLecture: [70], consecSeminar: [40], consecPractical: [30], consecLab: [10],
       earlyPair: [15], middlePair: [0], latePair: [25], consecRunScalar: [3],
       saturdayPenalty: [30], departmentMismatchPenalty: [50], walkingPenaltyMax: [120],
-      stairFloorMeters: [20],
+      stairFloorMeters: [20], maxPePerDay: [1], peNotLastPenalty: [40], peConsecutiveReward: [30],
     });
   }
 }

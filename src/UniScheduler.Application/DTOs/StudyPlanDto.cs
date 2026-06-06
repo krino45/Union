@@ -27,7 +27,8 @@ public record StudyPlanEntryDto(
     double LabHours,
     double SeminarHours,
     double ThesisHours,
-    double LanguageHours = 0
+    double LanguageHours = 0,
+    double PhysicalEducationHours = 0
 );
 
 public record CalendarPlanDto(
@@ -64,7 +65,8 @@ public record UpsertStudyPlanEntryDto(
     double LabHours,
     double SeminarHours,
     double ThesisHours,
-    double LanguageHours = 0
+    double LanguageHours = 0,
+    double PhysicalEducationHours = 0
 );
 
 public record UpsertCalendarPlanDto(

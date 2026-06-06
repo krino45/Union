@@ -36,7 +36,7 @@ if (args.Length >= 2 && args[0].Equals("merge", StringComparison.OrdinalIgnoreCa
 
     Console.WriteLine($"Loaded {entries.Count} entries from {mergeIn}.");
 
-    // Key: (building, room, dayOfWeek, pairNumber, weekType) — the unique constraint the DB enforces.
+    // Key: (building, room, dayOfWeek, pairNumber, weekType) - the unique constraint the DB enforces.
     // Null/empty room means online; those are keyed by teacher+discipline so they don't merge blindly.
     var slotMap = new Dictionary<string, JsonEntryImport>();
     var merged = new List<JsonEntryImport>();

@@ -47,13 +47,12 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             .Where(sp => sp.AcademicYear == schedule.AcademicYear && sp.Term == schedule.Term)
             .ToListAsync(ct);
 
-        // group → its plan (take first if somehow in multiple plans for same semester)
         var planByGroup = studyPlans
             .SelectMany(sp => sp.Groups.Select(g => (g.StudentGroupId, sp)))
             .GroupBy(x => x.StudentGroupId)
             .ToDictionary(g => g.Key, g => g.First().sp);
 
-        var groupsQuery = db.StudentGroups.AsQueryable();
+        var groupsQuery = db.StudentGroups.Include(g => g.BlockedDays).AsQueryable();
         if (schedule.FacultyId.HasValue && !schedule.AllowCrossFacultyLessons)
             groupsQuery = groupsQuery.Where(g => g.FacultyId == schedule.FacultyId);
         var groups = await groupsQuery.ToListAsync(ct);
@@ -70,14 +69,14 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             if (!SlotsOverlap(a, b)) continue;
 
             // Parallel sessions of one logical class (language streams / lab subgroups) share the
-            // group/teacher/room slot by design — never a real conflict.
-            if (a.ParallelGroupId.HasValue && a.ParallelGroupId == b.ParallelGroupId) continue;
+            // group/teacher/room slot by design - never a real conflict.
+            if (a.ParallelGroupId.HasValue && a.ParallelGroupId == b.ParallelGroupId ) continue;
 
-            // Same teacher + same physical room = same combined lecture split across week types by the scraper.
-            // Not a real conflict — the teacher is in one place teaching one session.
-            bool samePhysicalSession = a.TeacherId == b.TeacherId
-                && !a.IsOnline && !b.IsOnline
-                && a.RoomId.HasValue && a.RoomId == b.RoomId;
+            // Language classes and PE can have multiple teachers per requirement
+            bool samePhysicalSession = (a.TeacherId == b.TeacherId ||
+                                        a.LessonType is LessonType.Language or LessonType.PhysicalEducation)
+                                       && !a.IsOnline && !b.IsOnline
+                                       && a.RoomId.HasValue && a.RoomId == b.RoomId;
 
             string slot = $"{DayLabel(a.DayOfWeek)} пара {a.PairNumber} ({WeekOverlapLabel(a.WeekType, b.WeekType)})";
 
@@ -103,23 +102,61 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             }
         }
 
-        // Build group → entries lookup
+        var rooms = await db.Rooms.Include(r => r.Department).Include(r => r.Building).ToListAsync(ct);
+        var entriesByRoom = new Dictionary<Guid, List<ScheduleEntry>>();
+        foreach (var e in entries)
+        {
+            if (e.RoomId is null) continue;
+            if (!entriesByRoom.TryGetValue(e.RoomId.Value, out var list))
+                entriesByRoom[e.RoomId.Value] = list = [];
+            list.Add(e);
+        }
+
+        foreach (var room in rooms)
+        {
+            if (!entriesByRoom.TryGetValue(room.Id, out var list)) continue;
+            foreach (var e in list)
+            {
+                var totalStudents = groups
+                    .Where(g => e.StudentGroups.Select(gr => gr.StudentGroupId).Contains(g.Id))
+                    .Sum(g => (int?)g.StudentCount) ?? 0;
+                if (room.Capacity > 0 && totalStudents > room.Capacity)
+                {
+                    AddUnique(warnings, seen, "RoomCapacityExceeded",
+                        $"Аудитория {room.Building.ShortCode}-{room.Number}: ({DayLabel(e.DayOfWeek)} {e.PairNumber}) " +
+                        $"группы не помещаются ({totalStudents}/{room.Capacity}).");
+                }
+
+                if (room.AllowedLessonTypes.Count > 0 && !room.AllowedLessonTypes.Contains(e.LessonType))
+                {
+                    AddUnique(warnings, seen, "RoomLessonTypeMismatch",
+                        $"Аудитория {room.Building.ShortCode}-{room.Number}: ({DayLabel(e.DayOfWeek)} {e.PairNumber}) " +
+                        $"расхождение типов занятий (надо: {LtLabel(e.LessonType)}, можно: {string.Join(", ", room.AllowedLessonTypes.Select(LtLabel))}).");
+                }
+
+                if (!room.IsEnabled)
+                {
+                    AddUnique(warnings, seen, "RoomDisabled",
+                        $"Аудитория {room.Building.ShortCode}-{room.Number}: использование отключенной аудитории");
+                }
+            }
+        }
+        
         var entriesByGroup = new Dictionary<Guid, List<ScheduleEntry>>();
         foreach (var e in entries)
         foreach (var sg in e.StudentGroups)
         {
             if (!entriesByGroup.TryGetValue(sg.StudentGroupId, out var list))
-                entriesByGroup[sg.StudentGroupId] = list = new();
+                entriesByGroup[sg.StudentGroupId] = list = [];
             list.Add(e);
         }
 
         foreach (var group in groups)
         {
             var rawGroupEntries = entriesByGroup.TryGetValue(group.Id, out var ge) ? ge : new();
-            // Parallel siblings (same ParallelGroupId) are one logical class occupying one slot
             var groupEntries = CollapseParallel(rawGroupEntries);
 
-            //  Hours check: study plan only 
+            //  Hours check 
             if (planByGroup.TryGetValue(group.Id, out var plan))
             {
                 int studyWeeks = StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan);
@@ -169,7 +206,6 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         var nodes = await db.FloorPlanNodes.ToListAsync(ct);
         var edges = await db.FloorPlanEdges.ToListAsync(ct);
         var bldDists = await db.BuildingDistances.ToListAsync(ct);
-        var rooms = await db.Rooms.Include(r => r.Department).ToListAsync(ct);
         var pairSlots = await db.PairTimeSlots.ToListAsync(ct);
 
         var subjectIds = entries.Select(e => e.SubjectId).Distinct().ToList();
@@ -177,8 +213,10 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             .Where(s => subjectIds.Contains(s.Id)).ToListAsync(ct);
 
         var settings = await db.SolverSettings.FirstOrDefaultAsync(ct);
+        var teacherAvail = await db.TeacherAvailabilities.ToListAsync(ct);
         var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(
-            nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings));
+            nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings),
+            groups: groups, teacherAvailabilities: teacherAvail);
 
         var currentScore = ScheduleScoreCalculator.Compute(entries, scoreCtx);
         return new ScheduleAuditDto(conflicts, warnings, schedule.GenerationNotes, entries.Count, currentScore, schedule.BaseScore);

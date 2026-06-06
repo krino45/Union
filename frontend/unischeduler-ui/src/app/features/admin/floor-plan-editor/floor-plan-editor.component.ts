@@ -14,6 +14,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatChipsModule } from '@angular/material/chips';
+import { RouterModule } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { FloorPlanDraftsDialogComponent } from './floor-plan-drafts-dialog.component';
 import {
@@ -47,10 +49,10 @@ const NODE_ICONS: Record<string, string> = {
   selector: 'app-floor-plan-editor',
   standalone: true,
   imports: [
-    CommonModule, FormsModule,
+    CommonModule, FormsModule, RouterModule,
     MatButtonModule, MatIconModule, MatSelectModule,
     MatFormFieldModule, MatInputModule, MatSnackBarModule, MatTooltipModule,
-    MatProgressSpinnerModule, MatDividerModule, MatDialogModule,
+    MatProgressSpinnerModule, MatDividerModule, MatDialogModule, MatChipsModule,
   ],
   template: `
     <div class="editor-page">
@@ -235,6 +237,21 @@ const NODE_ICONS: Record<string, string> = {
                 </mat-select>
                 <span class="warn" *ngIf="isUnlinkedRoom(node)">⚠ нет привязки/метки</span>
               </div>
+              <ng-container *ngIf="node.nodeType===FNT.Room && node.roomId && roomUtilization(node.roomId) as util">
+                <div class="prop-row">
+                  <span class="prop-lbl">Загруженность</span>
+                  <div class="util-row">
+                    <mat-chip [class]="'fp-util-chip fp-util-' + utilizationBand(util.percent)"
+                              [matTooltip]="util.tooltip">
+                      {{ util.percent }}%
+                    </mat-chip>
+                    <a [routerLink]="['/admin/schedule-viewer']" [queryParams]="{roomId: node.roomId}"
+                       class="fp-sched-link" matTooltip="Открыть расписание аудитории">
+                      <mat-icon class="fp-link-icon">open_in_new</mat-icon>
+                    </a>
+                  </div>
+                </div>
+              </ng-container>
 
               <!-- Inline add-room form -->
               <div class="add-room-form" *ngIf="showAddRoomForm && node.nodeType===FNT.Room">
@@ -482,6 +499,15 @@ const NODE_ICONS: Record<string, string> = {
     .fcheck { display: flex; align-items: center; gap: 3px; font-size: 11px; cursor: pointer; }
     .fcheck input { cursor: pointer; }
 
+    .util-row { display: flex; align-items: center; gap: 6px; }
+    .fp-util-chip { font-size: 11px; font-weight: 600; }
+    .fp-util-empty   { background: #f5f5f5; color: #9e9e9e; }
+    .fp-util-low     { background: #e8f5e9; color: #1b5e20; }
+    .fp-util-medium  { background: #fff3e0; color: #e65100; }
+    .fp-util-high    { background: #ffebee; color: #b71c1c; }
+    .fp-sched-link { display: flex; align-items: center; color: #1565c0; text-decoration: none; }
+    .fp-sched-link:hover { color: #0d47a1; }
+    .fp-link-icon { font-size: 16px; width: 16px; height: 16px; }
     .hint-area { display: flex; flex-direction: column; }
     .hint-row { display: flex; gap: 8px; align-items: flex-start; }
     .hint-icon { color: #afb42b; font-size: 18px; flex-shrink: 0; margin-top: 2px; }
@@ -812,6 +838,25 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   resetView(): void { this.vx = 0; this.vy = 0; this.zoomLevel = 1; this.NR = NODE_RADIUS; }
+
+  // Room utilization helpers
+
+  roomUtilization(roomId: string): { percent: number; tooltip: string } | null {
+    const r = this.buildingRooms.find(x => x.id === roomId);
+    if (!r) return null;
+    const p = r.utilizationPercent ?? 0;
+    const tooltip = p <= 0
+      ? 'Нет занятий в опубликованных расписаниях'
+      : `${p}% от 42 пар/нед (опубликованные расписания)`;
+    return { percent: p, tooltip };
+  }
+
+  utilizationBand(pct: number): 'empty' | 'low' | 'medium' | 'high' {
+    if (pct <= 0) return 'empty';
+    if (pct < 30) return 'low';
+    if (pct < 70) return 'medium';
+    return 'high';
+  }
 
   // Node helpers
 
