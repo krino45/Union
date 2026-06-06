@@ -91,7 +91,8 @@ public static class ScheduleBuildContext
             .ToList();
 
         var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(
-            floorPlanNodes, floorPlanEdges, distances, rooms, pairSlots, subjectsWithDepts, weights);
+            floorPlanNodes, floorPlanEdges, distances, rooms, pairSlots, subjectsWithDepts, weights,
+            groups: groups, teacherAvailabilities: teacherAvail);
 
         return new SharedData(schedule, rooms, teachers, groups, groupIds, studyPlans, teacherSubjects,
             subjectsById, subjectFacultyIds, groupSizes, distances, floorPlanNodes, floorPlanEdges,

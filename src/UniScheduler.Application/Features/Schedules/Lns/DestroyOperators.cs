@@ -211,6 +211,43 @@ public sealed class DestroyWrongRoom : IDestroyOperator
     }
 }
 
+// TIME op: free every class on a day its group cant attend, or on a slot its teacher is unavailable.
+// The time analog of WrongRoom.
+public sealed class DestroyBlockedSlot : IDestroyOperator
+{
+    public string Name => "BlockedSlot";
+    public RepairAxis Axis => RepairAxis.Time;
+
+    public HashSet<int> SelectToDestroy(LnsKickContext ctx)
+    {
+        var gbd = ctx.GroupBlockedDays;
+        var tbs = ctx.TeacherBlockedSlots;
+        if (gbd == null && tbs == null) return new HashSet<int>();
+        var bad = new List<int>();
+        foreach (var (ri, e) in ctx.EntryByRi)
+        {
+            bool violates = false;
+            if (gbd != null)
+                foreach (var sg in e.StudentGroups)
+                    if (gbd.TryGetValue(sg.StudentGroupId, out var days) && days.Contains(e.DayOfWeek)) { violates = true; break; }
+            if (!violates && tbs != null)
+                foreach (int cw in CalWeeks(e.WeekType))
+                    if (tbs.Contains((e.TeacherId, e.DayOfWeek, e.PairNumber, cw))) { violates = true; break; }
+            if (violates) bad.Add(ri);
+        }
+        if (bad.Count <= ctx.TargetDestroySize) return bad.ToHashSet();
+        DestroyHelpers.Shuffle(bad, ctx.Rng);
+        return bad.Take(ctx.TargetDestroySize).ToHashSet();
+    }
+
+    private static int[] CalWeeks(WeekType wt) => wt switch
+    {
+        WeekType.Odd => new[] { 0 },
+        WeekType.Even => new[] { 1 },
+        _ => new[] { 0, 1 }
+    };
+}
+
 // Free the ri whose entries contribute most to the current penalty. Heuristic - we attribute
 // per-entry contribution from each soft component (S1 by group/day, S2 by teacher/day, S4 by
 // adjacent-pair groups, S7 by pair index, S8 by Saturday occupancy, S9 by dept mismatch). The

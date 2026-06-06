@@ -82,6 +82,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             new DestroyMultiDay(),
             new DestroyGroupWeek(),
             new DestroySubject(),
+            new DestroyBlockedSlot(),
             new DestroyPlan(),
             new DestroyRandomK(),
         };
@@ -102,6 +103,7 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         var wrongRoomOp = spaceOps.FirstOrDefault(o => o.Name == "WrongRoom");
         if (wrongRoomOp != null) weights[wrongRoomOp.Name] = 6.0;
+        if (weights.ContainsKey("BlockedSlot")) weights["BlockedSlot"] = 6.0;
 
         // 4. Main loop.
         var incumbent = seed.ToList();
@@ -150,6 +152,8 @@ public class LnsOptimizerService : ILnsOptimizerService
                 RiToPlanId: riToPlanId,
                 RoomToBuilding: roomToBuilding,
                 RoomAllowedLessonTypes: shared.ScoreCtx.RoomAllowedLessonTypes,
+                GroupBlockedDays: shared.ScoreCtx.GroupBlockedDays,
+                TeacherBlockedSlots: shared.ScoreCtx.TeacherBlockedSlots,
                 CurrentBreakdown: currentBreakdown,
                 TargetDestroySize: opts.TargetDestroySize,
                 MinDestroySize: opts.MinDestroySize,
@@ -238,8 +242,8 @@ public class LnsOptimizerService : ILnsOptimizerService
             long candCost = newBreakdown.Total;
             int vIdx = kicks % lahcL;
 
-            var candHard = (newBreakdown.HardConflicts, newBreakdown.S10_Overflow, newBreakdown.S11_RoomTypeMismatch);
-            var curHard = (currentBreakdown.HardConflicts, currentBreakdown.S10_Overflow, currentBreakdown.S11_RoomTypeMismatch);
+            var candHard = (newBreakdown.HardConflicts, newBreakdown.S10_Overflow, newBreakdown.S11_RoomTypeMismatch, newBreakdown.S12_BlockedPlacement);
+            var curHard = (currentBreakdown.HardConflicts, currentBreakdown.S10_Overflow, currentBreakdown.S11_RoomTypeMismatch, currentBreakdown.S12_BlockedPlacement);
             int hardCmp = candHard.CompareTo(curHard);
             bool softAccept = candCost <= currentCost || candCost <= lahcHistory[vIdx];
             bool acceptThis = hardCmp < 0 || (hardCmp == 0 && softAccept);
@@ -253,7 +257,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                 // Incumbent changed - rebuild the ri-entry map so the next kick pins/hints correctly.
                 (entryByRi, riByEntryId, _, _) = MatchIncumbent(reqs, incumbent);
 
-                var bestHard = (bestBreakdown.HardConflicts, bestBreakdown.S10_Overflow, bestBreakdown.S11_RoomTypeMismatch);
+                var bestHard = (bestBreakdown.HardConflicts, bestBreakdown.S10_Overflow, bestBreakdown.S11_RoomTypeMismatch, bestBreakdown.S12_BlockedPlacement);
                 int bestCmp = candHard.CompareTo(bestHard);
                 if (bestCmp < 0 || (bestCmp == 0 && candCost < bestScore))
                 {

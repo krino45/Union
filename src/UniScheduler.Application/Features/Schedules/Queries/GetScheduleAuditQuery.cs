@@ -52,7 +52,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             .GroupBy(x => x.StudentGroupId)
             .ToDictionary(g => g.Key, g => g.First().sp);
 
-        var groupsQuery = db.StudentGroups.AsQueryable();
+        var groupsQuery = db.StudentGroups.Include(g => g.BlockedDays).AsQueryable();
         if (schedule.FacultyId.HasValue && !schedule.AllowCrossFacultyLessons)
             groupsQuery = groupsQuery.Where(g => g.FacultyId == schedule.FacultyId);
         var groups = await groupsQuery.ToListAsync(ct);
@@ -213,8 +213,10 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             .Where(s => subjectIds.Contains(s.Id)).ToListAsync(ct);
 
         var settings = await db.SolverSettings.FirstOrDefaultAsync(ct);
+        var teacherAvail = await db.TeacherAvailabilities.ToListAsync(ct);
         var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(
-            nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings));
+            nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings),
+            groups: groups, teacherAvailabilities: teacherAvail);
 
         var currentScore = ScheduleScoreCalculator.Compute(entries, scoreCtx);
         return new ScheduleAuditDto(conflicts, warnings, schedule.GenerationNotes, entries.Count, currentScore, schedule.BaseScore);

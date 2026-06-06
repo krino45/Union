@@ -100,23 +100,6 @@ public class OrToolsSchedulerService : ISchedulerService
                     return new SchedulerOutput(SolverStatus.Infeasible,
                         $"Pin ri={FormatReqLabel(reqs[ri])}: day/pair {pin.Day}/p{pin.PairNumber} out of range", []);
 
-                if (req.GroupIds.Any(gId => groupBlockedDays.TryGetValue(gId, out var bd) && bd.Contains(d)))
-                    return new SchedulerOutput(SolverStatus.Infeasible,
-                        $"Pin ri={FormatReqLabel(reqs[ri])}: day {pin.Day} is blocked for one of the groups", []);
-
-                int[] calendarWis = req.WeekType == WeekType.Both
-                    ? new[] { 0, 1 }
-                    : new[] { VarWeekIndex(req.WeekType) };
-                foreach (int awi in calendarWis)
-                {
-                    if (blocked.Contains((req.TeacherId, d, pp, awi)))
-                        return new SchedulerOutput(SolverStatus.Infeasible,
-                            $"Pin ri={FormatReqLabel(reqs[ri])}: teacher slot ({pin.Day}, p{pin.PairNumber}, week {awi}) is blocked", []);
-                    if (blockedRoomSlots.Contains((pin.RoomId, d, pp, awi)))
-                        return new SchedulerOutput(SolverStatus.Infeasible,
-                            $"Pin ri={FormatReqLabel(reqs[ri])}: room {pin.RoomId} is blocked at ({pin.Day}, p{pin.PairNumber}, week {awi})", []);
-                }
-
                 pinTarget[ri] = (d, pp, rmi);
             }
         }
@@ -206,20 +189,24 @@ public class OrToolsSchedulerService : ISchedulerService
                     if (isPinned && (d != pinD || p != pinP)) continue;
                     if (axis == RepairAxis.Space && (d != spaceD || p != spaceP)) continue;
 
-                    bool dayBlockedForGroup = req.GroupIds.Any(gId =>
-                        groupBlockedDays.TryGetValue(gId, out var bd) && bd.Contains(d));
-                    if (dayBlockedForGroup) continue;
+                    // Pinned reqs are kept exactly where they already are, so they bypass the placement checks
+                    if (!isPinned)
+                    {
+                        bool dayBlockedForGroup = req.GroupIds.Any(gId =>
+                            groupBlockedDays.TryGetValue(gId, out var bd) && bd.Contains(d));
+                        if (dayBlockedForGroup) continue;
 
-                    bool slotBlocked = req.WeekType == WeekType.Both
-                        ? blocked.Contains((req.TeacherId, d, p, 0)) || blocked.Contains((req.TeacherId, d, p, 1))
-                        : blocked.Contains((req.TeacherId, d, p, varWi));
-                    if (slotBlocked) continue;
+                        bool slotBlocked = req.WeekType == WeekType.Both
+                            ? blocked.Contains((req.TeacherId, d, p, 0)) || blocked.Contains((req.TeacherId, d, p, 1))
+                            : blocked.Contains((req.TeacherId, d, p, varWi));
+                        if (slotBlocked) continue;
+                    }
 
                     foreach (int rmi in roomsToTry)
                     {
                         if (isPinned && rmi != pinRmi) continue;
 
-                        if (blockedRoomSlots.Count > 0 && !rooms[rmi].IsDistributed && !rooms[rmi].IsOverflow)
+                        if (!isPinned && blockedRoomSlots.Count > 0 && !rooms[rmi].IsDistributed && !rooms[rmi].IsOverflow)
                         {
                             var roomId = rooms[rmi].Id;
                             bool roomTaken = false;

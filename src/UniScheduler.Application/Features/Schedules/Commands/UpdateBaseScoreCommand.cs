@@ -36,8 +36,11 @@ public class UpdateBaseScoreCommandHandler : IRequestHandler<UpdateBaseScoreComm
             .Where(s => subjectIds.Contains(s.Id)).ToListAsync(cancellationToken);
 
         var settings = await _db.SolverSettings.FirstOrDefaultAsync(cancellationToken);
+        var groups = await _db.StudentGroups.Include(g => g.BlockedDays).ToListAsync(cancellationToken);
+        var teacherAvail = await _db.TeacherAvailabilities.ToListAsync(cancellationToken);
         var ctx = ScheduleScoreCalculator.BuildScoreContext(
-            nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings));
+            nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings),
+            groups: groups, teacherAvailabilities: teacherAvail);
         var score = ScheduleScoreCalculator.Compute(entries, ctx);
         schedule.BaseScore = score;
         await _db.SaveChangesAsync(cancellationToken);

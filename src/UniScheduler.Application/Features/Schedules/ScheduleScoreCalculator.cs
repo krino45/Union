@@ -21,7 +21,9 @@ public record ScoreContext(
     // Rooms exempt from room double-booking: the distributed placeholder room and sports halls are
     // multi-occupancy by design (many parallel classes share them). Mirrors the solver's H4 skip.
     IReadOnlySet<Guid>? MultiOccupancyRoomIds = null,
-    IReadOnlyDictionary<Guid, IReadOnlySet<LessonType>>? RoomAllowedLessonTypes = null);
+    IReadOnlyDictionary<Guid, IReadOnlySet<LessonType>>? RoomAllowedLessonTypes = null,
+    IReadOnlyDictionary<Guid, IReadOnlySet<RussianDayOfWeek>>? GroupBlockedDays = null,
+    IReadOnlySet<(Guid teacherId, RussianDayOfWeek day, int pair, int calWeek)>? TeacherBlockedSlots = null);
 
 public record ScoreBreakdown(
     int HardConflicts,
@@ -35,12 +37,13 @@ public record ScoreBreakdown(
     int S8_Saturday,
     int S9_DeptMismatch,
     int S10_Overflow = 0,
-    int S11_RoomTypeMismatch = 0)
+    int S11_RoomTypeMismatch = 0,
+    int S12_BlockedPlacement = 0)
 {
     public int Total =>
         HardConflicts + S1_StudentWindows + S2_TeacherWindows + S3_ActiveDays +
         S4_Walking + S5_SanPinOverload + S6_ConsecSameLesson + S7_TimeOfDay +
-        S8_Saturday + S9_DeptMismatch + S10_Overflow + S11_RoomTypeMismatch;
+        S8_Saturday + S9_DeptMismatch + S10_Overflow + S11_RoomTypeMismatch + S12_BlockedPlacement;
 }
 
 /// <summary>
@@ -62,7 +65,9 @@ public static class ScheduleScoreCalculator
         IEnumerable<Room> rooms,
         IEnumerable<PairTimeSlot> pairSlots,
         IEnumerable<Subject>? subjects = null,
-        SolverWeights? penalties = null)
+        SolverWeights? penalties = null,
+        IEnumerable<StudentGroup>? groups = null,
+        IEnumerable<UniScheduler.Domain.Entities.TeacherAvailability>? teacherAvailabilities = null)
     {
         penalties ??= new SolverWeights();
 
@@ -88,6 +93,18 @@ public static class ScheduleScoreCalculator
 
         var roomAllowed = roomList.ToDictionary(r => r.Id, AllowedLessonTypes);
 
+        IReadOnlyDictionary<Guid, IReadOnlySet<RussianDayOfWeek>>? groupBlockedDays = groups?
+            .ToDictionary(g => g.Id, g => (IReadOnlySet<RussianDayOfWeek>)g.BlockedDays.Select(b => b.DayOfWeek).ToHashSet());
+        IReadOnlySet<(Guid, RussianDayOfWeek, int, int)>? teacherBlocked = null;
+        if (teacherAvailabilities != null)
+        {
+            var tb = new HashSet<(Guid, RussianDayOfWeek, int, int)>();
+            foreach (var ta in teacherAvailabilities)
+                foreach (int cw in CalWeekIndices(ta.WeekType))
+                    tb.Add((ta.TeacherId, ta.DayOfWeek, ta.PairNumber, cw));
+            teacherBlocked = tb;
+        }
+
         IReadOnlyDictionary<Guid, Guid?>? roomDeptFacultyId = penalties.DepartmentMismatchPenalty > 0
             ? roomList.ToDictionary(r => r.Id, r => r.Department?.FacultyId)
             : null;
@@ -105,7 +122,9 @@ public static class ScheduleScoreCalculator
             penalties,
             roomEntryDists,
             multiOccupancy,
-            roomAllowed);
+            roomAllowed,
+            groupBlockedDays,
+            teacherBlocked);
     }
 
     public static int Compute(IReadOnlyList<ScheduleEntry> entries, ScoreContext ctx)
@@ -150,6 +169,7 @@ public static class ScheduleScoreCalculator
                 s10 += (int)SchedulerSentinels.OverflowPenalty;
 
         int s11 = ctx == null ? 0 : Score_RoomTypeMismatch(entries, ctx);
+        int s12 = ctx == null ? 0 : Score_BlockedPlacement(entries, ctx);
 
         return new ScoreBreakdown(
             HardConflicts: hard,
@@ -163,7 +183,35 @@ public static class ScheduleScoreCalculator
             S8_Saturday: s8,
             S9_DeptMismatch: s9,
             S10_Overflow: s10,
-            S11_RoomTypeMismatch: s11);
+            S11_RoomTypeMismatch: s11,
+            S12_BlockedPlacement: s12);
+    }
+
+    internal static int[] CalWeekIndices(WeekType wt) => wt switch
+    {
+        WeekType.Odd => new[] { 0 },
+        WeekType.Even => new[] { 1 },
+        _ => new[] { 0, 1 }
+    };
+
+    public const int BlockedPlacementPenalty = 50_000;
+
+    public static int Score_BlockedPlacement(IReadOnlyList<ScheduleEntry> entries, ScoreContext ctx)
+    {
+        var gbd = ctx?.GroupBlockedDays;
+        var tbs = ctx?.TeacherBlockedSlots;
+        if (gbd == null && tbs == null) return 0;
+        int count = 0;
+        foreach (var e in entries)
+        {
+            if (gbd != null)
+                foreach (var sg in e.StudentGroups)
+                    if (gbd.TryGetValue(sg.StudentGroupId, out var days) && days.Contains(e.DayOfWeek)) { count++; break; }
+            if (tbs != null)
+                foreach (int cw in CalWeekIndices(e.WeekType))
+                    if (tbs.Contains((e.TeacherId, e.DayOfWeek, e.PairNumber, cw))) { count++; break; }
+        }
+        return count * BlockedPlacementPenalty;
     }
 
     public const int RoomTypeMismatchPenalty = 50_000;

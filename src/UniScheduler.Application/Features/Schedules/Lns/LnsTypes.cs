@@ -39,6 +39,8 @@ public record LnsKickContext(
     IReadOnlyDictionary<int, Guid> RiToPlanId,
     IReadOnlyDictionary<Guid, Guid> RoomToBuilding,
     IReadOnlyDictionary<Guid, IReadOnlySet<LessonType>>? RoomAllowedLessonTypes,
+    IReadOnlyDictionary<Guid, IReadOnlySet<RussianDayOfWeek>>? GroupBlockedDays,
+    IReadOnlySet<(Guid teacherId, RussianDayOfWeek day, int pair, int calWeek)>? TeacherBlockedSlots,
     ScoreBreakdown CurrentBreakdown,
     int TargetDestroySize,
     int MinDestroySize,
