@@ -196,16 +196,18 @@ public sealed class DestroyWrongRoom : IDestroyOperator
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
-        var result = new HashSet<int>();
-        if (ctx.RoomAllowedLessonTypes is not { } allowed) return result;
+        if (ctx.RoomAllowedLessonTypes is not { } allowed) return new HashSet<int>();
+        var wrong = new List<int>();
         foreach (var (ri, e) in ctx.EntryByRi)
         {
             if (e.IsOnline || !e.RoomId.HasValue) continue;
             if (e.RoomId.Value == SchedulerSentinels.OverflowRoomId) continue;
             if (allowed.TryGetValue(e.RoomId.Value, out var ok) && !ok.Contains(e.LessonType))
-                result.Add(ri);
+                wrong.Add(ri);
         }
-        return result;
+        if (wrong.Count <= ctx.TargetDestroySize) return wrong.ToHashSet();
+        DestroyHelpers.Shuffle(wrong, ctx.Rng);
+        return wrong.Take(ctx.TargetDestroySize).ToHashSet();
     }
 }
 

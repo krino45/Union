@@ -100,6 +100,9 @@ public class LnsOptimizerService : ILnsOptimizerService
         var weights = allOps.ToDictionary(o => o.Name, _ => 1.0);
         var telemetry = allOps.ToDictionary(o => o.Name, _ => (Attempts: 0, Accepted: 0, Failed: 0, Total: 0L));
 
+        var wrongRoomOp = spaceOps.FirstOrDefault(o => o.Name == "WrongRoom");
+        if (wrongRoomOp != null) weights[wrongRoomOp.Name] = 6.0;
+
         // 4. Main loop.
         var incumbent = seed.ToList();
         var currentBreakdown = seedBreakdown;
@@ -122,9 +125,19 @@ public class LnsOptimizerService : ILnsOptimizerService
         while (DateTime.UtcNow < deadline && kicks < opts.MaxIterations && !ct.IsCancellationRequested)
         {
             // Space kicks are mostly cleanup, so they run only every Nth kick
-            bool spaceKick = opts.SpaceKickEvery <= 1 || (kicks % opts.SpaceKickEvery) == opts.SpaceKickEvery - 1;
-            var axisOps = spaceKick ? spaceOps : timeOps;
-            var op = PickOperator(axisOps, weights, rng);
+            IDestroyOperator[] axisOps;
+            IDestroyOperator op;
+            if (kicks == 0 && wrongRoomOp != null && currentBreakdown.S11_RoomTypeMismatch > 0)
+            {
+                axisOps = spaceOps;
+                op = wrongRoomOp;
+            }
+            else
+            {
+                bool spaceKick = opts.SpaceKickEvery <= 1 || (kicks % opts.SpaceKickEvery) == opts.SpaceKickEvery - 1;
+                axisOps = spaceKick ? spaceOps : timeOps;
+                op = PickOperator(axisOps, weights, rng);
+            }
             int attemptNum = kicks + 1;
             var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}/{op.Axis}";
             IProgress<string>? kickProgress = null;
@@ -152,6 +165,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             if (destroy.Count == 0)
             {
                 MarkFailed(telemetry, op.Name);
+                weights[op.Name] = Math.Max(MinWeight, weights[op.Name] * 0.2);
                 kicks++;
                 progress?.Report($"{kickPrefix} | пустое разрушение, пропуск (score={currentBreakdown.Total}, best={bestScore})");
                 continue;
@@ -197,7 +211,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             {
                 output = await scheduler.SolveAsync(input, ct, kickProgress);
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "LNS kick {Kick} failed in solver ({Op})", attemptNum, op.Name);
