@@ -251,7 +251,7 @@ public sealed class DestroyWorstK : IDestroyOperator
             foreach (var ri in list) score[ri] += share;
         }
 
-        int take = Math.Max(ctx.MinDestroySize, ctx.TargetDestroySize);
+        int take = ctx.MinDestroySize;
         return score.OrderByDescending(kv => kv.Value).Take(take).Select(kv => kv.Key).ToHashSet();
     }
 }
