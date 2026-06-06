@@ -604,6 +604,7 @@ export class ScheduleEditorComponent implements OnInit {
     if (lt === 'Lab') return 'Лаб.';
     if (lt === 'Seminar') return 'Сем.';
     if (lt === 'Language') return 'Ин.яз';
+    if (lt === 'PhysicalEducation') return 'Физ-ра';
     return lt;
   }
 

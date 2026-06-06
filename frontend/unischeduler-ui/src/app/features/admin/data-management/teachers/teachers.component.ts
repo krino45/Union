@@ -290,6 +290,7 @@ export class TeacherDialogComponent {
             <mat-option value="Lab">Лабораторная</mat-option>
             <mat-option value="Seminar">Семинар</mat-option>
             <mat-option value="Language">Ин. язык</mat-option>
+            <mat-option value="PhysicalEducation">Физ-ра</mat-option>
           </mat-select>
         </mat-form-field>
         <button mat-icon-button color="warn" (click)="removeRow(i)"><mat-icon>remove_circle</mat-icon></button>
