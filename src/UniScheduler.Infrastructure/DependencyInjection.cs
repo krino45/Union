@@ -13,7 +13,7 @@ namespace UniScheduler.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static void AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(
@@ -33,8 +33,6 @@ public static class DependencyInjection
         services.AddSingleton<IAppUrls, AppUrls>();
 
         AddEmailSender(services, configuration);
-
-        return services;
     }
 
     private static void AddEmailSender(IServiceCollection services, IConfiguration configuration)

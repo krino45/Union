@@ -100,7 +100,9 @@ public record SchedulerInput(
     // initial upper bound. Hints with no matching candidate cell are silently ignored.
     IReadOnlyList<SchedulerHint>? Hints = null,
     // True for LNS repair solves (pins + small free core)
-    bool IsRepairSolve = false
+    bool IsRepairSolve = false,
+    // Skip ALL travel/distance machinery (zone + room H_travel and S4).
+    bool SkipTravel = false
 );
 
 // LNS: hard-fix one requirement to a specific placement. WeekType must equal the requirement's

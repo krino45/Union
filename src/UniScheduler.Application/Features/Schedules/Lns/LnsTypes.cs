@@ -10,7 +10,9 @@ public record LnsOptions(
     int MaxIterations,
     int Seed = 12345,
     int MinDestroySize = 8,
-    int TargetDestroySize = 40);
+    int TargetDestroySize = 40,
+    // Late-acceptance history length. 1 == greedy hill-climb
+    int LahcHistory = 20);
 
 public record LnsResult(
     IReadOnlyList<ScheduleEntry> Entries,

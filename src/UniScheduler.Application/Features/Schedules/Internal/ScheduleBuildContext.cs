@@ -129,7 +129,8 @@ public static class ScheduleBuildContext
         int timeoutSeconds, SolverWeights weights,
         IReadOnlyList<SchedulerPin>? pinnings = null,
         IReadOnlyList<SchedulerHint>? hints = null,
-        bool isRepairSolve = false)
+        bool isRepairSolve = false,
+        bool skipTravel = false)
     {
         var requirementGroupIds = requirements.SelectMany(r => r.GroupIds).ToHashSet();
         var relevantGroups = shared.Groups.Where(g => requirementGroupIds.Contains(g.Id)).ToList();
@@ -168,7 +169,8 @@ public static class ScheduleBuildContext
             RoomBlocks: roomBlocks,
             Pinnings: pinnings,
             Hints: hints,
-            IsRepairSolve: isRepairSolve
+            IsRepairSolve: isRepairSolve,
+            SkipTravel: skipTravel
         );
     }
 }

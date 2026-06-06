@@ -339,11 +339,13 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             p?.Report("Полировка (LNS)...");
             int budgetMin = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsBudgetMin), out var bm) && bm > 0 ? bm : 5;
             int kickSec = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsKickSec), out var ks) && ks > 0 ? ks : 10;
+            int lahc = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsLahcHistory), out var lh) && lh > 0 ? lh : 20;
             var opts = new LnsOptions(
                 TotalBudget: TimeSpan.FromMinutes(budgetMin),
                 KickTimeoutSeconds: kickSec,
                 MaxIterations: 200,
-                Seed: 12345);
+                Seed: 12345,
+                LahcHistory: lahc);
             var result = await lns.OptimizeAsync(request.ScheduleId, scoreEntries, shared, opts, p, cancellationToken);
 
             if (result.AcceptedAny && result.AfterBreakdown.Total < result.BeforeBreakdown.Total)

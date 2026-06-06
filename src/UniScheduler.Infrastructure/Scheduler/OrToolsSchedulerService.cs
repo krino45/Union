@@ -586,7 +586,13 @@ public class OrToolsSchedulerService : ISchedulerService
                 ? e
                 : Math.Max(0, floor - 1) * w.StairFloorMeters;
 
-        Report($"Расстояния ({zones.Count} * {zones.Count} зон * {numPairs - 1} перемен)...");
+        // SkipTravel (LNS time-axis kicks): drop ALL distance work. The four travel families stay
+        // empty, so needsZoneTravel/needsPerRoomTravel below are false and every gbf/gru/H_travel/S4
+        // block self-skips. Distance is owned by the external scorer + the space-axis kicks.
+        bool skipTravel = input.SkipTravel;
+        Report(skipTravel
+            ? "Расстояния — пропуск (SkipTravel)"
+            : $"Расстояния ({zones.Count} * {zones.Count} зон * {numPairs - 1} перемен)...");
         // Zone-pair travel: cross-building only (intra-building handled per-room via gru).
         // Walk metres = (f1 - 1) * stair + bd(b1, b2) + (f2 - 1) * stair.
         // No direct bd → unreachable (transitively closed bd would have populated it).
@@ -595,6 +601,7 @@ public class OrToolsSchedulerService : ISchedulerService
         var tooFarByBreak = new Dictionary<int, HashSet<int>>[numPairs - 1];
         var walkPenByBreak = new Dictionary<int, Dictionary<int, long>>[numPairs - 1];
         long zoneImpPairCount = 0, zonePenPairCount = 0, tooFarPairCount = 0, walkPenPairCount = 0;
+        if (!skipTravel)
         Parallel.For(0, numPairs - 1, p =>
         {
             double allowedTravelMin = breakMinutes[p];
@@ -675,8 +682,9 @@ public class OrToolsSchedulerService : ISchedulerService
             Interlocked.Add(ref tooFarPairCount, localTooFar);
             Interlocked.Add(ref walkPenPairCount, localWalkPen);
         });
-        ReportSub(
-            $"Расстояния: зоны {zoneImpPairCount} запрещ. + {zonePenPairCount} штраф.; комнаты {tooFarPairCount} запрещ. + {walkPenPairCount} штраф.");
+        if (!skipTravel)
+            ReportSub(
+                $"Расстояния: зоны {zoneImpPairCount} запрещ. + {zonePenPairCount} штраф.; комнаты {tooFarPairCount} запрещ. + {walkPenPairCount} штраф.");
 
         bool needsZoneTravel = zoneImpPairCount > 0 || zonePenPairCount > 0;
         bool needsPerRoomTravel = tooFarPairCount > 0 || walkPenPairCount > 0;
@@ -1376,10 +1384,13 @@ public class OrToolsSchedulerService : ISchedulerService
             : 0;
         if (input.IsRepairSolve)
         {
+            int repairWorkers = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsWorkers), out var rw) && rw > 0
+                ? rw
+                : Math.Min(workers, 4);
             solver.StringParameters =
                 $"max_time_in_seconds:{input.SolverTimeoutSeconds}," +
-                $"num_search_workers:{workers}," +
                 $"linearization_level:{linLevel}," +
+                $"num_search_workers:{repairWorkers}," +
                 "log_search_progress:false";
         }
         else

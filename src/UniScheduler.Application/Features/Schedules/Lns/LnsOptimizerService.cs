@@ -64,7 +64,18 @@ public class LnsOptimizerService : ILnsOptimizerService
         // 4. Main loop.
         var incumbent = seed.ToList();
         var currentBreakdown = beforeBreakdown;
+
+        // Best-ever snapshot — LAHC lets the incumbent drift uphill, so the result must return the
+        // best schedule we ever saw, not the last accepted one.
+        var bestEntries = seed.ToList();
+        var bestBreakdown = beforeBreakdown;
         long bestScore = beforeBreakdown.Total;
+
+        // Late-acceptance history: accept a candidate if it beats the current cost OR the cost from L kicks ago
+        long currentCost = beforeBreakdown.Total;
+        int lahcL = Math.Max(1, opts.LahcHistory);
+        var lahcHistory = new long[lahcL];
+        Array.Fill(lahcHistory, currentCost);
 
         var deadline = DateTime.UtcNow + opts.TotalBudget;
         int kicks = 0, accepted = 0;
@@ -131,7 +142,8 @@ public class LnsOptimizerService : ILnsOptimizerService
                 weights: shared.Weights,
                 pinnings: pins,
                 hints: hints,
-                isRepairSolve: true);
+                isRepairSolve: true,
+                skipTravel: true);
 
             SchedulerOutput? output;
             try
@@ -157,49 +169,52 @@ public class LnsOptimizerService : ILnsOptimizerService
                 continue;
             }
 
-            // 7. Convert assignments to entries, score, accept/reject.
+            // 7. Convert assignments to entries, score, accept/reject via LAHC.
             var candidate = AssignmentsToEntries(output.Assignments, reqs, scheduleId, incumbent);
             var newBreakdown = ScheduleScoreCalculator.ComputeBreakdown(candidate, shared.ScoreCtx);
 
-            long delta = newBreakdown.Total - currentBreakdown.Total;
-            bool acceptThis = Accept(delta, kicks, opts);
+            long candCost = newBreakdown.Total;
+            int vIdx = kicks % lahcL;
+            bool acceptThis = candCost <= currentCost || candCost <= lahcHistory[vIdx];
 
             if (acceptThis)
             {
+                long prevBest = bestScore;
                 incumbent = candidate;
                 currentBreakdown = newBreakdown;
-                if (newBreakdown.Total < bestScore)
+                currentCost = candCost;
+                // Incumbent changed — rebuild the ri-entry map so the next kick pins/hints correctly.
+                (entryByRi, riByEntryId, _, _) = MatchIncumbent(reqs, incumbent);
+
+                if (candCost < bestScore)
                 {
-                    bestScore = newBreakdown.Total;
+                    bestScore = candCost;
+                    bestEntries = candidate;
+                    bestBreakdown = newBreakdown;
                     accepted++;
-                    // Rebuild entryByRi against the new incumbent.
-                    (entryByRi, riByEntryId, _, _) = MatchIncumbent(reqs, incumbent);
-                    long improvement = currentBreakdown.Total - newBreakdown.Total > 0
-                        ? currentBreakdown.Total - newBreakdown.Total : -delta;
-                    UpdateWeights(weights, op.Name, improvement);
-                    MarkAccepted(telemetry, op.Name, -delta);
+                    UpdateWeights(weights, op.Name, prevBest - candCost);
+                    MarkAccepted(telemetry, op.Name, prevBest - candCost);
                 }
                 else
                 {
                     MarkAccepted(telemetry, op.Name, 0);
                 }
-                progress?.Report($"{kickPrefix} | принято score={currentBreakdown.Total} (best {bestScore})");
+                progress?.Report($"{kickPrefix} | принято score={currentCost} (best {bestScore})");
             }
             else
             {
                 DecayWeight(weights, op.Name);
                 MarkRejected(telemetry, op.Name);
-                progress?.Report($"{kickPrefix} | отклонено score={newBreakdown.Total} (best {bestScore})");
+                progress?.Report($"{kickPrefix} | отклонено score={candCost} (best {bestScore})");
             }
+
+            if (currentCost < lahcHistory[vIdx]) lahcHistory[vIdx] = currentCost;
         }
 
         var perOp = telemetry.ToDictionary(kv => kv.Key,
             kv => new OperatorTelemetry(kv.Value.Attempts, kv.Value.Accepted, kv.Value.Failed, kv.Value.Total));
-        return new LnsResult(incumbent, beforeBreakdown, currentBreakdown, kicks, accepted, perOp);
+        return new LnsResult(bestEntries, beforeBreakdown, bestBreakdown, kicks, accepted, perOp);
     }
-
-    // Drop-in slot for SA: replace this with cooling-schedule acceptance. For now, pure greedy.
-    private static bool Accept(long delta, int kick, LnsOptions opts) => delta < 0;
 
     private static IDestroyOperator PickOperator(IDestroyOperator[] ops, Dictionary<string, double> weights, Random rng)
     {

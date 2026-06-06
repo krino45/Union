@@ -13,6 +13,9 @@ public static class SchedulerEnv
     // LNS polish phase budgets.
     public const string LnsBudgetMin = "UNISCHEDULER_LNS_BUDGET_MIN"; // total wall-clock minutes (default 5)
     public const string LnsKickSec = "UNISCHEDULER_LNS_KICK_SEC";   // per-kick CP-SAT seconds (default 10)
+    public const string LnsWorkers = "UNISCHEDULER_LNS_WORKERS";
+    // Late-acceptance history length L for the LNS hill-climb (default 20).
+    public const string LnsLahcHistory = "UNISCHEDULER_LNS_LAHC";
 
     // Foreign-language requirement-builder: students-per-teacher cap. ⌈groupSize / cap⌉ teachers
     // are emitted per group's language slot. Default 15.
