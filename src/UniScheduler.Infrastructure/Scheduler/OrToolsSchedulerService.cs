@@ -100,9 +100,6 @@ public class OrToolsSchedulerService : ISchedulerService
                     return new SchedulerOutput(SolverStatus.Infeasible,
                         $"Pin ri={FormatReqLabel(reqs[ri])}: day/pair {pin.Day}/p{pin.PairNumber} out of range", []);
 
-                if (!IsCompatible(req, rooms[rmi], reqGroupSize[ri]))
-                    return new SchedulerOutput(SolverStatus.Infeasible,
-                        $"Pin ri={FormatReqLabel(reqs[ri])}: room {pin.RoomId} incompatible (type/capacity/equipment/online)", []);
                 if (req.GroupIds.Any(gId => groupBlockedDays.TryGetValue(gId, out var bd) && bd.Contains(d)))
                     return new SchedulerOutput(SolverStatus.Infeasible,
                         $"Pin ri={FormatReqLabel(reqs[ri])}: day {pin.Day} is blocked for one of the groups", []);
@@ -184,7 +181,11 @@ public class OrToolsSchedulerService : ISchedulerService
                 var axis = freedAxis.TryGetValue(ri, out var fr) ? fr.Axis : RepairAxis.Full;
                 int ownRmi = -1, spaceD = -1, spaceP = -1;
                 int[] roomsToTry;
-                if (axis == RepairAxis.Time)
+                if (isPinned)
+                {
+                    roomsToTry = new[] { pinRmi };
+                }
+                else if (axis == RepairAxis.Time)
                 {
                     if (!roomIdToIdx.TryGetValue(fr!.RoomId, out ownRmi)) ownRmi = -1;
                     roomsToTry = ownRmi >= 0 && overflowRmi >= 0 ? new[] { ownRmi, overflowRmi }
@@ -233,7 +234,7 @@ public class OrToolsSchedulerService : ISchedulerService
                         totalVarCount++;
                         if (rmi == overflowRmi) overflowVars.Add(v);
 
-                        long capSize = (axis == RepairAxis.Time && rmi == ownRmi) ? 0 : size;
+                        long capSize = ((axis == RepairAxis.Time && rmi == ownRmi) || isPinned) ? 0 : size;
 
                         var k1 = (ri, varWi);
                         if (!varsByReqWi.TryGetValue(k1, out var l1)) varsByReqWi[k1] = l1 = new List<BoolVar>();
@@ -1000,14 +1001,17 @@ public class OrToolsSchedulerService : ISchedulerService
 
         // H_PE: SanPiN caps physical education per group per day (university-configurable).
         int maxPePerDay = Math.Max(1, w.MaxPePerDay);
-        foreach (var gi in peReqByGroup.Keys)
-        for (int d = 0; d < NumDays; d++)
-        for (int wi = 0; wi < 2; wi++)
+        if (!input.IsRepairSolve)
         {
-            var peVars = new List<IntVar>();
-            for (int p = 0; p < numPairs; p++)
-                if (isGroupPeUsed.TryGetValue((gi, d, p, wi), out var bv)) peVars.Add(bv);
-            if (peVars.Count > maxPePerDay) model.Add(LinearExpr.Sum(peVars.ToArray()) <= maxPePerDay);
+            foreach (var gi in peReqByGroup.Keys)
+            for (int d = 0; d < NumDays; d++)
+            for (int wi = 0; wi < 2; wi++)
+            {
+                var peVars = new List<IntVar>();
+                for (int p = 0; p < numPairs; p++)
+                    if (isGroupPeUsed.TryGetValue((gi, d, p, wi), out var bv)) peVars.Add(bv);
+                if (peVars.Count > maxPePerDay) model.Add(LinearExpr.Sum(peVars.ToArray()) <= maxPePerDay);
+            }
         }
 
         var isTeacherUsed = new BoolVar[teachers.Count, NumDays, numPairs, 2];
