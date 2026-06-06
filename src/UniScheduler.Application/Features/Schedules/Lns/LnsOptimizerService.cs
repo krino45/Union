@@ -49,6 +49,18 @@ public class LnsOptimizerService : ILnsOptimizerService
         // 2. Build parallel-sibling index — destroy sets get expanded to include all siblings.
         var siblingsByRi = BuildParallelSiblings(reqs);
 
+        // Reqs the incumbent never placed (rebuild/match drift)
+        var excludedReqs = new List<int>();
+        foreach (var ri in unmatchedReqs)
+        {
+            if (reqs[ri].ParallelKey is int)
+            {
+                if (siblingsByRi[ri].All(s => unmatchedReqs.Contains(s))) excludedReqs.Add(ri);
+            }
+            else excludedReqs.Add(ri);
+        }
+        var excludedSet = excludedReqs.ToHashSet();
+
         // 3. Operator bags — alternated each kick. Time ops retime (rooms locked to own/overflow,
         //    SkipTravel); Space ops reroom (times locked, full distances on, overflow re-homed).
         var timeOps = new IDestroyOperator[]
@@ -109,10 +121,9 @@ public class LnsOptimizerService : ILnsOptimizerService
             var destroy = op.SelectToDestroy(kickCtx);
             // Expand to parallel siblings to keep H_par satisfiable.
             ExpandToSiblings(destroy, siblingsByRi);
-            // Always also include unmatched reqs so the solve produces full schedules.
-            foreach (var ri in unmatchedReqs) destroy.Add(ri);
             foreach (var (ri, e) in entryByRi)
                 if (e.RoomId == SchedulerSentinels.OverflowRoomId) destroy.Add(ri);
+            destroy.ExceptWith(excludedSet);
 
             if (destroy.Count == 0)
             {
@@ -154,7 +165,8 @@ public class LnsOptimizerService : ILnsOptimizerService
                 isRepairSolve: true,
                 skipTravel: timeAxis,
                 freedReqs: freed,
-                overflowPenalty: SchedulerSentinels.OverflowPenalty);
+                overflowPenalty: SchedulerSentinels.OverflowPenalty,
+                excludedReqs: excludedReqs);
 
             SchedulerOutput? output;
             try
@@ -181,7 +193,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             }
 
             // 7. Convert assignments to entries, score, accept/reject via LAHC.
-            var candidate = AssignmentsToEntries(output.Assignments, reqs, scheduleId, incumbent);
+            var candidate = AssignmentsToEntries(output.Assignments, reqs, scheduleId, unmatchedEntries);
             var newBreakdown = ScheduleScoreCalculator.ComputeBreakdown(candidate, shared.ScoreCtx);
 
             long candCost = newBreakdown.Total;
@@ -337,10 +349,10 @@ public class LnsOptimizerService : ILnsOptimizerService
         IReadOnlyList<SchedulerAssignment> assignments,
         IReadOnlyList<SchedulerRequirement> reqs,
         Guid scheduleId,
-        IReadOnlyList<ScheduleEntry> incumbentForCarryOver)
+        IReadOnlyList<ScheduleEntry> carryOver)
     {
         var parallelGuids = new Dictionary<int, Guid>();
-        var result = new List<ScheduleEntry>(assignments.Count);
+        var result = new List<ScheduleEntry>(assignments.Count + carryOver.Count);
         foreach (var a in assignments)
         {
             var req = reqs[a.RequirementIndex];
@@ -367,6 +379,27 @@ public class LnsOptimizerService : ILnsOptimizerService
             foreach (var gId in req.GroupIds)
                 entry.StudentGroups.Add(new ScheduleEntryStudentGroup { StudentGroupId = gId, ScheduleEntry = entry });
             result.Add(entry);
+        }
+
+        foreach (var e in carryOver)
+        {
+            var clone = new ScheduleEntry
+            {
+                ScheduleId = scheduleId,
+                SubjectId = e.SubjectId,
+                TeacherId = e.TeacherId,
+                RoomId = e.RoomId,
+                DayOfWeek = e.DayOfWeek,
+                PairNumber = e.PairNumber,
+                WeekType = e.WeekType,
+                LessonType = e.LessonType,
+                IsOnline = e.IsOnline,
+                ParallelGroupId = e.ParallelGroupId,
+                SubgroupLabel = e.SubgroupLabel
+            };
+            foreach (var sg in e.StudentGroups)
+                clone.StudentGroups.Add(new ScheduleEntryStudentGroup { StudentGroupId = sg.StudentGroupId, ScheduleEntry = clone });
+            result.Add(clone);
         }
         return result;
     }

@@ -55,6 +55,9 @@ public class OrToolsSchedulerService : ISchedulerService
         if (input.FreedReqs is { Count: > 0 })
             foreach (var fr in input.FreedReqs) freedAxis[fr.RequirementIndex] = fr;
 
+        // Reqs left entirely out of the model
+        var excludedReqs = input.ExcludedReqs is { Count: > 0 } ? new HashSet<int>(input.ExcludedReqs) : null;
+
         var distances = BuildDistanceMap(input.BuildingDistances);
         var roomDistances = BuildRoomDistanceMap(input.RoomDistances);
         var blocked = BuildBlockedSet(input.TeacherBlocks);
@@ -162,6 +165,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     ReportSub(
                         $"Переменные: занятие {ri}/{reqs.Count} ({100 * ri / Math.Max(1, reqs.Count)}%), создано {totalVarCount} перем.");
                 }
+                if (excludedReqs != null && excludedReqs.Contains(ri)) continue;
                 var req = reqs[ri];
                 int varWi = VarWeekIndex(req.WeekType);
                 var compatRmis = compatibleRooms[ri];
@@ -262,6 +266,7 @@ public class OrToolsSchedulerService : ISchedulerService
         var noSlotLines = new List<string>();
         for (int ri = 0; ri < reqs.Count; ri++)
         {
+            if (excludedReqs != null && excludedReqs.Contains(ri)) continue;
             var req = reqs[ri];
             if (compatibleRooms[ri].Length == 0)
             {
@@ -347,6 +352,7 @@ public class OrToolsSchedulerService : ISchedulerService
             var gstTeachers = new Dictionary<(Guid grp, Guid subj, LessonType lt), HashSet<Guid>>();
             foreach (var req in reqs)
             {
+                if (excludedReqs != null && excludedReqs.Contains(req.Index)) continue;
                 // Parallel sessions (language streams / lab subgroups) intentionally assign several
                 // teachers to the same (group, subject, lesson type) — exempt from the one-teacher rule.
                 if (req.ParallelKey.HasValue) continue;

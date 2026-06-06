@@ -128,7 +128,9 @@ public record SchedulerInput(
     // reqs here must not be pinned..
     IReadOnlyList<SchedulerFreedReq>? FreedReqs = null,
     // Penalty for the overflow sentinel
-    long OverflowPenalty = 0
+    long OverflowPenalty = 0,
+    // Requirement indices to leave out of the model
+    IReadOnlyList<int>? ExcludedReqs = null
 );
 
 // LNS: hard-fix one requirement to a specific placement. WeekType must equal the requirement's
