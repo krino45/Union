@@ -39,6 +39,22 @@ public class OrToolsSchedulerService : ISchedulerService
         var groups = input.Groups.ToList();
         var teachers = input.Teachers.ToList();
 
+        long overflowPenalty = input.OverflowPenalty;
+        int overflowRmi = -1;
+        if (overflowPenalty > 0)
+        {
+            rooms.Add(new SchedulerRoom(SchedulerSentinels.OverflowRoomId, Guid.Empty, RoomType.RegularCabinet,
+                Capacity: int.MaxValue, HasProjector: true, HasComputers: true, HasLab: true, IsOnline: false,
+                IsOverflow: true));
+            overflowRmi = rooms.Count - 1;
+        }
+        var roomIdToIdx = new Dictionary<Guid, int>(rooms.Count);
+        for (int i = 0; i < rooms.Count; i++) roomIdToIdx[rooms[i].Id] = i;
+
+        var freedAxis = new Dictionary<int, SchedulerFreedReq>();
+        if (input.FreedReqs is { Count: > 0 })
+            foreach (var fr in input.FreedReqs) freedAxis[fr.RequirementIndex] = fr;
+
         var distances = BuildDistanceMap(input.BuildingDistances);
         var roomDistances = BuildRoomDistanceMap(input.RoomDistances);
         var blocked = BuildBlockedSet(input.TeacherBlocks);
@@ -57,9 +73,6 @@ public class OrToolsSchedulerService : ISchedulerService
         if (input.Pinnings is { Count: > 0 })
         {
             Report($"Закрепление: проверка {input.Pinnings.Count} закреплений...");
-            var roomIdToIdx = new Dictionary<Guid, int>(rooms.Count);
-            for (int i = 0; i < rooms.Count; i++) roomIdToIdx[rooms[i].Id] = i;
-
             pinTarget = new Dictionary<int, (int, int, int)>(input.Pinnings.Count);
             foreach (var pin in input.Pinnings)
             {
@@ -136,6 +149,7 @@ public class OrToolsSchedulerService : ISchedulerService
         var byCellRoom = new Dictionary<(int rmi, int d, int p, int wi), List<(int ri, Guid tId, BoolVar v, long size)>>();
         var byCellTeacher = new Dictionary<(Guid tId, int d, int p, int wi), List<(int ri, int rmi, BoolVar v)>>();
         long totalVarCount = 0;
+        var overflowVars = new List<BoolVar>(); // overflow-room BoolVars are penalized
 
         Report($"Создание переменных ({reqs.Count} занятий)...");
         {
@@ -164,10 +178,23 @@ public class OrToolsSchedulerService : ISchedulerService
                     pinD = pt.d; pinP = pt.p; pinRmi = pt.rmi;
                 }
 
+                var axis = freedAxis.TryGetValue(ri, out var fr) ? fr.Axis : RepairAxis.Full;
+                int ownRmi = -1, spaceD = -1, spaceP = -1;
+                if (axis == RepairAxis.Time)
+                {
+                    if (!roomIdToIdx.TryGetValue(fr!.RoomId, out ownRmi)) ownRmi = -1;
+                }
+                else if (axis == RepairAxis.Space)
+                {
+                    spaceD = (int)fr!.Day - 1;
+                    spaceP = fr.PairNumber - 1;
+                }
+
                 for (int d = 0; d < NumDays; d++)
                 for (int p = 0; p < numPairs; p++)
                 {
                     if (isPinned && (d != pinD || p != pinP)) continue;
+                    if (axis == RepairAxis.Space && (d != spaceD || p != spaceP)) continue;
 
                     bool dayBlockedForGroup = req.GroupIds.Any(gId =>
                         groupBlockedDays.TryGetValue(gId, out var bd) && bd.Contains(d));
@@ -181,8 +208,9 @@ public class OrToolsSchedulerService : ISchedulerService
                     foreach (int rmi in compatRmis)
                     {
                         if (isPinned && rmi != pinRmi) continue;
+                        if (axis == RepairAxis.Time && rmi != ownRmi && rmi != overflowRmi) continue;
 
-                        if (blockedRoomSlots.Count > 0 && !rooms[rmi].IsDistributed)
+                        if (blockedRoomSlots.Count > 0 && !rooms[rmi].IsDistributed && !rooms[rmi].IsOverflow)
                         {
                             var roomId = rooms[rmi].Id;
                             bool roomTaken = false;
@@ -195,6 +223,7 @@ public class OrToolsSchedulerService : ISchedulerService
 
                         var v = model.NewBoolVar($"a_{ri}_{d}_{p}_{varWi}_{rmi}");
                         totalVarCount++;
+                        if (rmi == overflowRmi) overflowVars.Add(v);
 
                         var k1 = (ri, varWi);
                         if (!varsByReqWi.TryGetValue(k1, out var l1)) varsByReqWi[k1] = l1 = new List<BoolVar>();
@@ -368,7 +397,7 @@ public class OrToolsSchedulerService : ISchedulerService
                     ReportSub($"H4: ячейка {h4Done}/{h4Total} ({100 * h4Done / Math.Max(1, h4Total)}%)");
                 }
                 h4Done++;
-                if (rooms[rmi].IsDistributed) continue;
+                if (rooms[rmi].IsDistributed || rooms[rmi].IsOverflow) continue;
 
                 var byReq = new Dictionary<int, List<BoolVar>>();
                 var capVars = new List<IntVar>();
@@ -541,19 +570,19 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        // Building index
-        var allBuildingIds = rooms.Where(r => !r.IsDistributed).Select(r => r.BuildingId).Distinct().ToList();
+        // Building index. The overflow room has no location, so its excluded
+        var allBuildingIds = rooms.Where(r => !r.IsDistributed && !r.IsOverflow).Select(r => r.BuildingId).Distinct().ToList();
         var buildingIdToIdx = allBuildingIds.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
         var roomToBuildingIdx = new int[rooms.Count];
         for (int i = 0; i < rooms.Count; i++)
-            roomToBuildingIdx[i] = rooms[i].IsDistributed ? -1 : buildingIdToIdx[rooms[i].BuildingId];
+            roomToBuildingIdx[i] = (rooms[i].IsDistributed || rooms[i].IsOverflow) ? -1 : buildingIdToIdx[rooms[i].BuildingId];
 
         var zoneIdx = new Dictionary<(int bi, int floor), int>();
         var zones = new List<(int bi, int floor)>();
         var roomToZone = new int[rooms.Count];
         for (int rmi = 0; rmi < rooms.Count; rmi++)
         {
-            if (rooms[rmi].IsDistributed)
+            if (rooms[rmi].IsDistributed || rooms[rmi].IsOverflow)
             {
                 roomToZone[rmi] = -1;
                 continue;
@@ -649,12 +678,12 @@ public class OrToolsSchedulerService : ISchedulerService
             var walkPen = new Dictionary<int, Dictionary<int, long>>();
             for (int rmi1 = 0; rmi1 < rooms.Count; rmi1++)
             {
-                if (rooms[rmi1].IsDistributed) continue;
+                if (rooms[rmi1].IsDistributed || rooms[rmi1].IsOverflow) continue;
                 int bi1 = roomToBuildingIdx[rmi1];
                 for (int rmi2 = 0; rmi2 < rooms.Count; rmi2++)
                 {
                     if (rmi1 == rmi2) continue;
-                    if (rooms[rmi2].IsDistributed) continue;
+                    if (rooms[rmi2].IsDistributed || rooms[rmi2].IsOverflow) continue;
                     if (roomToBuildingIdx[rmi2] != bi1) continue;
                     int dist = TravelDistanceMeters(rooms[rmi1], rooms[rmi2], distances, roomDistances);
                     if (dist <= 0) continue;
@@ -781,7 +810,7 @@ public class OrToolsSchedulerService : ISchedulerService
                         foreach (int wi in wis)
                         foreach (var (rmi, v) in cell)
                         {
-                            if (rooms[rmi].IsDistributed) continue;
+                            if (rooms[rmi].IsDistributed || rooms[rmi].IsOverflow) continue;
                             var key = (d, p, wi, rmi);
                             if (!temp.TryGetValue(key, out var lst)) temp[key] = lst = new List<BoolVar>();
                             lst.Add(v);
@@ -1361,6 +1390,17 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
+        // S_overflow: each req parked in the overflow sentinel costs a big escapable penalty
+        if (overflowPenalty > 0 && overflowVars.Count > 0)
+        {
+            Report($"S_overflow: {overflowVars.Count} перем. переполнения (штраф {overflowPenalty})");
+            foreach (var v in overflowVars)
+            {
+                objVars.Add(v);
+                objCoeffs.Add(overflowPenalty);
+            }
+        }
+
         if (objVars.Count > 0)
             model.Minimize(LinearExpr.WeightedSum(objVars.ToArray(), objCoeffs.ToArray()));
 
@@ -1545,6 +1585,10 @@ public class OrToolsSchedulerService : ISchedulerService
 
     private static bool IsCompatible(SchedulerRequirement req, SchedulerRoom room, int headcount)
     {
+        // Reqs with a dedicated venue (online, language, PE) never overflow, since those venues are already exempt.
+        if (room.IsOverflow)
+            return req is { IsOnline: false, RequiresDistributedRoom: false, RequiresSportsHall: false };
+
         // Distributed sentinel room: only no-fixed-location requirements (language streams) may use
         // it, and they may use nothing else. It has no capacity/equipment constraints.
         if (req.RequiresDistributedRoom) return room.IsDistributed;

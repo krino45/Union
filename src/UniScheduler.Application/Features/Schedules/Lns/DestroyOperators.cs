@@ -10,6 +10,7 @@ namespace UniScheduler.Application.Features.Schedules.Lns;
 public sealed class DestroyTeacherWeek : IDestroyOperator
 {
     public string Name => "TeacherWeek";
+    public RepairAxis Axis => RepairAxis.Time;
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
@@ -35,6 +36,7 @@ public sealed class DestroyTeacherWeek : IDestroyOperator
 public sealed class DestroyDay : IDestroyOperator
 {
     public string Name => "Day";
+    public RepairAxis Axis => RepairAxis.Time;
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
@@ -63,6 +65,7 @@ public sealed class DestroyDay : IDestroyOperator
 public sealed class DestroyPlan : IDestroyOperator
 {
     public string Name => "Plan";
+    public RepairAxis Axis => RepairAxis.Time;
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
@@ -84,6 +87,7 @@ public sealed class DestroyPlan : IDestroyOperator
 public sealed class DestroyRandomK : IDestroyOperator
 {
     public string Name => "RandomK";
+    public RepairAxis Axis => RepairAxis.Time;
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
@@ -106,6 +110,7 @@ public sealed class DestroyWorstK : IDestroyOperator
     private readonly SolverWeights weights;
     public DestroyWorstK(SolverWeights weights) { this.weights = weights; }
     public string Name => "WorstK";
+    public RepairAxis Axis => RepairAxis.Time;
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
@@ -161,5 +166,49 @@ public sealed class DestroyWorstK : IDestroyOperator
 
         int take = Math.Max(ctx.MinDestroySize, ctx.TargetDestroySize);
         return score.OrderByDescending(kv => kv.Value).Take(take).Select(kv => kv.Key).ToHashSet();
+    }
+}
+
+// SPACE op: pick a room (weighted by occupancy) and free every req sitting in it, so the repair can
+// re-home that room's load to better rooms with times fixed and full distances on. "Delete a room's
+// schedule." Picking via a random entry weights selection toward busier rooms.
+public sealed class DestroyRoomSpace : IDestroyOperator
+{
+    public string Name => "RoomSpace";
+    public RepairAxis Axis => RepairAxis.Space;
+
+    public HashSet<int> SelectToDestroy(LnsKickContext ctx)
+    {
+        var withRoom = ctx.EntryByRi.Where(kv => kv.Value.RoomId.HasValue).ToList();
+        if (withRoom.Count == 0) return new HashSet<int>();
+        var pickRoom = withRoom[ctx.Rng.Next(withRoom.Count)].Value.RoomId!.Value;
+        return withRoom.Where(kv => kv.Value.RoomId == pickRoom).Select(kv => kv.Key).ToHashSet();
+    }
+}
+
+// SPACE op: pick a (group, day) with 2+ classes and free that group's classes that day, so the
+// repair can co-locate them in nearby rooms (times fixed, distances on). Directly targets walking (S4).
+public sealed class DestroyGroupDaySpace : IDestroyOperator
+{
+    public string Name => "GroupDaySpace";
+    public RepairAxis Axis => RepairAxis.Space;
+
+    public HashSet<int> SelectToDestroy(LnsKickContext ctx)
+    {
+        var byGroupDay = new Dictionary<(Guid g, RussianDayOfWeek d), List<int>>();
+        foreach (var (ri, e) in ctx.EntryByRi)
+        {
+            if (!e.RoomId.HasValue) continue;
+            foreach (var sg in e.StudentGroups)
+            {
+                var k = (sg.StudentGroupId, e.DayOfWeek);
+                if (!byGroupDay.TryGetValue(k, out var lst)) byGroupDay[k] = lst = new List<int>();
+                lst.Add(ri);
+            }
+        }
+        var keys = byGroupDay.Where(kv => kv.Value.Count >= 2).Select(kv => kv.Key).ToList();
+        if (keys.Count == 0) return new HashSet<int>();
+        var pick = keys[ctx.Rng.Next(keys.Count)];
+        return byGroupDay[pick].ToHashSet();
     }
 }

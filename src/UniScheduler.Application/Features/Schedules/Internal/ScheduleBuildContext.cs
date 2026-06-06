@@ -130,7 +130,9 @@ public static class ScheduleBuildContext
         IReadOnlyList<SchedulerPin>? pinnings = null,
         IReadOnlyList<SchedulerHint>? hints = null,
         bool isRepairSolve = false,
-        bool skipTravel = false)
+        bool skipTravel = false,
+        IReadOnlyList<SchedulerFreedReq>? freedReqs = null,
+        long overflowPenalty = 0)
     {
         var requirementGroupIds = requirements.SelectMany(r => r.GroupIds).ToHashSet();
         var relevantGroups = shared.Groups.Where(g => requirementGroupIds.Contains(g.Id)).ToList();
@@ -170,7 +172,9 @@ public static class ScheduleBuildContext
             Pinnings: pinnings,
             Hints: hints,
             IsRepairSolve: isRepairSolve,
-            SkipTravel: skipTravel
+            SkipTravel: skipTravel,
+            FreedReqs: freedReqs,
+            OverflowPenalty: overflowPenalty
         );
     }
 }

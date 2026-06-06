@@ -75,6 +75,27 @@ public record SolverWeights(
     #endregion
 };
 
+// Which axis an LNS repair frees.
+// Time: rooms locked to {own room + overflow sentinel}, (day,pair) free.
+// Space: (day,pair) locked, room free across compatible rooms.
+// Full: free both
+public enum RepairAxis { Full, Time, Space }
+
+// A req the repair solve may move, plus its current placement
+public record SchedulerFreedReq(
+    int RequirementIndex,
+    RepairAxis Axis,
+    RussianDayOfWeek Day,
+    int PairNumber,
+    WeekType WeekType,
+    Guid RoomId);
+
+public static class SchedulerSentinels
+{
+    public static readonly Guid OverflowRoomId = new("ffffffff-0000-0000-0000-0000000000f1");
+    public const long OverflowPenalty = 50_000;
+}
+
 public record SchedulerInput(
     Guid ScheduleId,
     IReadOnlyList<SchedulerRoom> Rooms,
@@ -102,7 +123,12 @@ public record SchedulerInput(
     // True for LNS repair solves (pins + small free core)
     bool IsRepairSolve = false,
     // Skip ALL travel/distance machinery (zone + room H_travel and S4).
-    bool SkipTravel = false
+    bool SkipTravel = false,
+    // When non-empty, each listed req is freed along its axis instead of full;
+    // reqs here must not be pinned..
+    IReadOnlyList<SchedulerFreedReq>? FreedReqs = null,
+    // Penalty for the overflow sentinel
+    long OverflowPenalty = 0
 );
 
 // LNS: hard-fix one requirement to a specific placement. WeekType must equal the requirement's
@@ -144,7 +170,8 @@ public record SchedulerRoom(
     IReadOnlyList<LessonType>? AllowedLessonTypes = null,
     Guid? DepartmentFacultyId = null,
     bool IsDistributed = false,
-    int EntryDistanceMeters = 0
+    int EntryDistanceMeters = 0,
+    bool IsOverflow = false
 );
 
 public record SchedulerRoomDistance(Guid FromRoomId, Guid ToRoomId, int DistanceMeters);

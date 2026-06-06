@@ -294,8 +294,10 @@ export class ApiService {
   generateSchedule(id: string, dto: GenerateScheduleRequest): Observable<{ jobId: string }> {
     return this.http.post<{ jobId: string }>(`${this.base}/schedules/${id}/generate`, dto);
   }
-  getGenerationStatus(id: string): Observable<GenerationJobStatus> {
-    return this.http.get<GenerationJobStatus>(`${this.base}/schedules/${id}/generate/status`);
+  getGenerationStatus(id: string, afterSeq = 0): Observable<GenerationJobStatus> {
+    return this.http.get<GenerationJobStatus>(`${this.base}/schedules/${id}/generate/status`, {
+      params: { afterSeq }
+    });
   }
   cancelGeneration(id: string): Observable<void> {
     return this.http.post<void>(`${this.base}/schedules/${id}/generate/cancel`, {});

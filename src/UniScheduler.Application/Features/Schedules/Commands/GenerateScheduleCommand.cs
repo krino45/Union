@@ -92,7 +92,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                         .Where(e => e.ScheduleId == request.ScheduleId)
                         .ToListAsync(cancellationToken);
                     schedule.BaseScore = ScheduleScoreCalculator.Compute(prescoreEntries, shared.ScoreCtx);
-                    await db.SaveChangesAsync(cancellationToken);
+                    await db.SaveChangesAsync();
 
                     if (request.Polish)
                     {
@@ -200,7 +200,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 var labels = string.Join(", ", batch.Select(pl => pl.Name ?? pl.Id.ToString()[..8]));
                 perPlanMessages.Add($"Партия [{labels}]: НЕРАЗРЕШИМО: {output.Message}");
                 schedule.GenerationNotes = $"Партия {bi + 1} неразрешима. {string.Join(" | ", perPlanMessages)}";
-                await db.SaveChangesAsync(cancellationToken);
+                await db.SaveChangesAsync();
                 return new GenerateScheduleResult(false, "Infeasible",
                     $"Batch {bi + 1} ({labels}): {output.Message}", totalPlaced);
             }
@@ -285,7 +285,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 if (groupToPlanId.TryGetValue(firstGroup, out var pid))
                     countByPlan[pid] = countByPlan.GetValueOrDefault(pid) + 1;
             }
-            await db.SaveChangesAsync(cancellationToken);
+            await db.SaveChangesAsync();
             totalPlaced += newEntries.Count;
             foreach (var plan in batch)
             {
@@ -305,7 +305,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
 
         schedule.GeneratedAt = DateTime.UtcNow;
         schedule.GenerationNotes = string.Join(" | ", perPlanMessages);
-        await db.SaveChangesAsync(cancellationToken);
+        await db.SaveChangesAsync();
 
         if (totalPlaced == 0)
         {
@@ -320,7 +320,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             .Where(e => e.ScheduleId == request.ScheduleId)
             .ToListAsync(cancellationToken);
         schedule.BaseScore = ScheduleScoreCalculator.Compute(scoreEntries, shared.ScoreCtx);
-        await db.SaveChangesAsync(cancellationToken);
+        await db.SaveChangesAsync();
 
         if (request.Polish)
         {
@@ -346,7 +346,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 TotalBudget: TimeSpan.FromMinutes(budgetMin),
                 KickTimeoutSeconds: kickSec,
                 MaxIterations: 2000,
-                Seed: 123456,
+                Seed: 23456,
                 MinDestroySize: destroyMin,
                 TargetDestroySize: destroyTarget,
                 LahcHistory: lahc);
@@ -355,11 +355,11 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             if (result.AcceptedAny && result.AfterBreakdown.Total < result.BeforeBreakdown.Total)
             {
                 p?.Report($"LNS: применение результата ({result.BeforeBreakdown.Total} = {result.AfterBreakdown.Total})...");
-                await ReplaceAllEntriesAsync(request.ScheduleId, result.Entries, cancellationToken);
+                await ReplaceAllEntriesAsync(request.ScheduleId, result.Entries);
                 schedule.BaseScore = result.AfterBreakdown.Total;
                 schedule.GenerationNotes = (schedule.GenerationNotes ?? "") +
-                                           $" | LNS: {result.BeforeBreakdown.Total} → {result.AfterBreakdown.Total} ({result.AcceptedKicks}/{result.TotalKicks} kicks)";
-                await db.SaveChangesAsync(cancellationToken);
+                                           $" | LNS: {result.BeforeBreakdown.Total} -> {result.AfterBreakdown.Total} ({result.AcceptedKicks}/{result.TotalKicks} kicks)";
+                await db.SaveChangesAsync();
             }
             else
             {
@@ -370,26 +370,26 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
         catch (Exception ex)
         {
             schedule.GenerationNotes = (schedule.GenerationNotes ?? "") + $" | LNS error: {ex.Message}";
-            await db.SaveChangesAsync(cancellationToken);
+            await db.SaveChangesAsync();
         }
     }
 
     // Whole-schedule swap used by the polish phase. We mirror the per-batch delete (cascade
     // reschedule requests), then re-add fresh entries with new IDs and group rows.
-    private async Task ReplaceAllEntriesAsync(Guid scheduleId, IReadOnlyList<ScheduleEntry> newEntries, CancellationToken ct)
+    private async Task ReplaceAllEntriesAsync(Guid scheduleId, IReadOnlyList<ScheduleEntry> newEntries)
     {
         var existing = await db.ScheduleEntries
             .Where(e => e.ScheduleId == scheduleId)
-            .ToListAsync(ct);
+            .ToListAsync();
         if (existing.Count > 0)
         {
             var oldIds = existing.Select(e => e.Id).ToList();
             var relatedRequests = await db.RescheduleRequests
                 .Where(r => oldIds.Contains(r.OriginalEntryId))
-                .ToListAsync(ct);
+                .ToListAsync();
             if (relatedRequests.Count > 0) db.RescheduleRequests.RemoveRange(relatedRequests);
             db.ScheduleEntries.RemoveRange(existing);
-            await db.SaveChangesAsync(ct);
+            await db.SaveChangesAsync();
         }
 
         var occupied = new HashSet<(Guid, RussianDayOfWeek, int, int)>();
@@ -414,14 +414,14 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 db.ScheduleEntryStudentGroups.Add(sg);
             }
         }
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync();
         if (skipped > 0)
         {
-            var sched = await db.Schedules.FirstOrDefaultAsync(s => s.Id == scheduleId, ct);
+            var sched = await db.Schedules.FirstOrDefaultAsync(s => s.Id == scheduleId);
             if (sched != null)
             {
                 sched.GenerationNotes = (sched.GenerationNotes ?? "") + $" | LNS dedup: пропущено {skipped} конфликтующих записей";
-                await db.SaveChangesAsync(ct);
+                await db.SaveChangesAsync();
             }
         }
     }

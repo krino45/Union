@@ -29,12 +29,13 @@ public record ScoreBreakdown(
     int S6_ConsecSameLesson,
     int S7_TimeOfDay,
     int S8_Saturday,
-    int S9_DeptMismatch)
+    int S9_DeptMismatch,
+    int S10_Overflow = 0)
 {
     public int Total =>
         HardConflicts + S1_StudentWindows + S2_TeacherWindows + S3_ActiveDays +
         S4_Walking + S5_SanPinOverload + S6_ConsecSameLesson + S7_TimeOfDay +
-        S8_Saturday + S9_DeptMismatch;
+        S8_Saturday + S9_DeptMismatch + S10_Overflow;
 }
 
 /// <summary>
@@ -127,6 +128,11 @@ public static class ScheduleScoreCalculator
         int s2 = Score_S2_TeacherWindows(byTeacher, weekVariants, w);
         int s9 = ctx == null ? 0 : Score_S9_DeptMismatch(entries, ctx, w);
 
+        int s10 = 0;
+        foreach (var e in entries)
+            if (e.RoomId == SchedulerSentinels.OverflowRoomId)
+                s10 += (int)SchedulerSentinels.OverflowPenalty;
+
         return new ScoreBreakdown(
             HardConflicts: hard,
             S1_StudentWindows: s1,
@@ -137,7 +143,8 @@ public static class ScheduleScoreCalculator
             S6_ConsecSameLesson: s6,
             S7_TimeOfDay: s7,
             S8_Saturday: s8,
-            S9_DeptMismatch: s9);
+            S9_DeptMismatch: s9,
+            S10_Overflow: s10);
     }
 
     public static int Score_HardConflicts(IReadOnlyList<ScheduleEntry> entries)
@@ -150,7 +157,8 @@ public static class ScheduleScoreCalculator
             var a = entries[i]; var b = entries[j];
             if (!Overlaps(a, b)) continue;
 
-            if (!a.IsOnline && !b.IsOnline && a.RoomId.HasValue && a.RoomId == b.RoomId)
+            if (!a.IsOnline && !b.IsOnline && a.RoomId.HasValue && a.RoomId == b.RoomId
+                && a.RoomId != SchedulerSentinels.OverflowRoomId)
                 if (seen.Add($"r:{a.RoomId}:{a.DayOfWeek}:{a.PairNumber}"))
                     score += 100000;
 

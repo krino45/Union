@@ -49,8 +49,9 @@ public class LnsOptimizerService : ILnsOptimizerService
         // 2. Build parallel-sibling index — destroy sets get expanded to include all siblings.
         var siblingsByRi = BuildParallelSiblings(reqs);
 
-        // 3. Operator bag.
-        var operators = new IDestroyOperator[]
+        // 3. Operator bags — alternated each kick. Time ops retime (rooms locked to own/overflow,
+        //    SkipTravel); Space ops reroom (times locked, full distances on, overflow re-homed).
+        var timeOps = new IDestroyOperator[]
         {
             new DestroyWorstK(shared.Weights),
             new DestroyTeacherWeek(),
@@ -58,8 +59,14 @@ public class LnsOptimizerService : ILnsOptimizerService
             new DestroyPlan(),
             new DestroyRandomK(),
         };
-        var weights = operators.ToDictionary(o => o.Name, _ => 1.0);
-        var telemetry = operators.ToDictionary(o => o.Name, _ => (Attempts: 0, Accepted: 0, Failed: 0, Total: 0L));
+        var spaceOps = new IDestroyOperator[]
+        {
+            new DestroyRoomSpace(),
+            new DestroyGroupDaySpace(),
+        };
+        var allOps = timeOps.Concat(spaceOps).ToArray();
+        var weights = allOps.ToDictionary(o => o.Name, _ => 1.0);
+        var telemetry = allOps.ToDictionary(o => o.Name, _ => (Attempts: 0, Accepted: 0, Failed: 0, Total: 0L));
 
         // 4. Main loop.
         var incumbent = seed.ToList();
@@ -82,9 +89,10 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         while (DateTime.UtcNow < deadline && kicks < opts.MaxIterations && !ct.IsCancellationRequested)
         {
-            var op = PickOperator(operators, weights, rng);
+            var axisOps = (kicks % 2 == 0) ? timeOps : spaceOps;
+            var op = PickOperator(axisOps, weights, rng);
             int attemptNum = kicks + 1;
-            var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}";
+            var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}/{op.Axis}";
             var kickProgress = progress == null
                 ? null
                 : (IProgress<string>)new Progress<string>(s => progress.Report($"{kickPrefix} | {s}"));
@@ -105,6 +113,8 @@ public class LnsOptimizerService : ILnsOptimizerService
             ExpandToSiblings(destroy, siblingsByRi);
             // Always also include unmatched reqs so the solve produces full schedules.
             foreach (var ri in unmatchedReqs) destroy.Add(ri);
+            foreach (var (ri, e) in entryByRi)
+                if (e.RoomId == SchedulerSentinels.OverflowRoomId) destroy.Add(ri);
 
             if (destroy.Count == 0)
             {
@@ -114,26 +124,27 @@ public class LnsOptimizerService : ILnsOptimizerService
                 continue;
             }
 
-            // 5. Build pins for ri NOT in destroy, hints for ri that ARE in destroy
             var pins = new List<SchedulerPin>(reqs.Count - destroy.Count);
             var hints = new List<SchedulerHint>(destroy.Count);
+            var freed = new List<SchedulerFreedReq>(destroy.Count);
             foreach (var (ri, entry) in entryByRi)
             {
+                if (!entry.RoomId.HasValue) continue; // online — no room anchor; stays fully free
+                bool isOverflow = entry.RoomId.Value == SchedulerSentinels.OverflowRoomId;
                 if (destroy.Contains(ri))
                 {
-                    if (!entry.RoomId.HasValue) continue;
-                    hints.Add(new SchedulerHint(ri, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
+                    freed.Add(new SchedulerFreedReq(ri, op.Axis, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
+                    if (!isOverflow) // hinting a req back into the sentinel is pointless
+                        hints.Add(new SchedulerHint(ri, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
                 }
-                else
+                else if (!isOverflow) // never pin to the sentinel (overflow is always in destroy anyway)
                 {
-                    if (!entry.RoomId.HasValue) continue;      // online entries have no room — skip pin
                     pins.Add(new SchedulerPin(ri, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
                 }
             }
 
-            // 6. Call solver as repair. roomBlocks / teacherBlocks empty (everything is in the
-            //    pinned-or-freed model; cross-tenant blocks shouldn't apply since we own the whole
-            //    schedule slice in LNS).
+            // 6. Call solver as repair.  Time kicks SkipTravel
+            bool timeAxis = op.Axis == RepairAxis.Time;
             var input = ScheduleBuildContext.BuildSchedulerInputForPlan(
                 scheduleId, shared, reqs,
                 roomBlocks: Array.Empty<SchedulerRoomBlock>(),
@@ -143,7 +154,9 @@ public class LnsOptimizerService : ILnsOptimizerService
                 pinnings: pins,
                 hints: hints,
                 isRepairSolve: true,
-                skipTravel: true);
+                skipTravel: timeAxis,
+                freedReqs: freed,
+                overflowPenalty: SchedulerSentinels.OverflowPenalty);
 
             SchedulerOutput? output;
             try
@@ -174,6 +187,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             var newBreakdown = ScheduleScoreCalculator.ComputeBreakdown(candidate, shared.ScoreCtx);
 
             long candCost = newBreakdown.Total;
+            bool candHasOverflow = newBreakdown.S10_Overflow > 0;
             int vIdx = kicks % lahcL;
             bool acceptThis = candCost <= currentCost || candCost <= lahcHistory[vIdx];
 
@@ -186,7 +200,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                 // Incumbent changed — rebuild the ri-entry map so the next kick pins/hints correctly.
                 (entryByRi, riByEntryId, _, _) = MatchIncumbent(reqs, incumbent);
 
-                if (candCost < bestScore)
+                if (candCost < bestScore && !candHasOverflow)
                 {
                     bestScore = candCost;
                     bestEntries = candidate;
@@ -199,7 +213,8 @@ public class LnsOptimizerService : ILnsOptimizerService
                 {
                     MarkAccepted(telemetry, op.Name, 0);
                 }
-                progress?.Report($"{kickPrefix} | принято score={currentCost} (best {bestScore})");
+                string ovf = candHasOverflow ? $" overflow={newBreakdown.S10_Overflow / (int)SchedulerSentinels.OverflowPenalty}" : "";
+                progress?.Report($"{kickPrefix} | принято score={currentCost}{ovf} (best {bestScore})");
             }
             else
             {

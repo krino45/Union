@@ -123,10 +123,21 @@ public class SchedulesController : ControllerBase
 
     [Authorize(Roles = AdminOnly)]
     [HttpGet("{id:guid}/generate/status")]
-    public IActionResult GetGenerationStatus(Guid id)
+    public IActionResult GetGenerationStatus(Guid id, [FromQuery] long afterSeq = 0)
     {
         var status = jobQueue.GetStatus(id);
-        return Ok(status);
+        var (log, latestSeq) = jobQueue.GetLog(id, afterSeq);
+        return Ok(new
+        {
+            status.ScheduleId,
+            status.Status,
+            status.Message,
+            status.Stage,
+            status.EntriesCreated,
+            status.CompletedAt,
+            log,
+            latestSeq
+        });
     }
 
     [Authorize(Roles = AdminOnly)]

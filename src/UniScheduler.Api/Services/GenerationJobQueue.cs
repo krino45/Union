@@ -9,6 +9,8 @@ public interface IGenerationJobQueue
     Guid Enqueue(Guid scheduleId, int timeoutSeconds, IReadOnlyList<Guid>? planIds = null, bool polish = false);
     GenerationJobStatus GetStatus(Guid scheduleId);
     bool TryCancel(Guid scheduleId);
+    long AppendStage(Guid scheduleId, string message);
+    (IReadOnlyList<StageLogItem> Items, long LatestSeq) GetLog(Guid scheduleId, long afterSeq);
 }
 
 public record GenerationJobStatus(
@@ -19,18 +21,56 @@ public record GenerationJobStatus(
     int EntriesCreated,
     DateTime? CompletedAt);
 
+public record StageLogItem(long Seq, DateTime At, string Message);
+
 public class GenerationJobQueue : IGenerationJobQueue
 {
     private readonly ConcurrentDictionary<Guid, GenerationJobStatus> statuses = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> cancellations = new();
+    private readonly ConcurrentDictionary<Guid, StageLog> logs = new();
     private readonly ConcurrentQueue<(Guid jobId, Guid scheduleId, int timeout, IReadOnlyList<Guid>? planIds, bool polish)> queue = new();
 
     public Guid Enqueue(Guid scheduleId, int timeoutSeconds, IReadOnlyList<Guid>? planIds = null, bool polish = false)
     {
         var jobId = scheduleId;
         statuses[scheduleId] = new GenerationJobStatus(scheduleId, "queued", null, null, 0, null);
+        logs[scheduleId] = new StageLog(); // fresh log per run
         queue.Enqueue((jobId, scheduleId, timeoutSeconds, planIds, polish));
         return jobId;
+    }
+
+    public long AppendStage(Guid scheduleId, string message)
+        => logs.GetOrAdd(scheduleId, _ => new StageLog()).Append(message);
+
+    public (IReadOnlyList<StageLogItem> Items, long LatestSeq) GetLog(Guid scheduleId, long afterSeq)
+        => logs.TryGetValue(scheduleId, out var log) ? log.Since(afterSeq) : (Array.Empty<StageLogItem>(), 0L);
+
+    private sealed class StageLog
+    {
+        private const int Cap = 2000;
+        private readonly object gate = new();
+        private readonly Queue<StageLogItem> items = new();
+        private long seq;
+
+        public long Append(string message)
+        {
+            lock (gate)
+            {
+                var s = ++seq;
+                items.Enqueue(new StageLogItem(s, DateTime.UtcNow, message));
+                while (items.Count > Cap) items.Dequeue();
+                return s;
+            }
+        }
+
+        public (IReadOnlyList<StageLogItem> Items, long LatestSeq) Since(long afterSeq)
+        {
+            lock (gate)
+            {
+                var list = items.Where(i => i.Seq > afterSeq).ToList();
+                return (list, seq);
+            }
+        }
     }
 
     public GenerationJobStatus GetStatus(Guid scheduleId)
@@ -100,6 +140,7 @@ public class GenerationBackgroundService : BackgroundService
 
                 var progress = new Progress<string>(stage =>
                 {
+                    queue.AppendStage(scheduleId, stage);
                     var current = queue.GetStatus(scheduleId);
                     queue.SetStatus(scheduleId, current with { Stage = stage });
                 });

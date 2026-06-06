@@ -20,7 +20,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { Subscription, timer, of, EMPTY, forkJoin, Observable } from 'rxjs';
 import { exhaustMap, takeWhile, catchError, filter, map, startWith } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
-import { Schedule, GenerationJobStatus, Faculty, SolverWeights, StudyPlan } from '../../../core/models';
+import { Schedule, GenerationJobStatus, StageLogItem, Faculty, SolverWeights, StudyPlan } from '../../../core/models';
 import { ScheduleStatus, Term } from '../../../core/models/enums';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -87,6 +87,18 @@ const CURRENT_YEAR = new Date().getFullYear();
                     (click)="cancelGeneration(s)">
               <mat-icon>stop</mat-icon> {{ cancelling[s.id] ? 'Отмена...' : 'Отменить' }}
             </button>
+            <button mat-icon-button class="gen-log-toggle"
+                    *ngIf="(generationLog[s.id]?.length || 0) > 0"
+                    (click)="showLog[s.id] = !showLog[s.id]"
+                    [matTooltip]="'Журнал (' + generationLog[s.id].length + ')'">
+              <mat-icon>{{ showLog[s.id] ? 'expand_less' : 'history' }}</mat-icon>
+            </button>
+          </div>
+          <div class="gen-log" *ngIf="showLog[s.id] && (generationLog[s.id]?.length || 0) > 0">
+            <div class="gen-log-line" *ngFor="let it of generationLog[s.id]">
+              <span class="gen-log-time">{{ it.at | date:'HH:mm:ss' }}</span>
+              <span class="gen-log-msg">{{ it.message }}</span>
+            </div>
           </div>
         </div>
       </mat-card-content>
@@ -142,6 +154,11 @@ const CURRENT_YEAR = new Date().getFullYear();
     .gen-completed { color: #388e3c; }
     .gen-failed { color: #d32f2f; }
     .gen-queued, .gen-running { color: #1976d2; }
+    .gen-log { margin-top: 6px; max-height: 220px; overflow-y: auto; background: #fafafa;
+               border: 1px solid #eee; border-radius: 4px; padding: 6px 8px; }
+    .gen-log-line { display: flex; gap: 8px; font-size: 12px; line-height: 1.5; font-family: monospace; }
+    .gen-log-time { color: #999; flex: 0 0 auto; }
+    .gen-log-msg { color: #333; white-space: pre-wrap; word-break: break-word; }
     .status-draft { background: #fff3e0; color: #e65100; }
     .status-published { background: #e8f5e9; color: #1b5e20; }
     .status-archived { background: #f3e5f5; color: #4a148c; }
@@ -164,6 +181,11 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
   cancelling: Record<string, boolean> = {};
   loading = true;
   showArchived = false;
+  // Full run log accumulated from poll deltas (the backend buffer only bridges poll gaps), the last
+  // seq we've consumed, and whether the log dropdown is open — all keyed by schedule id.
+  generationLog: Record<string, StageLogItem[]> = {};
+  showLog: Record<string, boolean> = {};
+  private lastSeq: Record<string, number> = {};
   private pollingSubscriptions: Record<string, Subscription> = {};
 
   get visibleSchedules(): Schedule[] {
@@ -204,6 +226,7 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
         next: status => {
           if (status.status === 'queued' || status.status === 'running') {
             this.generationStatus[s.id] = status;
+            this.resetLog(s.id);
             this.startPolling(s.id);
           }
         },
@@ -246,6 +269,7 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
       this.api.generateSchedule(schedule.id, { timeoutSeconds, planIds, polish }).subscribe({
         next: () => {
           this.generationStatus[schedule.id] = { scheduleId: schedule.id, status: 'queued', entriesCreated: 0 };
+          this.resetLog(schedule.id); // fresh run — drop any prior log
           this.startPolling(schedule.id);
         },
         error: (e) => {
@@ -257,6 +281,7 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
           if (e.status === 409) {
             this.api.getGenerationStatus(schedule.id).subscribe(s => {
               this.generationStatus[schedule.id] = s;
+              this.resetLog(schedule.id);
               this.startPolling(schedule.id);
             });
           }
@@ -265,16 +290,25 @@ export class ScheduleGeneratorComponent implements OnInit, OnDestroy {
     });
   }
 
+  private resetLog(scheduleId: string): void {
+    this.generationLog[scheduleId] = [];
+    this.lastSeq[scheduleId] = 0;
+    this.showLog[scheduleId] = false;
+  }
+
   private startPolling(scheduleId: string): void {
     this.pollingSubscriptions[scheduleId]?.unsubscribe();
+    this.generationLog[scheduleId] ??= [];
     this.pollingSubscriptions[scheduleId] = timer(0, 2500).pipe(
-      exhaustMap(() => this.api.getGenerationStatus(scheduleId).pipe(
+      exhaustMap(() => this.api.getGenerationStatus(scheduleId, this.lastSeq[scheduleId] ?? 0).pipe(
         catchError(() => EMPTY)
       )),
       filter(s => s.status !== 'not_found'),
       takeWhile(s => s.status === 'queued' || s.status === 'running', true)
     ).subscribe({
       next: status => {
+        if (status.log?.length) (this.generationLog[scheduleId] ??= []).push(...status.log);
+        if (typeof status.latestSeq === 'number') this.lastSeq[scheduleId] = status.latestSeq;
         this.generationStatus[scheduleId] = status;
         if (status.status === 'completed') {
           this.cancelling[scheduleId] = false;

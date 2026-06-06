@@ -42,5 +42,6 @@ public record LnsKickContext(
 public interface IDestroyOperator
 {
     string Name { get; }
+    RepairAxis Axis { get; }
     HashSet<int> SelectToDestroy(LnsKickContext ctx);
 }
