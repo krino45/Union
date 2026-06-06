@@ -27,19 +27,31 @@ public class LnsOptimizerService : ILnsOptimizerService
     {
         var rng = new Random(opts.Seed);
 
+        var beforeBreakdown = ScheduleScoreCalculator.ComputeBreakdown(seed, shared.ScoreCtx);
+
+        // Phase 0: feasibility repair.
+        var feas = FeasibilityRepair.Resolve(seed, shared);
+        if (feas.Before > 0)
+        {
+            progress?.Report($"Починка конфликтов: конфликтов было {feas.Before}, перемещено {feas.Relocated}, осталось {feas.Unresolved}");
+            seed = feas.Entries;
+        }
+        var seedBreakdown = feas.ChangedAnything
+            ? ScheduleScoreCalculator.ComputeBreakdown(seed, shared.ScoreCtx)
+            : beforeBreakdown;
+
         // 1. Rebuild requirements deterministically and try to match each incumbent entry to its ri.
         var (reqs, riToPlanId) = ScheduleRequirementBuilder.BuildAllRequirementsStable(shared);
         var (entryByRi, riByEntryId, unmatchedEntries, unmatchedReqs) = MatchIncumbent(reqs, seed);
 
-        var beforeBreakdown = ScheduleScoreCalculator.ComputeBreakdown(seed, shared.ScoreCtx);
-
         // Coverage gate - if the seed and the rebuilt requirement set drift too far, polish is
-        // not the right tool; the user should rerun the seed pass. Skip cleanly.
+        // not the right tool; the user should rerun the seed pass. Skip cleanly (but keep the
+        // feasibility-repaired entries, which are still an improvement).
         double coverage = reqs.Count == 0 ? 1.0 : (double)entryByRi.Count / reqs.Count;
         if (coverage < 0.85)
         {
-            progress?.Report($"LNS: пропуск — низкое совпадение требований ({entryByRi.Count}/{reqs.Count}); перегенерируйте план.");
-            return new LnsResult(seed, beforeBreakdown, beforeBreakdown, 0, 0,
+            progress?.Report($"LNS: пропуск оптимизации — низкое совпадение требований ({entryByRi.Count}/{reqs.Count}); перегенерируйте план.");
+            return new LnsResult(seed, beforeBreakdown, seedBreakdown, 0, 0,
                 new Dictionary<string, OperatorTelemetry>());
         }
 
@@ -89,16 +101,16 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         // 4. Main loop.
         var incumbent = seed.ToList();
-        var currentBreakdown = beforeBreakdown;
+        var currentBreakdown = seedBreakdown;
 
         // Best-ever snapshot - LAHC lets the incumbent drift uphill, so the result must return the
         // best schedule we ever saw, not the last accepted one.
         var bestEntries = seed.ToList();
-        var bestBreakdown = beforeBreakdown;
-        long bestScore = beforeBreakdown.Total;
+        var bestBreakdown = seedBreakdown;
+        long bestScore = seedBreakdown.Total;
 
         // Late-acceptance history: accept a candidate if it beats the current cost OR the cost from L kicks ago
-        long currentCost = beforeBreakdown.Total;
+        long currentCost = seedBreakdown.Total;
         int lahcL = Math.Max(1, opts.LahcHistory);
         var lahcHistory = new long[lahcL];
         Array.Fill(lahcHistory, currentCost);
@@ -198,7 +210,8 @@ public class LnsOptimizerService : ILnsOptimizerService
             if (output.Status != SolverStatus.Feasible && output.Status != SolverStatus.Optimal)
             {
                 MarkFailed(telemetry, op.Name);
-                progress?.Report($"{kickPrefix} | решатель: {output.Status} (best {bestScore})");
+                var why = string.IsNullOrWhiteSpace(output.Message) ? "" : $" — {Trunc(output.Message, 240)}";
+                progress?.Report($"{kickPrefix} | решатель: {output.Status}{why} (best {bestScore})");
                 continue;
             }
 
@@ -431,6 +444,8 @@ public class LnsOptimizerService : ILnsOptimizerService
         }
         return result;
     }
+
+    private static string Trunc(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
     private static void MarkAccepted(Dictionary<string, (int Attempts, int Accepted, int Failed, long Total)> tel,
         string name, long improvement)

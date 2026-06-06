@@ -355,7 +355,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 SpaceKickEvery: spaceEvery);
             var result = await lns.OptimizeAsync(request.ScheduleId, scoreEntries, shared, opts, p, cancellationToken);
 
-            if (result.AcceptedAny && result.AfterBreakdown.Total < result.BeforeBreakdown.Total)
+            if (result.AfterBreakdown.Total < result.BeforeBreakdown.Total)
             {
                 p?.Report($"LNS: применение результата ({result.BeforeBreakdown.Total} = {result.AfterBreakdown.Total})...");
                 await ReplaceAllEntriesAsync(request.ScheduleId, result.Entries);
