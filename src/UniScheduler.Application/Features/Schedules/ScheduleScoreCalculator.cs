@@ -20,7 +20,8 @@ public record ScoreContext(
     IReadOnlyDictionary<Guid, int>? RoomEntryDistances = null,
     // Rooms exempt from room double-booking: the distributed placeholder room and sports halls are
     // multi-occupancy by design (many parallel classes share them). Mirrors the solver's H4 skip.
-    IReadOnlySet<Guid>? MultiOccupancyRoomIds = null);
+    IReadOnlySet<Guid>? MultiOccupancyRoomIds = null,
+    IReadOnlyDictionary<Guid, IReadOnlySet<LessonType>>? RoomAllowedLessonTypes = null);
 
 public record ScoreBreakdown(
     int HardConflicts,
@@ -33,12 +34,13 @@ public record ScoreBreakdown(
     int S7_TimeOfDay,
     int S8_Saturday,
     int S9_DeptMismatch,
-    int S10_Overflow = 0)
+    int S10_Overflow = 0,
+    int S11_RoomTypeMismatch = 0)
 {
     public int Total =>
         HardConflicts + S1_StudentWindows + S2_TeacherWindows + S3_ActiveDays +
         S4_Walking + S5_SanPinOverload + S6_ConsecSameLesson + S7_TimeOfDay +
-        S8_Saturday + S9_DeptMismatch + S10_Overflow;
+        S8_Saturday + S9_DeptMismatch + S10_Overflow + S11_RoomTypeMismatch;
 }
 
 /// <summary>
@@ -84,6 +86,8 @@ public static class ScheduleScoreCalculator
             .Select(r => r.Id)
             .ToHashSet();
 
+        var roomAllowed = roomList.ToDictionary(r => r.Id, AllowedLessonTypes);
+
         IReadOnlyDictionary<Guid, Guid?>? roomDeptFacultyId = penalties.DepartmentMismatchPenalty > 0
             ? roomList.ToDictionary(r => r.Id, r => r.Department?.FacultyId)
             : null;
@@ -100,7 +104,8 @@ public static class ScheduleScoreCalculator
             subjectDeptFacultyId,
             penalties,
             roomEntryDists,
-            multiOccupancy);
+            multiOccupancy,
+            roomAllowed);
     }
 
     public static int Compute(IReadOnlyList<ScheduleEntry> entries, ScoreContext ctx)
@@ -144,6 +149,8 @@ public static class ScheduleScoreCalculator
             if (e.RoomId == SchedulerSentinels.OverflowRoomId)
                 s10 += (int)SchedulerSentinels.OverflowPenalty;
 
+        int s11 = ctx == null ? 0 : Score_RoomTypeMismatch(entries, ctx);
+
         return new ScoreBreakdown(
             HardConflicts: hard,
             S1_StudentWindows: s1,
@@ -155,7 +162,43 @@ public static class ScheduleScoreCalculator
             S7_TimeOfDay: s7,
             S8_Saturday: s8,
             S9_DeptMismatch: s9,
-            S10_Overflow: s10);
+            S10_Overflow: s10,
+            S11_RoomTypeMismatch: s11);
+    }
+
+    public const int RoomTypeMismatchPenalty = 50_000;
+
+    public static int Score_RoomTypeMismatch(IReadOnlyList<ScheduleEntry> entries, ScoreContext ctx)
+    {
+        if (ctx?.RoomAllowedLessonTypes is not { } allowedMap) return 0;
+        int count = 0;
+        foreach (var e in entries)
+        {
+            if (e.IsOnline || !e.RoomId.HasValue) continue;
+            if (e.RoomId.Value == SchedulerSentinels.OverflowRoomId) continue;
+            if (allowedMap.TryGetValue(e.RoomId.Value, out var allowed) && !allowed.Contains(e.LessonType))
+                count++;
+        }
+        return count * RoomTypeMismatchPenalty;
+    }
+
+    private static readonly IReadOnlySet<LessonType> AllLessonTypes =
+        new HashSet<LessonType>(Enum.GetValues<LessonType>());
+
+    private static IReadOnlySet<LessonType> AllowedLessonTypes(Room r)
+    {
+        if (r.IsOnline) return AllLessonTypes;
+        if (r.IsDistributed) return new HashSet<LessonType> { LessonType.Language };
+        if (r.RoomType == RoomType.SportsHall) return new HashSet<LessonType> { LessonType.PhysicalEducation };
+        if (r.AllowedLessonTypes is { Count: > 0 } a) return a.ToHashSet();     // admin opt-in overrides the heuristic
+        return r.RoomType switch
+        {
+            RoomType.LectureHall   => new HashSet<LessonType> { LessonType.Lecture, LessonType.Practical },
+            RoomType.RegularCabinet => new HashSet<LessonType> { LessonType.Lecture, LessonType.Practical, LessonType.Seminar },
+            RoomType.Lab           => new HashSet<LessonType> { LessonType.Lab },
+            RoomType.ComputerLab   => new HashSet<LessonType> { LessonType.Practical, LessonType.Lab },
+            _                      => AllLessonTypes // Virtual / unknown - dont flag
+        };
     }
 
     public static int Score_HardConflicts(IReadOnlyList<ScheduleEntry> entries, ScoreContext? ctx = null)

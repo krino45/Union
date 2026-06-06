@@ -91,6 +91,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             new DestroyBuildingSpace(),
             new DestroyGroupDaySpace(),
             new DestroyGroupWeekSpace(),
+            new DestroyWrongRoom(),
         };
 
         // Room -> building lookup for the building-local space op (entries only carry RoomId).
@@ -135,6 +136,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                 Requirements: reqs,
                 RiToPlanId: riToPlanId,
                 RoomToBuilding: roomToBuilding,
+                RoomAllowedLessonTypes: shared.ScoreCtx.RoomAllowedLessonTypes,
                 CurrentBreakdown: currentBreakdown,
                 TargetDestroySize: opts.TargetDestroySize,
                 MinDestroySize: opts.MinDestroySize,
@@ -220,9 +222,13 @@ public class LnsOptimizerService : ILnsOptimizerService
             var newBreakdown = ScheduleScoreCalculator.ComputeBreakdown(candidate, shared.ScoreCtx);
 
             long candCost = newBreakdown.Total;
-            bool candHasOverflow = newBreakdown.S10_Overflow > 0;
             int vIdx = kicks % lahcL;
-            bool acceptThis = candCost <= currentCost || candCost <= lahcHistory[vIdx];
+
+            var candHard = (newBreakdown.HardConflicts, newBreakdown.S10_Overflow, newBreakdown.S11_RoomTypeMismatch);
+            var curHard = (currentBreakdown.HardConflicts, currentBreakdown.S10_Overflow, currentBreakdown.S11_RoomTypeMismatch);
+            int hardCmp = candHard.CompareTo(curHard);
+            bool softAccept = candCost <= currentCost || candCost <= lahcHistory[vIdx];
+            bool acceptThis = hardCmp < 0 || (hardCmp == 0 && softAccept);
 
             if (acceptThis)
             {
@@ -233,7 +239,9 @@ public class LnsOptimizerService : ILnsOptimizerService
                 // Incumbent changed - rebuild the ri-entry map so the next kick pins/hints correctly.
                 (entryByRi, riByEntryId, _, _) = MatchIncumbent(reqs, incumbent);
 
-                if (candCost < bestScore && !candHasOverflow)
+                var bestHard = (bestBreakdown.HardConflicts, bestBreakdown.S10_Overflow, bestBreakdown.S11_RoomTypeMismatch);
+                int bestCmp = candHard.CompareTo(bestHard);
+                if (bestCmp < 0 || (bestCmp == 0 && candCost < bestScore))
                 {
                     bestScore = candCost;
                     bestEntries = candidate;
@@ -247,7 +255,8 @@ public class LnsOptimizerService : ILnsOptimizerService
                     UpdateLnsWeights(weights, axisOps, op.Name, 1);
                     MarkAccepted(telemetry, op.Name, 0);
                 }
-                string ovf = candHasOverflow ? $" overflow={newBreakdown.S10_Overflow / (int)SchedulerSentinels.OverflowPenalty}" : "";
+                long ovfCount = newBreakdown.S10_Overflow / (long)SchedulerSentinels.OverflowPenalty;
+                string ovf = ovfCount > 0 ? $" overflow={ovfCount}" : "";
                 progress?.Report($"{kickPrefix} | принято score={currentCost}{ovf} (best {bestScore})");
             }
             else

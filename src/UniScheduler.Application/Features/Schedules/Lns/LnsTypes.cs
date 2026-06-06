@@ -1,5 +1,6 @@
 using UniScheduler.Application.Common.Models;
 using UniScheduler.Domain.Entities;
+using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.Schedules.Lns;
 
@@ -37,6 +38,7 @@ public record LnsKickContext(
     IReadOnlyList<SchedulerRequirement> Requirements,
     IReadOnlyDictionary<int, Guid> RiToPlanId,
     IReadOnlyDictionary<Guid, Guid> RoomToBuilding,
+    IReadOnlyDictionary<Guid, IReadOnlySet<LessonType>>? RoomAllowedLessonTypes,
     ScoreBreakdown CurrentBreakdown,
     int TargetDestroySize,
     int MinDestroySize,

@@ -188,6 +188,27 @@ public sealed class DestroyRandomK : IDestroyOperator
     }
 }
 
+// SPACE op: free every class sitting in a room whose TYPE doesn't permit its lesson type
+public sealed class DestroyWrongRoom : IDestroyOperator
+{
+    public string Name => "WrongRoom";
+    public RepairAxis Axis => RepairAxis.Space;
+
+    public HashSet<int> SelectToDestroy(LnsKickContext ctx)
+    {
+        var result = new HashSet<int>();
+        if (ctx.RoomAllowedLessonTypes is not { } allowed) return result;
+        foreach (var (ri, e) in ctx.EntryByRi)
+        {
+            if (e.IsOnline || !e.RoomId.HasValue) continue;
+            if (e.RoomId.Value == SchedulerSentinels.OverflowRoomId) continue;
+            if (allowed.TryGetValue(e.RoomId.Value, out var ok) && !ok.Contains(e.LessonType))
+                result.Add(ri);
+        }
+        return result;
+    }
+}
+
 // Free the ri whose entries contribute most to the current penalty. Heuristic - we attribute
 // per-entry contribution from each soft component (S1 by group/day, S2 by teacher/day, S4 by
 // adjacent-pair groups, S7 by pair index, S8 by Saturday occupancy, S9 by dept mismatch). The
