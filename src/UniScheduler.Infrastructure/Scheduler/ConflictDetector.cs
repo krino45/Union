@@ -30,7 +30,7 @@ public class ConflictDetector : IConflictDetector
             if (entry.Id == entryId) continue;
 
             // Parallel sessions of the same logical class (language streams / lab subgroups)
-            // share teacher slots, groups, and the distributed room by design — never conflict.
+            // share teacher slots, groups, and the distributed room by design - never conflict.
             if (parallelGroupId.HasValue && entry.ParallelGroupId == parallelGroupId) continue;
 
             // Only compare entries that could overlap (same slot)
@@ -68,7 +68,7 @@ public class ConflictDetector : IConflictDetector
         return conflicts;
     }
 
-    // True when both entries are explicitly labelled subgroups with different labels — they may
+    // True when both entries are explicitly labelled subgroups with different labels - they may
     // legitimately occupy the same group + slot simultaneously.
     private static bool AreDistinctSubgroups(string? a, string? b)
         => !string.IsNullOrWhiteSpace(a)

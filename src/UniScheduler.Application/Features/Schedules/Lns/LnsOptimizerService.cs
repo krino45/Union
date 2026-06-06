@@ -3,7 +3,6 @@ using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.Common.Models;
 using UniScheduler.Application.Features.Schedules.Internal;
 using UniScheduler.Domain.Entities;
-using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.Schedules.Lns;
 
@@ -34,7 +33,7 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         var beforeBreakdown = ScheduleScoreCalculator.ComputeBreakdown(seed, shared.ScoreCtx);
 
-        // Coverage gate — if the seed and the rebuilt requirement set drift too far, polish is
+        // Coverage gate - if the seed and the rebuilt requirement set drift too far, polish is
         // not the right tool; the user should rerun the seed pass. Skip cleanly.
         double coverage = reqs.Count == 0 ? 1.0 : (double)entryByRi.Count / reqs.Count;
         if (coverage < 0.85)
@@ -46,7 +45,7 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         progress?.Report($"LNS: матчинг {entryByRi.Count}/{reqs.Count} (исх. оценка {beforeBreakdown.Total})");
 
-        // 2. Build parallel-sibling index — destroy sets get expanded to include all siblings.
+        // 2. Build parallel-sibling index - destroy sets get expanded to include all siblings.
         var siblingsByRi = BuildParallelSiblings(reqs);
 
         // Reqs the incumbent never placed (rebuild/match drift)
@@ -61,7 +60,7 @@ public class LnsOptimizerService : ILnsOptimizerService
         }
         var excludedSet = excludedReqs.ToHashSet();
 
-        // 3. Operator bags — alternated each kick. Time ops retime (rooms locked to own/overflow,
+        // 3. Operator bags - alternated each kick. Time ops retime (rooms locked to own/overflow,
         //    SkipTravel); Space ops reroom (times locked, full distances on, overflow re-homed).
         var timeOps = new IDestroyOperator[]
         {
@@ -84,7 +83,7 @@ public class LnsOptimizerService : ILnsOptimizerService
         var incumbent = seed.ToList();
         var currentBreakdown = beforeBreakdown;
 
-        // Best-ever snapshot — LAHC lets the incumbent drift uphill, so the result must return the
+        // Best-ever snapshot - LAHC lets the incumbent drift uphill, so the result must return the
         // best schedule we ever saw, not the last accepted one.
         var bestEntries = seed.ToList();
         var bestBreakdown = beforeBreakdown;
@@ -138,7 +137,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             var freed = new List<SchedulerFreedReq>(destroy.Count);
             foreach (var (ri, entry) in entryByRi)
             {
-                if (!entry.RoomId.HasValue) continue; // online — no room anchor; stays fully free
+                if (!entry.RoomId.HasValue) continue; // online - no room anchor; stays fully free
                 bool isOverflow = entry.RoomId.Value == SchedulerSentinels.OverflowRoomId;
                 if (destroy.Contains(ri))
                 {
@@ -207,7 +206,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                 incumbent = candidate;
                 currentBreakdown = newBreakdown;
                 currentCost = candCost;
-                // Incumbent changed — rebuild the ri-entry map so the next kick pins/hints correctly.
+                // Incumbent changed - rebuild the ri-entry map so the next kick pins/hints correctly.
                 (entryByRi, riByEntryId, _, _) = MatchIncumbent(reqs, incumbent);
 
                 if (candCost < bestScore && !candHasOverflow)
@@ -216,11 +215,12 @@ public class LnsOptimizerService : ILnsOptimizerService
                     bestEntries = candidate;
                     bestBreakdown = newBreakdown;
                     accepted++;
-                    UpdateWeights(weights, op.Name, prevBest - candCost);
+                    UpdateLnsWeights(weights, axisOps, op.Name, 2);
                     MarkAccepted(telemetry, op.Name, prevBest - candCost);
                 }
                 else
                 {
+                    UpdateLnsWeights(weights, axisOps, op.Name, 1);
                     MarkAccepted(telemetry, op.Name, 0);
                 }
                 string ovf = candHasOverflow ? $" overflow={newBreakdown.S10_Overflow / (int)SchedulerSentinels.OverflowPenalty}" : "";
@@ -228,7 +228,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             }
             else
             {
-                DecayWeight(weights, op.Name);
+                UpdateLnsWeights(weights, axisOps, op.Name, 0);
                 MarkRejected(telemetry, op.Name);
                 progress?.Report($"{kickPrefix} | отклонено score={candCost} (best {bestScore})");
             }
@@ -255,22 +255,39 @@ public class LnsOptimizerService : ILnsOptimizerService
         return ops[^1];
     }
 
-    private static void UpdateWeights(Dictionary<string, double> weights, string name, long improvement)
-    {
-        // Reward by sqrt(improvement) so a single huge improvement doesn't dominate forever.
-        double bonus = improvement > 0 ? Math.Sqrt(improvement) : 0;
-        weights[name] = weights[name] * 0.9 + (1.0 + bonus) * 0.1;
-    }
+    private const double ScoreNewBest = 10.0;
+    private const double ScoreAccepted = 2.0;
+    private const double Lambda = 0.15;
+    private const double MinWeight = 0.05;
 
-    private static void DecayWeight(Dictionary<string, double> weights, string name)
+    private static void UpdateLnsWeights(Dictionary<string, double> weights, IDestroyOperator[] allOps,
+        string chosenOpName, int outcome)
     {
-        weights[name] = Math.Max(0.05, weights[name] * 0.97);
+        var reward = outcome switch
+        {
+            2 => ScoreNewBest,      // New global best
+            1 => ScoreAccepted,     // Accepted by LAHC but not a new global best
+            _ => 0.0                // Rejected
+        };
+
+        foreach (var op in allOps)
+        {
+            if (op.Name == chosenOpName)
+            {
+                var target = weights[op.Name] * (1.0 - Lambda) + reward * Lambda;
+                weights[op.Name] = Math.Max(MinWeight, target);
+            }
+            else
+            {
+                weights[op.Name] = Math.Max(MinWeight, weights[op.Name] * 0.99);
+            }
+        }
     }
 
     private static (Dictionary<int, ScheduleEntry>, Dictionary<Guid, int>, List<ScheduleEntry>, HashSet<int>)
         MatchIncumbent(IReadOnlyList<SchedulerRequirement> reqs, IReadOnlyList<ScheduleEntry> entries)
     {
-        // Natural key buckets — within each bucket, walk pairwise in stable order.
+        // Natural key buckets - within each bucket, walk pairwise in stable order.
         var reqsByKey = reqs.GroupBy(r => NaturalKey(r))
             .ToDictionary(g => g.Key, g => g.OrderBy(r => r.Index).Select(r => r.Index).ToList());
 

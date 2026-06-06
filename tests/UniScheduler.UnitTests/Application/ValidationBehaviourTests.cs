@@ -12,7 +12,7 @@ public record TestValidationCommand(string Value) : IRequest<string>;
 
 public class PassingTestValidator : AbstractValidator<TestValidationCommand>
 {
-    // No rules — always passes
+    // No rules - always passes
 }
 
 public class FailingTestValidator : AbstractValidator<TestValidationCommand>

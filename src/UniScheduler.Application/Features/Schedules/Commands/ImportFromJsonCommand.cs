@@ -247,8 +247,8 @@ public class ImportFromJsonCommandHandler : IRequestHandler<ImportFromJsonComman
 
         schedule.Status = ScheduleStatus.Draft;
 
-        // Entries have 0 hours — the user fills in the real values afterwards.
-        // Group newly-created groups by identical subject sets — groups that share the same curriculum
+        // Entries have 0 hours - the user fills in the real values afterwards.
+        // Group newly-created groups by identical subject sets - groups that share the same curriculum
         // go into one shared study plan instead of N separate ones.
         int newPlans = 0;
         var planGroupsByKey  = new Dictionary<string, List<StudentGroup>>();

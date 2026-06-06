@@ -116,7 +116,7 @@ public class DeleteStudyPlanCommandHandler : IRequestHandler<DeleteStudyPlanComm
     }
 }
 
-//  Shared helpers (internal — also used by audit query) 
+//  Shared helpers (internal - also used by audit query) 
 
 public static class StudyPlanQ
 {

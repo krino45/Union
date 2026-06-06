@@ -69,7 +69,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             if (!SlotsOverlap(a, b)) continue;
 
             // Parallel sessions of one logical class (language streams / lab subgroups) share the
-            // group/teacher/room slot by design — never a real conflict.
+            // group/teacher/room slot by design - never a real conflict.
             if (a.ParallelGroupId.HasValue && a.ParallelGroupId == b.ParallelGroupId ) continue;
 
             // Language classes and PE can have multiple teachers per requirement

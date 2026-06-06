@@ -12,13 +12,13 @@ public class SolverSettings : Entity
     public int ActiveDay      { get; set; } = 60;
     public int SanPinOverload { get; set; } = 300;
 
-    // S6 — consecutive same lesson
+    // S6 - consecutive same lesson
     public int ConsecLecture  { get; set; } = 70;
     public int ConsecSeminar  { get; set; } = 40;
     public int ConsecPractical { get; set; } = 30;
     public int ConsecLab      { get; set; } = 10;
 
-    // S7 — pair time preference
+    // S7 - pair time preference
     public int EarlyPair  { get; set; } = 15;
     public int MiddlePair { get; set; } = 0;
     public int LatePair   { get; set; } = 25;
@@ -26,16 +26,16 @@ public class SolverSettings : Entity
     // S6 run-length scalar
     public int ConsecRunScalar { get; set; } = 3;
 
-    // S8 — Saturday discouragement
+    // S8 - Saturday discouragement
     public int SaturdayPenalty { get; set; } = 30;
 
-    // S9 — room department mismatch
+    // S9 - room department mismatch
     public int DepartmentMismatchPenalty { get; set; } = 50;
 
-    // S4 — walking penalty max
+    // S4 - walking penalty max
     public int WalkingPenaltyMax { get; set; } = 120;
 
-    // S4 — fixed walking-distance equivalent (metres) per floor climbed via stairs/elevators
+    // S4 - fixed walking-distance equivalent (metres) per floor climbed via stairs/elevators
     public int StairFloorMeters { get; set; } = 20;
 
     public University University { get; set; } = null!;

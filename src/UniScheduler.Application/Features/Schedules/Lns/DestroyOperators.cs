@@ -40,7 +40,7 @@ public sealed class DestroyDay : IDestroyOperator
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
-        // (day, weekType) → list of ri
+        // (day, weekType) = list of ri
         var byDay = new Dictionary<(RussianDayOfWeek, WeekType), List<int>>();
         foreach (var (ri, entry) in ctx.EntryByRi)
         {
@@ -51,9 +51,9 @@ public sealed class DestroyDay : IDestroyOperator
         if (byDay.Count == 0) return new HashSet<int>();
 
         var keys = byDay.Keys.ToList();
-        // Bias toward Saturday when SaturdayPenalty > 0.
+        // Slight bias toward Saturday when SaturdayPenalty > 0.
         var saturday = keys.Where(k => k.Item1 == RussianDayOfWeek.Saturday).ToList();
-        var pick = (saturday.Count > 0 && ctx.Rng.NextDouble() < 0.4)
+        var pick = (saturday.Count > 0 && ctx.Rng.NextDouble() < 0.2)
             ? saturday[ctx.Rng.Next(saturday.Count)]
             : keys[ctx.Rng.Next(keys.Count)];
         return byDay[pick].ToHashSet();
@@ -101,7 +101,7 @@ public sealed class DestroyRandomK : IDestroyOperator
     }
 }
 
-// Free the ri whose entries contribute most to the current penalty. Heuristic — we attribute
+// Free the ri whose entries contribute most to the current penalty. Heuristic - we attribute
 // per-entry contribution from each soft component (S1 by group/day, S2 by teacher/day, S4 by
 // adjacent-pair groups, S7 by pair index, S8 by Saturday occupancy, S9 by dept mismatch). The
 // top K accumulating ri are returned.
@@ -123,14 +123,14 @@ public sealed class DestroyWorstK : IDestroyOperator
         foreach (var (ri, e) in ctx.EntryByRi)
         {
             score.TryAdd(ri, 0);
-            // S7 — bake the per-pair penalty into the per-entry score directly.
+            // S7 - bake the per-pair penalty into the per-entry score directly.
             int p0 = e.PairNumber - 1;
             int s7 = p0 < 2 ? weights.EarlyPair * (2 - p0)
                   : p0 > 3 ? weights.LatePair  * (p0 - 3)
                   : weights.MiddlePair;
             score[ri] += s7;
 
-            // S8 — Saturday penalty per entry.
+            // S8 - Saturday penalty per entry.
             if (e.DayOfWeek == RussianDayOfWeek.Saturday) score[ri] += weights.SaturdayPenalty;
 
             // Bucket for S1/S5 (by group+day) and S2/S3 (by teacher+day).

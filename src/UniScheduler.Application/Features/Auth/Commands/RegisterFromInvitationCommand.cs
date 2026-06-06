@@ -36,7 +36,7 @@ public class RegisterFromInvitationCommandHandler : IRequestHandler<RegisterFrom
             throw new UnauthorizedAccessException("Срок действия приглашения истёк.");
 
         // If invitation is linked to a Teacher entity that already has a registered AppUser,
-        // registration is not allowed — the existing user must use AcceptInvitationCommand.
+        // registration is not allowed - the existing user must use AcceptInvitationCommand.
         if (inv.TeacherId.HasValue)
         {
             var existingLinked = await _db.AppUsers

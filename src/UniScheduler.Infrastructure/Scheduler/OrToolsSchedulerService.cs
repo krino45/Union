@@ -142,10 +142,10 @@ public class OrToolsSchedulerService : ISchedulerService
             });
         }
 
-        //   varsByReqWi:   (ri, varWi) -> list<v>                  — used by H2 + feasibility
-        //   varsByReqCell: (ri, d, p, varWi) -> list<(rmi, v)>     — used everywhere else
-        //   byCellRoom:    (rmi, d, p, calendarWi) -> list<(ri, tId, v, size)>  — used by H4 only
-        //   byCellTeacher: (tId, d, p, calendarWi) -> list<(ri, rmi, v)>        — used by H5 only
+        //   varsByReqWi:   (ri, varWi) -> list<v>                  - used by H2 + feasibility
+        //   varsByReqCell: (ri, d, p, varWi) -> list<(rmi, v)>     - used everywhere else
+        //   byCellRoom:    (rmi, d, p, calendarWi) -> list<(ri, tId, v, size)>  - used by H4 only
+        //   byCellTeacher: (tId, d, p, calendarWi) -> list<(ri, rmi, v)>        - used by H5 only
         // The byCell* indexes use calendar week (Both-week vars appear in BOTH wi=0 and wi=1).
         var varsByReqWi = new Dictionary<(int ri, int wi), List<BoolVar>>();
         var varsByReqCell = new Dictionary<(int ri, int d, int p, int wi), List<(int rmi, BoolVar v)>>();
@@ -314,9 +314,9 @@ public class OrToolsSchedulerService : ISchedulerService
                 Array.Empty<SchedulerAssignment>());
         }
 
-        // Feasibility done — varsByReqWi is only used by H2 (below, one pass) and the feasibility
+        // Feasibility done - varsByReqWi is only used by H2 (below, one pass) and the feasibility
         // check above. Drop it right after H2 emits its constraints. compatibleRooms isn't read
-        // again — drop it now.
+        // again - drop it now.
         compatibleRooms = null!;
 
         if (input.Hints is { Count: > 0 })
@@ -354,7 +354,7 @@ public class OrToolsSchedulerService : ISchedulerService
             {
                 if (excludedReqs != null && excludedReqs.Contains(req.Index)) continue;
                 // Parallel sessions (language streams / lab subgroups) intentionally assign several
-                // teachers to the same (group, subject, lesson type) — exempt from the one-teacher rule.
+                // teachers to the same (group, subject, lesson type) - exempt from the one-teacher rule.
                 if (req.ParallelKey.HasValue) continue;
                 foreach (var gId in req.GroupIds)
                 {
@@ -385,7 +385,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 model.AddExactlyOne(slotVars);
         }
 
-        // H2 done — varsByReqWi has no more consumers.
+        // H2 done - varsByReqWi has no more consumers.
         varsByReqWi = null!;
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
 
@@ -511,7 +511,7 @@ public class OrToolsSchedulerService : ISchedulerService
                 for (int wi = 0; wi < 2; wi++)
                 {
                     // Parallel sessions of one logical class (same ParallelKey) all occupy this group's
-                    // slot by design, so they count as a SINGLE occupant — collapse them via an OR.
+                    // slot by design, so they count as a SINGLE occupant - collapse them via an OR.
                     var occupants = new List<BoolVar>();
                     var parallelCellVars = new Dictionary<int, List<BoolVar>>();
                     foreach (int ri in grIdxs)
@@ -636,7 +636,7 @@ public class OrToolsSchedulerService : ISchedulerService
             : $"Расстояния ({zones.Count} * {zones.Count} зон * {numPairs - 1} перемен)...");
         // Zone-pair travel: cross-building only (intra-building handled per-room via gru).
         // Walk metres = (f1 - 1) * stair + bd(b1, b2) + (f2 - 1) * stair.
-        // No direct bd → unreachable (transitively closed bd would have populated it).
+        // No direct bd = unreachable (transitively closed bd would have populated it).
         var zoneImpByBreak = new Dictionary<int, HashSet<int>>[numPairs - 1];
         var zonePenByBreak = new Dictionary<int, Dictionary<int, long>>[numPairs - 1];
         var tooFarByBreak = new Dictionary<int, HashSet<int>>[numPairs - 1];
@@ -998,7 +998,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        // Per-slot group occupancy split by campus vs online — drives the online-aware window penalty.
+        // Per-slot group occupancy split by campus vs online - drives the online-aware window penalty.
         var isGroupCampus = new BoolVar[groups.Count, NumDays, numPairs, 2];
         var isGroupOnline = new BoolVar[groups.Count, NumDays, numPairs, 2];
         {
@@ -1205,7 +1205,7 @@ public class OrToolsSchedulerService : ISchedulerService
             ReportSub($"S4 (зон.): создано {s4zAdded} штрафных переменных");
         }
 
-        // H_travel (зон.) + S4 (зон.) done — drop zone vars/precomp.
+        // H_travel (зон.) + S4 (зон.) done - drop zone vars/precomp.
         gbfVars = null!;
         gbfByCell = null!;
         zoneImpByBreak = null!;
@@ -1260,7 +1260,7 @@ public class OrToolsSchedulerService : ISchedulerService
         walkPenByBreak = null!;
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
 
-        // S5: SanPIN — penalize daily pairs > 4 per group (weight 500 per excess pair)
+        // S5: SanPIN - penalize daily pairs > 4 per group (weight 500 per excess pair)
         Report($"S5: штраф СанПиН за >4 пар в день ({groups.Count} групп)...");
         const int sanPinMax = 4;
         for (var gi = 0; gi < groups.Count; gi++)
@@ -1354,7 +1354,7 @@ public class OrToolsSchedulerService : ISchedulerService
             }
         }
 
-        // S7: Prefer pairs 2-3 (0-indexed) — penalize early/late slots per group
+        // S7: Prefer pairs 2-3 (0-indexed) - penalize early/late slots per group
         Report("S7: предпочтительное время занятий...");
         for (int gi = 0; gi < groups.Count; gi++)
         for (int d = 0; d < NumDays; d++)
@@ -1367,7 +1367,7 @@ public class OrToolsSchedulerService : ISchedulerService
             objCoeffs.Add(pen);
         }
 
-        // S8: Saturday discouragement — soft penalty per group slot on day 5 (Saturday)
+        // S8: Saturday discouragement - soft penalty per group slot on day 5 (Saturday)
         const int saturdayIdx = 5;
         Report(w.SaturdayPenalty > 0 ? "S8: штраф за субботу..." : "S8: пропуск (SaturdayPenalty=0)");
         if (w.SaturdayPenalty > 0)
@@ -1607,7 +1607,7 @@ public class OrToolsSchedulerService : ISchedulerService
         if (room.IsDistributed) return false;
 
         // Sports-hall routing: PE reqs go only to SportsHall rooms; no other req type may pick one.
-        // No equipment / capacity / lesson-type heuristic — the venue type is the whole gate.
+        // No equipment / capacity / lesson-type heuristic - the venue type is the whole gate.
         if (req.RequiresSportsHall) return room.RoomType == RoomType.SportsHall;
         if (room.RoomType == RoomType.SportsHall) return false;
 

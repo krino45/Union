@@ -88,7 +88,7 @@ public class ExcelExportService : IExcelExportService
             ws.Range(oddRow,  1, oddRow,  NumDays + 1).Style.Fill.BackgroundColor = OddRowBg;
             ws.Range(evenRow, 1, evenRow, NumDays + 1).Style.Fill.BackgroundColor = EvenRowBg;
 
-            // Pair label — always spans both rows
+            // Pair label - always spans both rows
             var labelCell = ws.Range(oddRow, 1, evenRow, 1);
             labelCell.Merge();
             var lc = labelCell.FirstCell();

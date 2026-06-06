@@ -117,7 +117,7 @@ public record SchedulerInput(
     // Pinned reqs emit a single BoolVar (the matching cell); reqs not in this list are free.
     IReadOnlyList<SchedulerPin>? Pinnings = null,
     // LNS warm-start: advisory placements for freed reqs. The solver calls AddHint(v, 1) for
-    // the matching BoolVar — no constraint, just a search heuristic that gives CP-SAT a cheap
+    // the matching BoolVar - no constraint, just a search heuristic that gives CP-SAT a cheap
     // initial upper bound. Hints with no matching candidate cell are silently ignored.
     IReadOnlyList<SchedulerHint>? Hints = null,
     // True for LNS repair solves (pins + small free core)
@@ -144,7 +144,7 @@ public record SchedulerPin(
     Guid RoomId
 );
 
-// LNS: advisory "try this first" placement. Same shape as a pin but never constraining —
+// LNS: advisory "try this first" placement. Same shape as a pin but never constraining -
 // solver may ignore. Used to warm-start kicks from the current incumbent placements of freed
 // reqs so CP-SAT finds the existing solution quickly and prunes worse branches.
 public record SchedulerHint(

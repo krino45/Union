@@ -16,7 +16,7 @@ namespace UniScheduler.Application.Features.Schedules.Commands;
 // codepath for both "edit both" and "edit half").
 public record SplitAndEditEntryCommand(
     Guid EntryId,
-    WeekType TargetWeek, // Odd or Even — the half to edit. If equal to the entry's current WeekType
+    WeekType TargetWeek, // Odd or Even - the half to edit. If equal to the entry's current WeekType
                          // or the entry is not Both, just edits in place without splitting.
     Guid SubjectId,
     Guid TeacherId,

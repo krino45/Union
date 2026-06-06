@@ -11,7 +11,7 @@ namespace UniScheduler.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Existing drafts have no owner — wipe them before adding the OwnerUserId FK.
+            // Existing drafts have no owner - wipe them before adding the OwnerUserId FK.
             migrationBuilder.Sql("DELETE FROM \"FloorPlanDrafts\";");
 
             migrationBuilder.DropIndex(

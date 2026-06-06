@@ -8,7 +8,7 @@ namespace UniScheduler.Application.Features.Schedules.Internal;
 
 public static class ScheduleRequirementBuilder
 {
-    // Per-plan emitter — used by the batched seed pass.
+    // Per-plan emitter - used by the batched seed pass.
     public static List<SchedulerRequirement> BuildRequirementsForPlan(
         StudyPlan plan, SharedData shared, ref int idx, ref int parallelSeq,
         Dictionary<Guid, int>? teacherLoad = null)

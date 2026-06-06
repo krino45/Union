@@ -22,7 +22,7 @@ public class RescheduleRequestsController : ControllerBase
         [FromQuery] RescheduleStatus? status, [FromQuery] Guid? teacherId, CancellationToken ct)
         => Ok(await _mediator.Send(new GetRescheduleRequestsQuery(status, teacherId), ct));
 
-    // Rooms free at a proposed slot — lets teachers suggest a feasible room.
+    // Rooms free at a proposed slot - lets teachers suggest a feasible room.
     [HttpGet("available-rooms")]
     public async Task<ActionResult<List<RoomDto>>> AvailableRooms(
         [FromQuery] Guid scheduleId, [FromQuery] RussianDayOfWeek dayOfWeek, [FromQuery] int pairNumber,
