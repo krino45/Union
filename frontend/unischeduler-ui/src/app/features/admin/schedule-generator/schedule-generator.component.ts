@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, Inject, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, Inject, ViewChild, ElementRef, Directive } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -25,6 +25,35 @@ import { ScheduleStatus, Term } from '../../../core/models/enums';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
+@Directive({ selector: '[appStickToBottom]', standalone: true })
+export class StickToBottomDirective implements OnInit, OnDestroy {
+  private atBottom = true;
+  private observer?: MutationObserver;
+  private readonly threshold = 40;
+
+  constructor(private el: ElementRef<HTMLElement>) {}
+
+  ngOnInit(): void {
+    const node = this.el.nativeElement;
+    node.addEventListener('scroll', this.onScroll, { passive: true });
+    this.observer = new MutationObserver(() => {
+      if (this.atBottom) node.scrollTop = node.scrollHeight;
+    });
+    this.observer.observe(node, { childList: true, subtree: true });
+    queueMicrotask(() => { node.scrollTop = node.scrollHeight; }); // open pinned to newest
+  }
+
+  private onScroll = (): void => {
+    const n = this.el.nativeElement;
+    this.atBottom = n.scrollHeight - n.scrollTop - n.clientHeight <= this.threshold;
+  };
+
+  ngOnDestroy(): void {
+    this.el.nativeElement.removeEventListener('scroll', this.onScroll);
+    this.observer?.disconnect();
+  }
+}
+
 @Component({
   selector: 'app-schedule-generator',
   standalone: true,
@@ -33,7 +62,7 @@ const CURRENT_YEAR = new Date().getFullYear();
     MatButtonModule, MatIconModule, MatCardModule, MatSlideToggleModule,
     MatDialogModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatProgressBarModule, MatChipsModule, MatTooltipModule, MatSnackBarModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule, StickToBottomDirective
   ],
   template: `
     <div class="page-header">
@@ -94,7 +123,7 @@ const CURRENT_YEAR = new Date().getFullYear();
               <mat-icon>{{ showLog[s.id] ? 'expand_less' : 'history' }}</mat-icon>
             </button>
           </div>
-          <div class="gen-log" *ngIf="showLog[s.id] && (generationLog[s.id]?.length || 0) > 0">
+          <div class="gen-log" appStickToBottom *ngIf="showLog[s.id] && (generationLog[s.id]?.length || 0) > 0">
             <div class="gen-log-line" *ngFor="let it of generationLog[s.id]">
               <span class="gen-log-time">{{ it.at | date:'HH:mm:ss' }}</span>
               <span class="gen-log-msg">{{ it.message }}</span>
