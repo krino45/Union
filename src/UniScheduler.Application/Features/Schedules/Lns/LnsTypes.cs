@@ -12,7 +12,9 @@ public record LnsOptions(
     int MinDestroySize = 8,
     int TargetDestroySize = 40,
     // Late-acceptance history length. 1 == greedy hill-climb
-    int LahcHistory = 20);
+    int LahcHistory = 20,
+    // Run a space kick every Nth kick; the rest are time kicks. <=1 means space every kick.
+    int SpaceKickEvery = 3);
 
 public record LnsResult(
     IReadOnlyList<ScheduleEntry> Entries,
@@ -34,6 +36,7 @@ public record LnsKickContext(
     IReadOnlyDictionary<Guid, int> RiByEntryId,
     IReadOnlyList<SchedulerRequirement> Requirements,
     IReadOnlyDictionary<int, Guid> RiToPlanId,
+    IReadOnlyDictionary<Guid, Guid> RoomToBuilding,
     ScoreBreakdown CurrentBreakdown,
     int TargetDestroySize,
     int MinDestroySize,

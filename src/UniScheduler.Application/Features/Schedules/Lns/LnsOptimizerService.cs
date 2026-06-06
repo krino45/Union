@@ -67,14 +67,22 @@ public class LnsOptimizerService : ILnsOptimizerService
             new DestroyWorstK(shared.Weights),
             new DestroyTeacherWeek(),
             new DestroyDay(),
+            new DestroyMultiDay(),
+            new DestroyGroupWeek(),
+            new DestroySubject(),
             new DestroyPlan(),
             new DestroyRandomK(),
         };
         var spaceOps = new IDestroyOperator[]
         {
             new DestroyRoomSpace(),
+            new DestroyBuildingSpace(),
             new DestroyGroupDaySpace(),
+            new DestroyGroupWeekSpace(),
         };
+
+        // Room -> building lookup for the building-local space op (entries only carry RoomId).
+        var roomToBuilding = shared.Rooms.ToDictionary(r => r.Id, r => r.BuildingId);
         var allOps = timeOps.Concat(spaceOps).ToArray();
         var weights = allOps.ToDictionary(o => o.Name, _ => 1.0);
         var telemetry = allOps.ToDictionary(o => o.Name, _ => (Attempts: 0, Accepted: 0, Failed: 0, Total: 0L));
@@ -100,7 +108,9 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         while (DateTime.UtcNow < deadline && kicks < opts.MaxIterations && !ct.IsCancellationRequested)
         {
-            var axisOps = (kicks % 2 == 0) ? timeOps : spaceOps;
+            // Space kicks are mostly cleanup, so they run only every Nth kick
+            bool spaceKick = opts.SpaceKickEvery <= 1 || (kicks % opts.SpaceKickEvery) == opts.SpaceKickEvery - 1;
+            var axisOps = spaceKick ? spaceOps : timeOps;
             var op = PickOperator(axisOps, weights, rng);
             int attemptNum = kicks + 1;
             var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}/{op.Axis}";
@@ -112,6 +122,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                 RiByEntryId: riByEntryId,
                 Requirements: reqs,
                 RiToPlanId: riToPlanId,
+                RoomToBuilding: roomToBuilding,
                 CurrentBreakdown: currentBreakdown,
                 TargetDestroySize: opts.TargetDestroySize,
                 MinDestroySize: opts.MinDestroySize,

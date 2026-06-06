@@ -342,6 +342,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             int lahc = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsLahcHistory), out var lh) && lh > 0 ? lh : 20;
             int destroyTarget = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsDestroyTarget), out var dt) && dt > 0 ? dt : 80;
             int destroyMin = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsDestroyMin), out var dm) && dm > 0 ? dm : 20;
+            int spaceEvery = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LnsSpaceEvery), out var se) && se > 0 ? se : 3;
             var opts = new LnsOptions(
                 TotalBudget: TimeSpan.FromMinutes(budgetMin),
                 KickTimeoutSeconds: kickSec,
@@ -349,7 +350,8 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 Seed: 23456,
                 MinDestroySize: destroyMin,
                 TargetDestroySize: destroyTarget,
-                LahcHistory: lahc);
+                LahcHistory: lahc,
+                SpaceKickEvery: spaceEvery);
             var result = await lns.OptimizeAsync(request.ScheduleId, scoreEntries, shared, opts, p, cancellationToken);
 
             if (result.AcceptedAny && result.AfterBreakdown.Total < result.BeforeBreakdown.Total)

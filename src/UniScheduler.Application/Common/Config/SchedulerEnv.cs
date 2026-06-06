@@ -20,6 +20,9 @@ public static class SchedulerEnv
     // (default 20). Bigger = wider neighborhood per kick, slower kicks. Cheap now travel is out of repair.
     public const string LnsDestroyTarget = "UNISCHEDULER_LNS_DESTROY_TARGET";
     public const string LnsDestroyMin = "UNISCHEDULER_LNS_DESTROY_MIN";
+    // Run a space (re-room) kick every Nth kick; the rest are time (re-time) kicks. Space kicks are
+    // mostly cleanup, so they are neded rarer. Default 3 (1 in 3).
+    public const string LnsSpaceEvery = "UNISCHEDULER_LNS_SPACE_EVERY";
 
     // Foreign-language requirement-builder: students-per-teacher cap. ⌈groupSize / cap⌉ teachers
     // are emitted per group's language slot. Default 15.
