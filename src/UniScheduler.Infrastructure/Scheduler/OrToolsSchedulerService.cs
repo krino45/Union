@@ -1584,7 +1584,7 @@ public class OrToolsSchedulerService : ISchedulerService
 
     private static string FormatReqLabel(SchedulerRequirement req)
     {
-        var grp = req.GroupIds.Count > 0 ? $"…{req.GroupIds[0].ToString("D")[..8]}" : "—";
+        var grp = req.GroupIds.Count > 0 ? $"{req.GroupIds[0]:D}" : "—";
         var sub = req.SubgroupLabel != null ? $" [{req.SubgroupLabel}]" : "";
         return $"{req.LessonType}{sub} teacher={req.TeacherId:D} subj={req.SubjectId:D} grp={grp} wk={req.WeekType}";
     }

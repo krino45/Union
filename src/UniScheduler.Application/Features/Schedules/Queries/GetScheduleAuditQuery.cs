@@ -102,23 +102,61 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             }
         }
 
-        // Build group → entries lookup
+        var rooms = await db.Rooms.Include(r => r.Department).Include(r => r.Building).ToListAsync(ct);
+        var entriesByRoom = new Dictionary<Guid, List<ScheduleEntry>>();
+        foreach (var e in entries)
+        {
+            if (e.RoomId is null) continue;
+            if (!entriesByRoom.TryGetValue(e.RoomId.Value, out var list))
+                entriesByRoom[e.RoomId.Value] = list = [];
+            list.Add(e);
+        }
+
+        foreach (var room in rooms)
+        {
+            if (!entriesByRoom.TryGetValue(room.Id, out var list)) continue;
+            foreach (var e in list)
+            {
+                var totalStudents = groups
+                    .Where(g => e.StudentGroups.Select(gr => gr.StudentGroupId).Contains(g.Id))
+                    .Sum(g => (int?)g.StudentCount) ?? 0;
+                if (room.Capacity > 0 && totalStudents > room.Capacity)
+                {
+                    AddUnique(warnings, seen, "RoomCapacityExceeded",
+                        $"Аудитория {room.Building.ShortCode}-{room.Number}: ({DayLabel(e.DayOfWeek)} {e.PairNumber}) " +
+                        $"группы не помещаются ({totalStudents}/{room.Capacity}).");
+                }
+
+                if (room.AllowedLessonTypes.Count > 0 && !room.AllowedLessonTypes.Contains(e.LessonType))
+                {
+                    AddUnique(warnings, seen, "RoomLessonTypeMismatch",
+                        $"Аудитория {room.Building.ShortCode}-{room.Number}: ({DayLabel(e.DayOfWeek)} {e.PairNumber}) " +
+                        $"расхождение типов занятий (надо: {LtLabel(e.LessonType)}, можно: {string.Join(", ", room.AllowedLessonTypes.Select(LtLabel))}).");
+                }
+
+                if (!room.IsEnabled)
+                {
+                    AddUnique(warnings, seen, "RoomDisabled",
+                        $"Аудитория {room.Building.ShortCode}-{room.Number}: использование отключенной аудитории");
+                }
+            }
+        }
+        
         var entriesByGroup = new Dictionary<Guid, List<ScheduleEntry>>();
         foreach (var e in entries)
         foreach (var sg in e.StudentGroups)
         {
             if (!entriesByGroup.TryGetValue(sg.StudentGroupId, out var list))
-                entriesByGroup[sg.StudentGroupId] = list = new();
+                entriesByGroup[sg.StudentGroupId] = list = [];
             list.Add(e);
         }
 
         foreach (var group in groups)
         {
             var rawGroupEntries = entriesByGroup.TryGetValue(group.Id, out var ge) ? ge : new();
-            // Parallel siblings (same ParallelGroupId) are one logical class occupying one slot
             var groupEntries = CollapseParallel(rawGroupEntries);
 
-            //  Hours check: study plan only 
+            //  Hours check 
             if (planByGroup.TryGetValue(group.Id, out var plan))
             {
                 int studyWeeks = StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan);
@@ -168,7 +206,6 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
         var nodes = await db.FloorPlanNodes.ToListAsync(ct);
         var edges = await db.FloorPlanEdges.ToListAsync(ct);
         var bldDists = await db.BuildingDistances.ToListAsync(ct);
-        var rooms = await db.Rooms.Include(r => r.Department).ToListAsync(ct);
         var pairSlots = await db.PairTimeSlots.ToListAsync(ct);
 
         var subjectIds = entries.Select(e => e.SubjectId).Distinct().ToList();
