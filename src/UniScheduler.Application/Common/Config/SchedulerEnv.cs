@@ -16,6 +16,10 @@ public static class SchedulerEnv
     public const string LnsWorkers = "UNISCHEDULER_LNS_WORKERS";
     // Late-acceptance history length L for the LNS hill-climb (default 20).
     public const string LnsLahcHistory = "UNISCHEDULER_LNS_LAHC";
+    // Per-kick destroy sizing: Target = reqs freed by RandomK/WorstK (default 80); Min = WorstK floor
+    // (default 20). Bigger = wider neighborhood per kick, slower kicks. Cheap now travel is out of repair.
+    public const string LnsDestroyTarget = "UNISCHEDULER_LNS_DESTROY_TARGET";
+    public const string LnsDestroyMin = "UNISCHEDULER_LNS_DESTROY_MIN";
 
     // Foreign-language requirement-builder: students-per-teacher cap. ⌈groupSize / cap⌉ teachers
     // are emitted per group's language slot. Default 15.
