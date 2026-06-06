@@ -48,14 +48,21 @@ public class GenerationJobQueue : IGenerationJobQueue
     private sealed class StageLog
     {
         private const int Cap = 2000;
+        private static readonly System.Text.RegularExpressions.Regex TagRx =
+            new(@"\[\d+/\d+\]", System.Text.RegularExpressions.RegexOptions.Compiled);
         private readonly object gate = new();
         private readonly Queue<StageLogItem> items = new();
         private long seq;
+        private string? lastTag;
 
         public long Append(string message)
         {
+            var m = TagRx.Match(message);
+            string? tag = m.Success ? m.Value : null;
             lock (gate)
             {
+                if (tag != null && tag == lastTag) return seq;
+                lastTag = tag;
                 var s = ++seq;
                 items.Enqueue(new StageLogItem(s, DateTime.UtcNow, message));
                 while (items.Count > Cap) items.Dequeue();

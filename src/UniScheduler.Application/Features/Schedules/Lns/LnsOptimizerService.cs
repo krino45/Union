@@ -93,9 +93,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             var op = PickOperator(axisOps, weights, rng);
             int attemptNum = kicks + 1;
             var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}/{op.Axis}";
-            var kickProgress = progress == null
-                ? null
-                : (IProgress<string>)new Progress<string>(s => progress.Report($"{kickPrefix} | {s}"));
+            IProgress<string>? kickProgress = null;
 
             var kickCtx = new LnsKickContext(
                 Incumbent: incumbent,

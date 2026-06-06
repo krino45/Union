@@ -165,7 +165,6 @@ public class OrToolsSchedulerService : ISchedulerService
                 var req = reqs[ri];
                 int varWi = VarWeekIndex(req.WeekType);
                 var compatRmis = compatibleRooms[ri];
-                if (compatRmis.Length == 0) continue;
                 Guid tId = req.TeacherId;
                 long size = reqGroupSize[ri];
                 int[] calendarWis = req.WeekType == WeekType.Both ? new[] { 0, 1 } : new[] { varWi };
@@ -180,15 +179,21 @@ public class OrToolsSchedulerService : ISchedulerService
 
                 var axis = freedAxis.TryGetValue(ri, out var fr) ? fr.Axis : RepairAxis.Full;
                 int ownRmi = -1, spaceD = -1, spaceP = -1;
+                int[] roomsToTry;
                 if (axis == RepairAxis.Time)
                 {
                     if (!roomIdToIdx.TryGetValue(fr!.RoomId, out ownRmi)) ownRmi = -1;
+                    roomsToTry = ownRmi >= 0 && overflowRmi >= 0 ? new[] { ownRmi, overflowRmi }
+                               : ownRmi >= 0 ? new[] { ownRmi }
+                               : overflowRmi >= 0 ? new[] { overflowRmi }
+                               : Array.Empty<int>();
                 }
-                else if (axis == RepairAxis.Space)
+                else
                 {
-                    spaceD = (int)fr!.Day - 1;
-                    spaceP = fr.PairNumber - 1;
+                    if (axis == RepairAxis.Space) { spaceD = (int)fr!.Day - 1; spaceP = fr.PairNumber - 1; }
+                    roomsToTry = compatRmis;
                 }
+                if (roomsToTry.Length == 0) continue;
 
                 for (int d = 0; d < NumDays; d++)
                 for (int p = 0; p < numPairs; p++)
@@ -205,10 +210,9 @@ public class OrToolsSchedulerService : ISchedulerService
                         : blocked.Contains((req.TeacherId, d, p, varWi));
                     if (slotBlocked) continue;
 
-                    foreach (int rmi in compatRmis)
+                    foreach (int rmi in roomsToTry)
                     {
                         if (isPinned && rmi != pinRmi) continue;
-                        if (axis == RepairAxis.Time && rmi != ownRmi && rmi != overflowRmi) continue;
 
                         if (blockedRoomSlots.Count > 0 && !rooms[rmi].IsDistributed && !rooms[rmi].IsOverflow)
                         {
@@ -225,6 +229,8 @@ public class OrToolsSchedulerService : ISchedulerService
                         totalVarCount++;
                         if (rmi == overflowRmi) overflowVars.Add(v);
 
+                        long capSize = (axis == RepairAxis.Time && rmi == ownRmi) ? 0 : size;
+
                         var k1 = (ri, varWi);
                         if (!varsByReqWi.TryGetValue(k1, out var l1)) varsByReqWi[k1] = l1 = new List<BoolVar>();
                         l1.Add(v);
@@ -239,7 +245,7 @@ public class OrToolsSchedulerService : ISchedulerService
                             var kCR = (rmi, d, p, awi);
                             if (!byCellRoom.TryGetValue(kCR, out var lCR))
                                 byCellRoom[kCR] = lCR = new List<(int, Guid, BoolVar, long)>();
-                            lCR.Add((ri, tId, v, size));
+                            lCR.Add((ri, tId, v, capSize));
 
                             var kCT = (tId, d, p, awi);
                             if (!byCellTeacher.TryGetValue(kCT, out var lCT))
