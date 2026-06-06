@@ -85,27 +85,27 @@ public class OrToolsSchedulerService : ISchedulerService
                         $"Pin: requirement index {ri} out of range (0..{reqs.Count - 1})", []);
                 if (pinTarget.ContainsKey(ri))
                     return new SchedulerOutput(SolverStatus.Infeasible,
-                        $"Pin: requirement {ri} pinned more than once", []);
+                        $"Pin: requirement {FormatReqLabel(reqs[ri])} pinned more than once", []);
                 var req = reqs[ri];
                 if (req.WeekType != pin.WeekType)
                     return new SchedulerOutput(SolverStatus.Infeasible,
-                        $"Pin ri={ri}: WeekType mismatch (req={req.WeekType}, pin={pin.WeekType})", []);
+                        $"Pin ri={FormatReqLabel(reqs[ri])}: WeekType mismatch (req={req.WeekType}, pin={pin.WeekType})", []);
                 if (!roomIdToIdx.TryGetValue(pin.RoomId, out int rmi))
                     return new SchedulerOutput(SolverStatus.Infeasible,
-                        $"Pin ri={ri}: room {pin.RoomId} not in scheduler input", []);
+                        $"Pin ri={FormatReqLabel(reqs[ri])}: room {pin.RoomId} not in scheduler input", []);
 
                 int d = (int)pin.Day - 1;
                 int pp = pin.PairNumber - 1;
                 if (d < 0 || d >= NumDays || pp < 0 || pp >= numPairs)
                     return new SchedulerOutput(SolverStatus.Infeasible,
-                        $"Pin ri={ri}: day/pair {pin.Day}/p{pin.PairNumber} out of range", []);
+                        $"Pin ri={FormatReqLabel(reqs[ri])}: day/pair {pin.Day}/p{pin.PairNumber} out of range", []);
 
                 if (!IsCompatible(req, rooms[rmi], reqGroupSize[ri]))
                     return new SchedulerOutput(SolverStatus.Infeasible,
-                        $"Pin ri={ri}: room {pin.RoomId} incompatible (type/capacity/equipment/online)", []);
+                        $"Pin ri={FormatReqLabel(reqs[ri])}: room {pin.RoomId} incompatible (type/capacity/equipment/online)", []);
                 if (req.GroupIds.Any(gId => groupBlockedDays.TryGetValue(gId, out var bd) && bd.Contains(d)))
                     return new SchedulerOutput(SolverStatus.Infeasible,
-                        $"Pin ri={ri}: day {pin.Day} is blocked for one of the groups", []);
+                        $"Pin ri={FormatReqLabel(reqs[ri])}: day {pin.Day} is blocked for one of the groups", []);
 
                 int[] calendarWis = req.WeekType == WeekType.Both
                     ? new[] { 0, 1 }
@@ -114,10 +114,10 @@ public class OrToolsSchedulerService : ISchedulerService
                 {
                     if (blocked.Contains((req.TeacherId, d, pp, awi)))
                         return new SchedulerOutput(SolverStatus.Infeasible,
-                            $"Pin ri={ri}: teacher slot ({pin.Day}, p{pin.PairNumber}, week {awi}) is blocked", []);
+                            $"Pin ri={FormatReqLabel(reqs[ri])}: teacher slot ({pin.Day}, p{pin.PairNumber}, week {awi}) is blocked", []);
                     if (blockedRoomSlots.Contains((pin.RoomId, d, pp, awi)))
                         return new SchedulerOutput(SolverStatus.Infeasible,
-                            $"Pin ri={ri}: room {pin.RoomId} is blocked at ({pin.Day}, p{pin.PairNumber}, week {awi})", []);
+                            $"Pin ri={FormatReqLabel(reqs[ri])}: room {pin.RoomId} is blocked at ({pin.Day}, p{pin.PairNumber}, week {awi})", []);
                 }
 
                 pinTarget[ri] = (d, pp, rmi);
@@ -1586,7 +1586,7 @@ public class OrToolsSchedulerService : ISchedulerService
     {
         var grp = req.GroupIds.Count > 0 ? $"…{req.GroupIds[0].ToString("D")[..8]}" : "—";
         var sub = req.SubgroupLabel != null ? $" [{req.SubgroupLabel}]" : "";
-        return $"{req.LessonType}{sub} teacher=…{req.TeacherId.ToString("D")[..8]} subj=…{req.SubjectId.ToString("D")[..8]} grp={grp} wk={req.WeekType}";
+        return $"{req.LessonType}{sub} teacher={req.TeacherId:D} subj={req.SubjectId:D} grp={grp} wk={req.WeekType}";
     }
 
     /// <summary>
