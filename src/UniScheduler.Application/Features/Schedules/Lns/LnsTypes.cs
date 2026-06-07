@@ -41,6 +41,7 @@ public record LnsKickContext(
     IReadOnlyDictionary<Guid, IReadOnlySet<LessonType>>? RoomAllowedLessonTypes,
     IReadOnlyDictionary<Guid, IReadOnlySet<RussianDayOfWeek>>? GroupBlockedDays,
     IReadOnlySet<(Guid teacherId, RussianDayOfWeek day, int pair, int calWeek)>? TeacherBlockedSlots,
+    ScoreContext ScoreCtx,
     ScoreBreakdown CurrentBreakdown,
     int TargetDestroySize,
     int MinDestroySize,
@@ -50,5 +51,7 @@ public interface IDestroyOperator
 {
     string Name { get; }
     RepairAxis Axis { get; }
+    // Relative heaviness of the kick. Scales the solver timeout and the weight penalty on a miss.
+    double Factor => 1.0;
     HashSet<int> SelectToDestroy(LnsKickContext ctx);
 }

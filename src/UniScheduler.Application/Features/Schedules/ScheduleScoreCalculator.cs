@@ -356,6 +356,60 @@ public static class ScheduleScoreCalculator
         return score;
     }
 
+    // Per-(group, day) S4 walking penalty over an entry set
+    public static Dictionary<(Guid group, RussianDayOfWeek day), int> Score_S4_WalkingByGroupDay(
+        IReadOnlyList<ScheduleEntry> entries, ScoreContext ctx, SolverWeights w)
+    {
+        var result = new Dictionary<(Guid, RussianDayOfWeek), int>();
+        var byGroup = GroupBy(entries, e => e.StudentGroups.Select(sg => sg.StudentGroupId));
+        var weekVariants = new[] { WeekType.Odd, WeekType.Even };
+
+        foreach (var (gid, ge) in byGroup)
+        foreach (RussianDayOfWeek day in Enum.GetValues<RussianDayOfWeek>())
+        {
+            int walk = 0;
+            foreach (var wv in weekVariants)
+            {
+                var slot = ge.Where(e => e.DayOfWeek == day && Affects(e.WeekType, wv)).ToList();
+                if (slot.Count < 2) continue;
+                var pairs = slot.GroupBy(e => e.PairNumber).Select(g => g.Key).OrderBy(p => p).ToList();
+                walk += Score_S4_Walking(slot, pairs, ctx, w);
+            }
+            if (walk > 0) result[(gid, day)] = walk;
+        }
+        return result;
+    }
+
+    // Per-(group, day) student-local soft penalty
+    // S3 (flat per active day) and S4 (walking, a space concern) are excluded.
+    public static Dictionary<(Guid group, RussianDayOfWeek day), int> Score_StudentDayPenaltyByGroupDay(
+        IReadOnlyList<ScheduleEntry> entries, SolverWeights w)
+    {
+        var result = new Dictionary<(Guid, RussianDayOfWeek), int>();
+        var byGroup = GroupBy(entries, e => e.StudentGroups.Select(sg => sg.StudentGroupId));
+        var weekVariants = new[] { WeekType.Odd, WeekType.Even };
+
+        foreach (var (gid, ge) in byGroup)
+        foreach (RussianDayOfWeek day in Enum.GetValues<RussianDayOfWeek>())
+        {
+            int p = 0;
+            foreach (var wv in weekVariants)
+            {
+                var slot = ge.Where(e => e.DayOfWeek == day && Affects(e.WeekType, wv)).ToList();
+                if (slot.Count == 0) continue;
+                var onlineByPair = slot.GroupBy(e => e.PairNumber).ToDictionary(g => g.Key, g => g.All(e => e.IsOnline));
+                var pairs = onlineByPair.Keys.OrderBy(x => x).ToList();
+                p += Score_S1_StudentWindows(pairs, onlineByPair, w);
+                p += Score_S5_SanPin(slot, pairs, w);
+                p += Score_S6_ConsecSameLesson(slot, w);
+                p += Score_S7_TimeOfDay(pairs, w);
+                p += Score_S8_Saturday(day, pairs.Count, w);
+            }
+            if (p > 0) result[(gid, day)] = p;
+        }
+        return result;
+    }
+
     // S5: SanPiN day rules for one (group, day, week) slot. Combines:
     //  - daily overload (+SanPinOverload per pair beyond 4), with PE at the 5th pair exempt from the count
     //  - the PE-per-day cap (+SanPinOverload per PE pair-slot beyond MaxPePerDay)

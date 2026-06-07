@@ -85,7 +85,6 @@ public class LnsOptimizerService : ILnsOptimizerService
             new DestroyMultiDay(),
             new DestroyGroupWeek(),
             new DestroySubject(),
-            new DestroyBlockedSlot(),
             new DestroyPlan(),
             new DestroyRandomK(),
         };
@@ -95,17 +94,18 @@ public class LnsOptimizerService : ILnsOptimizerService
             new DestroyBuildingSpace(),
             new DestroyGroupDaySpace(),
             new DestroyGroupWeekSpace(),
-            new DestroyWrongRoom(),
+            new DestroyWorstDistanceSpace(shared.Weights),
         };
+
+        var wrongRoomOp = new DestroyWrongRoom();
+        var blockedSlotOp = new DestroyBlockedSlot();
+        var forcedOps = new IDestroyOperator[] { wrongRoomOp, blockedSlotOp };
 
         // Room -> building lookup for the building-local space op (entries only carry RoomId).
         var roomToBuilding = shared.Rooms.ToDictionary(r => r.Id, r => r.BuildingId);
-        var allOps = timeOps.Concat(spaceOps).ToArray();
+        var allOps = timeOps.Concat(spaceOps).Concat(forcedOps).ToArray();
         var weights = allOps.ToDictionary(o => o.Name, _ => 1.0);
         var telemetry = allOps.ToDictionary(o => o.Name, _ => (Attempts: 0, Accepted: 0, Failed: 0, Total: 0L));
-
-        var wrongRoomOp = spaceOps.FirstOrDefault(o => o.Name == "WrongRoom");
-        var blockedSlotOp = timeOps.FirstOrDefault(o => o.Name == "BlockedSlot");
 
         var stuckOps = new HashSet<string>();
         var forcedCount = new Dictionary<string, int>();
@@ -133,9 +133,9 @@ public class LnsOptimizerService : ILnsOptimizerService
         while (DateTime.UtcNow < deadline && kicks < opts.MaxIterations && !ct.IsCancellationRequested)
         {
             IDestroyOperator? forced = null;
-            if (currentBreakdown.S11_RoomTypeMismatch > 0 && wrongRoomOp != null && !stuckOps.Contains(wrongRoomOp.Name))
+            if (currentBreakdown.S11_RoomTypeMismatch > 0 && !stuckOps.Contains(wrongRoomOp.Name))
                 forced = wrongRoomOp;
-            else if (currentBreakdown.S12_BlockedPlacement > 0 && blockedSlotOp != null && !stuckOps.Contains(blockedSlotOp.Name))
+            else if (currentBreakdown.S12_BlockedPlacement > 0 && !stuckOps.Contains(blockedSlotOp.Name))
                 forced = blockedSlotOp;
             if (forced != null && (forcedCount[forced.Name] = forcedCount.GetValueOrDefault(forced.Name) + 1) > maxForcedTries)
             {
@@ -157,8 +157,9 @@ public class LnsOptimizerService : ILnsOptimizerService
                 axisOps = spaceKick ? spaceOps : timeOps;
                 op = PickOperator(axisOps, weights, rng);
             }
+            int kickTimeout = Math.Max(1, (int)Math.Round(opts.KickTimeoutSeconds * op.Factor));
             int attemptNum = kicks + 1;
-            var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}/{op.Axis}";
+            var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}/{op.Axis} t={kickTimeout}s";
             IProgress<string>? kickProgress = null;
 
             var kickCtx = new LnsKickContext(
@@ -171,10 +172,10 @@ public class LnsOptimizerService : ILnsOptimizerService
                 RoomAllowedLessonTypes: shared.ScoreCtx.RoomAllowedLessonTypes,
                 GroupBlockedDays: shared.ScoreCtx.GroupBlockedDays,
                 TeacherBlockedSlots: shared.ScoreCtx.TeacherBlockedSlots,
+                ScoreCtx: shared.ScoreCtx,
                 CurrentBreakdown: currentBreakdown,
                 TargetDestroySize: opts.TargetDestroySize,
-                MinDestroySize: opts.MinDestroySize,
-                Rng: rng);
+                MinDestroySize: opts.MinDestroySize, Rng: rng);
 
             var destroy = op.SelectToDestroy(kickCtx);
             // Expand to parallel siblings to keep H_par satisfiable.
@@ -223,7 +224,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                 scheduleId, shared, reqs,
                 roomBlocks: Array.Empty<SchedulerRoomBlock>(),
                 extraTeacherBlocks: Array.Empty<SchedulerBlock>(),
-                timeoutSeconds: opts.KickTimeoutSeconds,
+                timeoutSeconds: kickTimeout,
                 weights: shared.Weights,
                 pinnings: pins,
                 hints: hints,
@@ -288,12 +289,12 @@ public class LnsOptimizerService : ILnsOptimizerService
                     bestEntries = candidate;
                     bestBreakdown = newBreakdown;
                     accepted++;
-                    UpdateLnsWeights(weights, axisOps, op.Name, 2);
+                    UpdateLnsWeights(weights, axisOps, op, 2);
                     MarkAccepted(telemetry, op.Name, prevBest - candCost);
                 }
                 else
                 {
-                    UpdateLnsWeights(weights, axisOps, op.Name, 1);
+                    UpdateLnsWeights(weights, axisOps, op, 1);
                     MarkAccepted(telemetry, op.Name, 0);
                 }
                 long ovfCount = newBreakdown.S10_Overflow / (long)SchedulerSentinels.OverflowPenalty;
@@ -302,7 +303,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             }
             else
             {
-                UpdateLnsWeights(weights, axisOps, op.Name, 0);
+                UpdateLnsWeights(weights, axisOps, op, 0);
                 MarkRejected(telemetry, op.Name);
                 progress?.Report($"{kickPrefix} | отклонено score={candCost} (best {bestScore})");
             }
@@ -334,8 +335,8 @@ public class LnsOptimizerService : ILnsOptimizerService
     private const double Lambda = 0.15;
     private const double MinWeight = 0.05;
 
-    private static void UpdateLnsWeights(Dictionary<string, double> weights, IDestroyOperator[] allOps,
-        string chosenOpName, int outcome)
+    private static void UpdateLnsWeights(Dictionary<string, double> weights, IDestroyOperator[] batch,
+        IDestroyOperator chosen, int outcome)
     {
         var reward = outcome switch
         {
@@ -344,18 +345,13 @@ public class LnsOptimizerService : ILnsOptimizerService
             _ => 0.0                // Rejected
         };
 
-        foreach (var op in allOps)
-        {
-            if (op.Name == chosenOpName)
-            {
-                var target = weights[op.Name] * (1.0 - Lambda) + reward * Lambda;
-                weights[op.Name] = Math.Max(MinWeight, target);
-            }
-            else
-            {
+        double lambda = outcome == 0 ? Math.Min(0.9, Lambda * chosen.Factor) : Lambda;
+        var target = weights[chosen.Name] * (1.0 - lambda) + reward * lambda;
+        weights[chosen.Name] = Math.Max(MinWeight, target);
+
+        foreach (var op in batch)
+            if (op.Name != chosen.Name)
                 weights[op.Name] = Math.Max(MinWeight, weights[op.Name] * 0.99);
-            }
-        }
     }
 
     private static (Dictionary<int, ScheduleEntry>, Dictionary<Guid, int>, List<ScheduleEntry>, HashSet<int>)

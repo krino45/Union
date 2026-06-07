@@ -86,6 +86,7 @@ public sealed class DestroyMultiDay : IDestroyOperator
 {
     public string Name => "MultiDay";
     public RepairAxis Axis => RepairAxis.Time;
+    public double Factor => 2.0; // 2-3 whole day-buckets - heavy af
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
@@ -113,6 +114,7 @@ public sealed class DestroyGroupWeek : IDestroyOperator
 {
     public string Name => "GroupWeek";
     public RepairAxis Axis => RepairAxis.Time;
+    public double Factor => 1.75; // whole groups weeks freed
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
@@ -147,8 +149,7 @@ public sealed class DestroySubject : IDestroyOperator
     }
 }
 
-// Free a random plan's ri set. Useful when one plan is dragging score and benefits from a full
-// replan. May exceed TargetDestroySize for large plans.
+// TIME op. Destroy a full student plan and rebuild it. Can take a while
 public sealed class DestroyPlan : IDestroyOperator
 {
     public string Name => "Plan";
@@ -170,7 +171,7 @@ public sealed class DestroyPlan : IDestroyOperator
     }
 }
 
-// Free K random ri. Generic diversification.
+// TIME op: generic diversification. Picks random seed reqs + a bit around them.
 public sealed class DestroyRandomK : IDestroyOperator
 {
     public string Name => "RandomK";
@@ -180,11 +181,34 @@ public sealed class DestroyRandomK : IDestroyOperator
     {
         var pool = ctx.EntryByRi.Keys.ToList();
         if (pool.Count == 0) return new HashSet<int>();
-        int k = Math.Min(pool.Count, ctx.TargetDestroySize);
-        var picked = new HashSet<int>();
-        while (picked.Count < k && picked.Count < pool.Count)
-            picked.Add(pool[ctx.Rng.Next(pool.Count)]);
-        return picked;
+
+        var byGroupDay = new Dictionary<(Guid, RussianDayOfWeek), List<int>>();
+        var byTeacherDay = new Dictionary<(Guid, RussianDayOfWeek), List<int>>();
+        foreach (var (ri, e) in ctx.EntryByRi)
+        {
+            var tk = (e.TeacherId, e.DayOfWeek);
+            if (!byTeacherDay.TryGetValue(tk, out var tl)) byTeacherDay[tk] = tl = new List<int>();
+            tl.Add(ri);
+            foreach (var sg in e.StudentGroups)
+            {
+                var gk = (sg.StudentGroupId, e.DayOfWeek);
+                if (!byGroupDay.TryGetValue(gk, out var gl)) byGroupDay[gk] = gl = new List<int>();
+                gl.Add(ri);
+            }
+        }
+
+        var result = new HashSet<int>();
+        int guard = 0, cap = pool.Count * 2;
+        while (result.Count < ctx.TargetDestroySize && guard++ < cap)
+        {
+            var e = ctx.EntryByRi[pool[ctx.Rng.Next(pool.Count)]];
+            if (byTeacherDay.TryGetValue((e.TeacherId, e.DayOfWeek), out var tl))
+                foreach (var ri in tl) result.Add(ri);
+            foreach (var sg in e.StudentGroups)
+                if (byGroupDay.TryGetValue((sg.StudentGroupId, e.DayOfWeek), out var gl))
+                    foreach (var ri in gl) result.Add(ri);
+        }
+        return result;
     }
 }
 
@@ -242,77 +266,52 @@ public sealed class DestroyBlockedSlot : IDestroyOperator
 
     private static int[] CalWeeks(WeekType wt) => wt switch
     {
-        WeekType.Odd => new[] { 0 },
-        WeekType.Even => new[] { 1 },
-        _ => new[] { 0, 1 }
+        WeekType.Odd => [0],
+        WeekType.Even => [1],
+        _ => [0, 1]
     };
 }
 
-// Free the ri whose entries contribute most to the current penalty. Heuristic - we attribute
-// per-entry contribution from each soft component (S1 by group/day, S2 by teacher/day, S4 by
-// adjacent-pair groups, S7 by pair index, S8 by Saturday occupancy, S9 by dept mismatch). The
-// top K accumulating ri are returned.
-public sealed class DestroyWorstK : IDestroyOperator
+// TIME op: the time analog of WorstDistanceSpace. Rank group-days by their penalty and free the worst ones.
+public sealed class DestroyWorstK(SolverWeights weights) : IDestroyOperator
 {
-    private readonly SolverWeights weights;
-    public DestroyWorstK(SolverWeights weights) { this.weights = weights; }
     public string Name => "WorstK";
     public RepairAxis Axis => RepairAxis.Time;
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
-        if (ctx.EntryByRi.Count == 0) return new HashSet<int>();
-        var score = new Dictionary<int, long>(ctx.EntryByRi.Count);
+        if (ctx.EntryByRi.Count == 0) return [];
 
-        var byGroupDay = new Dictionary<(Guid g, RussianDayOfWeek d, WeekType wt), List<int>>();
-        var byTeacherDay = new Dictionary<(Guid t, RussianDayOfWeek d, WeekType wt), List<int>>();
+        var penaltyByGroupDay = ScheduleScoreCalculator.Score_StudentDayPenaltyByGroupDay(ctx.Incumbent, weights);
+        if (penaltyByGroupDay.Count == 0) return [];
 
+        var byGroupDay = new Dictionary<(Guid g, RussianDayOfWeek d), List<int>>();
         foreach (var (ri, e) in ctx.EntryByRi)
-        {
-            score.TryAdd(ri, 0);
-            // S7 - bake the per-pair penalty into the per-entry score directly.
-            int p0 = e.PairNumber - 1;
-            int s7 = p0 < 2 ? weights.EarlyPair * (2 - p0)
-                  : p0 > 3 ? weights.LatePair  * (p0 - 3)
-                  : weights.MiddlePair;
-            score[ri] += s7;
-
-            // S8 - Saturday penalty per entry.
-            if (e.DayOfWeek == RussianDayOfWeek.Saturday) score[ri] += weights.SaturdayPenalty;
-
-            // Bucket for S1/S5 (by group+day) and S2/S3 (by teacher+day).
             foreach (var sg in e.StudentGroups)
             {
-                var k = (sg.StudentGroupId, e.DayOfWeek, e.WeekType);
-                if (!byGroupDay.TryGetValue(k, out var lst)) byGroupDay[k] = lst = new List<int>();
+                var k = (sg.StudentGroupId, e.DayOfWeek);
+                if (!byGroupDay.TryGetValue(k, out var lst)) byGroupDay[k] = lst = [];
                 lst.Add(ri);
             }
-            var tk = (e.TeacherId, e.DayOfWeek, e.WeekType);
-            if (!byTeacherDay.TryGetValue(tk, out var tl)) byTeacherDay[tk] = tl = new List<int>();
-            tl.Add(ri);
-        }
 
-        // S1 + S5: distribute group-day penalties to every entry in that group-day bucket.
-        foreach (var ((_, _, _), list) in byGroupDay)
+        var ranked = byGroupDay
+            .Where(kv => penaltyByGroupDay.ContainsKey(kv.Key))
+            .Select(kv => (kv.Value, Score: penaltyByGroupDay[kv.Key]))
+            .OrderByDescending(x => x.Score)
+            .ToList();
+        if (ranked.Count == 0) return [];
+
+        var band = Math.Min(ranked.Count, Math.Max(3, ranked.Count / 4));
+        var top = ranked.Take(band).Select(x => x.Value).ToList();
+        DestroyHelpers.Shuffle(top, ctx.Rng);
+
+        var result = new HashSet<int>();
+        foreach (var bucket in top)
         {
-            int sanPin = Math.Max(0, list.Count - 4) * weights.SanPinOverload;
-            // Coarse S1 proxy: long days are likely to have windows. We don't reconstruct exact
-            // gaps here; we just add a small per-extra-pair charge.
-            int s1Proxy = Math.Max(0, list.Count - 3) * weights.StudentWindow / 2;
-            int share = (sanPin + s1Proxy) / Math.Max(1, list.Count);
-            foreach (var ri in list) score[ri] += share;
+            foreach (var ri in bucket) result.Add(ri);
+            if (result.Count >= ctx.TargetDestroySize) break;
         }
-
-        foreach (var ((_, _, _), list) in byTeacherDay)
-        {
-            int s3 = weights.ActiveDay; // one day-active charge per teacher-day
-            int s2Proxy = Math.Max(0, list.Count - 3) * weights.TeacherWindow / 2;
-            int share = (s3 + s2Proxy) / Math.Max(1, list.Count);
-            foreach (var ri in list) score[ri] += share;
-        }
-
-        int take = ctx.MinDestroySize;
-        return score.OrderByDescending(kv => kv.Value).Take(take).Select(kv => kv.Key).ToHashSet();
+        return result;
     }
 }
 
@@ -369,6 +368,7 @@ public sealed class DestroyGroupDaySpace : IDestroyOperator
 {
     public string Name => "GroupDaySpace";
     public RepairAxis Axis => RepairAxis.Space;
+    public double Factor => 1.5; // co-locates several (group, day) regions at once
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
@@ -394,6 +394,7 @@ public sealed class DestroyGroupWeekSpace : IDestroyOperator
 {
     public string Name => "GroupWeekSpace";
     public RepairAxis Axis => RepairAxis.Space;
+    public double Factor => 1.75; // one group's whole week of rooms freed
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
@@ -409,5 +410,51 @@ public sealed class DestroyGroupWeekSpace : IDestroyOperator
             }
         }
         return DestroyHelpers.AccumulateToTarget(byGroup, ctx.TargetDestroySize, ctx.Rng);
+    }
+}
+
+// SPACE op: the space analog of WorstK. Rank (group, day) regions by real walking dists and free the worst regions
+public sealed class DestroyWorstDistanceSpace(SolverWeights weights) : IDestroyOperator
+{
+    public string Name => "WorstDistanceSpace";
+    public RepairAxis Axis => RepairAxis.Space;
+
+    public HashSet<int> SelectToDestroy(LnsKickContext ctx)
+    {
+        if (ctx.EntryByRi.Count == 0) return [];
+
+        var walkByGroupDay = ScheduleScoreCalculator.Score_S4_WalkingByGroupDay(ctx.Incumbent, ctx.ScoreCtx, weights);
+        if (walkByGroupDay.Count == 0) return [];
+
+        var byGroupDay = new Dictionary<(Guid g, RussianDayOfWeek d), List<int>>();
+        foreach (var (ri, e) in ctx.EntryByRi)
+        {
+            if (e.IsOnline || !e.RoomId.HasValue || e.RoomId.Value == SchedulerSentinels.OverflowRoomId) continue;
+            foreach (var sg in e.StudentGroups)
+            {
+                var k = (sg.StudentGroupId, e.DayOfWeek);
+                if (!byGroupDay.TryGetValue(k, out var lst)) byGroupDay[k] = lst = [];
+                lst.Add(ri);
+            }
+        }
+
+        var ranked = byGroupDay
+            .Where(kv => walkByGroupDay.ContainsKey(kv.Key))
+            .Select(kv => (kv.Value, Walk: walkByGroupDay[kv.Key]))
+            .OrderByDescending(x => x.Walk)
+            .ToList();
+        if (ranked.Count == 0) return [];
+
+        var band = Math.Min(ranked.Count, Math.Max(3, ranked.Count / 4));
+        var top = ranked.Take(band).Select(x => x.Value).ToList();
+        DestroyHelpers.Shuffle(top, ctx.Rng);
+
+        var result = new HashSet<int>();
+        foreach (var bucket in top)
+        {
+            foreach (var ri in bucket) result.Add(ri);
+            if (result.Count >= ctx.TargetDestroySize) break;
+        }
+        return result;
     }
 }
