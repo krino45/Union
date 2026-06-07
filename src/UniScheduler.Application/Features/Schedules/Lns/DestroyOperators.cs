@@ -277,6 +277,7 @@ public sealed class DestroyWorstK(SolverWeights weights) : IDestroyOperator
 {
     public string Name => "WorstK";
     public RepairAxis Axis => RepairAxis.Time;
+    public double Factor => 1.5; // hopefully enough to find the optimal solution
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
