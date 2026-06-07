@@ -468,6 +468,37 @@ public sealed class DestroyWorstDistanceSpace(SolverWeights weights) : IDestroyO
             foreach (var ri in bucket) result.Add(ri);
             if (result.Count >= ctx.TargetDestroySize) break;
         }
+
         return result;
     }
 }
+
+// SPACE op: destroys overflow rooms. Becomes a forced operator if there's any overflow rooms left from the previous kick.
+public sealed class DestroyOverflowRooms : IDestroyOperator
+{
+    public string Name => "Overflow";
+    public RepairAxis Axis => RepairAxis.Space;
+
+    public HashSet<int> SelectToDestroy(LnsKickContext ctx)
+    {
+        if (ctx.EntryByRi.Count == 0) return [];
+        var lst = new List<int>();
+        foreach (var (ri, e) in ctx.EntryByRi)
+        {
+            if (e.RoomId != null && e.RoomId.Value == SchedulerSentinels.OverflowRoomId)
+                lst.Add(ri);
+        }
+
+        DestroyHelpers.Shuffle(lst, ctx.Rng);
+
+        var result = new HashSet<int>();
+        foreach (var ri in lst)
+        {
+            result.Add(ri);
+            if (result.Count >= ctx.TargetDestroySize) break;
+        }
+
+        return result;
+    }
+}
+

@@ -132,6 +132,7 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         var wrongRoomOp = new DestroyWrongRoom();
         var blockedSlotOp = new DestroyBlockedSlot();
+        var overflowOp = new DestroyOverflowRooms();
         var forcedOps = new IDestroyOperator[] { wrongRoomOp, blockedSlotOp };
 
         // Room -> building lookup for the building-local space op (entries only carry RoomId).
@@ -163,13 +164,15 @@ public class LnsOptimizerService : ILnsOptimizerService
         var deadline = DateTime.UtcNow + opts.TotalBudget;
         int kicks = 0, accepted = 0;
 
+        IDestroyOperator? forced = null;
         while (DateTime.UtcNow < deadline && kicks < opts.MaxIterations && !ct.IsCancellationRequested)
         {
-            IDestroyOperator? forced = null;
             if (currentBreakdown.S11_RoomTypeMismatch > 0 && !stuckOps.Contains(wrongRoomOp.Name))
                 forced = wrongRoomOp;
             else if (currentBreakdown.S12_BlockedPlacement > 0 && !stuckOps.Contains(blockedSlotOp.Name))
                 forced = blockedSlotOp;
+            else if (currentBreakdown.S10_Overflow > 0)
+                forced = overflowOp;
             if (forced != null && (forcedCount[forced.Name] = forcedCount.GetValueOrDefault(forced.Name) + 1) > maxForcedTries)
             {
                 stuckOps.Add(forced.Name);
@@ -182,6 +185,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             {
                 axisOps = forced.Axis == RepairAxis.Space ? spaceOps : timeOps;
                 op = forced;
+                if (forced.Name == overflowOp.Name) forced = null; // one-time op
             }
             else
             {
@@ -332,6 +336,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                     MarkAccepted(telemetry, op.Name, 0);
                 }
                 long ovfCount = newBreakdown.S10_Overflow / (long)SchedulerSentinels.OverflowPenalty;
+                if (ovfCount > 0) forced = overflowOp;
                 string ovf = ovfCount > 0 ? $" overflow={ovfCount}" : "";
                 progress?.Report($"{kickPrefix} | принято score={currentCost}{ovf} (best {bestScore})");
             }
