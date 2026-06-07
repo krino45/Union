@@ -31,7 +31,9 @@ import { ThemeService } from './core/services/theme.service';
         <div class="sidenav-header" [class.clickable]="auth.canSwitchUniversity"
              (click)="auth.canSwitchUniversity ? switchUniversity() : null"
              [matTooltip]="auth.canSwitchUniversity ? 'Сменить университет' : ''">
-          <mat-icon>school</mat-icon>
+          <img class="uni-logo" *ngIf="showLogo(auth.currentUniversity?.logoUrl)"
+               [src]="auth.currentUniversity?.logoUrl" alt="" (error)="onLogoError(auth.currentUniversity?.logoUrl)">
+          <mat-icon *ngIf="!showLogo(auth.currentUniversity?.logoUrl)">school</mat-icon>
           <div class="header-text">
             <div class="app-name">Юниран</div>
             <div class="uni-name" *ngIf="auth.currentUniversity">{{ auth.currentUniversity.shortName }}</div>
@@ -176,6 +178,7 @@ import { ThemeService } from './core/services/theme.service';
     }
     .sidenav-header.clickable { cursor: pointer; transition: background 0.15s; }
     .sidenav-header.clickable:hover { background: rgba(0,0,0,0.04); }
+    .sidenav-header .uni-logo { width: 28px; height: 28px; object-fit: contain; border-radius: 5px; flex-shrink: 0; }
     .header-text { flex: 1; min-width: 0; }
     .app-name { font-size: 16px; font-weight: 700; }
     .uni-name { font-size: 11px; font-weight: 400; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -212,6 +215,10 @@ export class AppComponent {
   @ViewChild('sidenav') sidenav?: MatSidenav;
 
   isMobile = false;
+
+  private logoFailed = new Set<string>();
+  showLogo(url?: string | null): boolean { return !!url && !this.logoFailed.has(url); }
+  onLogoError(url?: string | null): void { if (url) this.logoFailed.add(url); }
 
   private _sidenavWidth: number = (() => {
     const v = parseInt(localStorage.getItem('sidenavWidth') ?? '', 10);

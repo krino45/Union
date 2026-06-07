@@ -24,7 +24,9 @@ import { ThemeToggleComponent } from '../../shared/components/theme-toggle/theme
         <mat-card class="uni-card" *ngFor="let u of auth.currentUser?.universities"
                   (click)="select(u)" matRipple>
           <mat-card-content>
-            <mat-icon class="uni-icon">domain</mat-icon>
+            <img class="uni-logo" *ngIf="showLogo(u.logoUrl)" [src]="u.logoUrl" [alt]="u.shortName"
+                 (error)="onLogoError(u.logoUrl)">
+            <mat-icon class="uni-icon" *ngIf="!showLogo(u.logoUrl)">domain</mat-icon>
             <div class="uni-info">
               <div class="uni-name">{{ u.universityName }}</div>
               <div class="uni-short">{{ u.shortName }}</div>
@@ -69,6 +71,7 @@ import { ThemeToggleComponent } from '../../shared/components/theme-toggle/theme
       display: flex; align-items: center; gap: 12px; padding: 16px !important;
     }
     .uni-icon { font-size: 36px; width: 36px; height: 36px; color: #1565c0; }
+    .uni-logo { width: 36px; height: 36px; object-fit: contain; border-radius: 6px; flex-shrink: 0; }
     .superadmin-card .uni-icon { color: #7b1fa2; }
     .uni-name { font-weight: 600; font-size: 15px; }
     .uni-short { font-size: 12px; color: #888; }
@@ -78,7 +81,12 @@ import { ThemeToggleComponent } from '../../shared/components/theme-toggle/theme
   `]
 })
 export class UniversitySelectComponent {
+  private logoFailed = new Set<string>();
+
   constructor(public auth: AuthService, private router: Router) {}
+
+  showLogo(url?: string): boolean { return !!url && !this.logoFailed.has(url); }
+  onLogoError(url?: string): void { if (url) this.logoFailed.add(url); }
 
   select(u: UniversityAccess): void {
     this.auth.selectUniversity(u);
