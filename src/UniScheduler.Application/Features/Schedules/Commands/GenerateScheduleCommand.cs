@@ -186,7 +186,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
             if (requirements.Count == 0)
             {
                 foreach (var plan in batch)
-                    perPlanMessages.Add($"{plan.Name ?? plan.Id.ToString()[..8]}: 0 занятий (пропущен)");
+                    perPlanMessages.Add($"{plan.Name}: 0 занятий (пропущен)");
                 continue;
             }
 

@@ -259,7 +259,7 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             .Where(e => e.SubjectId == subject.Id && e.LessonType == lt)
             .Sum(e => e.WeekType == WeekType.Both ? 1.0 : 0.5);
 
-        // 1 pair = 2 ак.ч.  ×  studyWeeks = total semester hours
+        // 1 pair = 2 ак.ч.  *  studyWeeks = total semester hours
         double actualTotal = actualPairsPerWeek * 2.0 * studyWeeks;
         const double tolerance = 9.0; // biweekly model rounds to nearest 9h (half odd/even cycle)
 

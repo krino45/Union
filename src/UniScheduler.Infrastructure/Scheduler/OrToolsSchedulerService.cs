@@ -1,7 +1,6 @@
 using System.Runtime;
-using System.Threading;
-using System.Threading.Tasks;
 using Google.OrTools.Sat;
+using Microsoft.Extensions.DependencyInjection;
 using UniScheduler.Application.Common.Config;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.Common.Models;
@@ -11,6 +10,12 @@ namespace UniScheduler.Infrastructure.Scheduler;
 
 public class OrToolsSchedulerService : ISchedulerService
 {
+    private readonly IServiceScopeFactory _scopeFactory;
+
+    public OrToolsSchedulerService(IServiceScopeFactory scopeFactory)
+    {
+        _scopeFactory = scopeFactory;
+    }
     private const int NumDays = 6;
     private const double WalkSpeedMperMin = 80.0;
 
@@ -1573,11 +1578,23 @@ public class OrToolsSchedulerService : ISchedulerService
     /// </summary>
     private static int VarWeekIndex(WeekType wt) => wt == WeekType.Even ? 1 : 0;
 
-    private static string FormatReqLabel(SchedulerRequirement req)
+    private string FormatReqLabel(SchedulerRequirement req)
     {
-        var grp = req.GroupIds.Count > 0 ? $"{req.GroupIds[0]:D}" : "—";
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
+        
+        var grp = "—";
+        if (req.GroupIds.Count > 0)
+        {
+            var groups = db.StudentGroups.Where(g => req.GroupIds.Contains(g.Id));
+            grp = $"{string.Join(", ", groups.Select(gr => gr.Name))}";
+        }
+
+        var tch = db.Teachers.First(t => t.Id == req.TeacherId).DisplayName;
+        var sbj = db.Subjects.First(s => s.Id == req.SubjectId).ShortName;
+
         var sub = req.SubgroupLabel != null ? $" [{req.SubgroupLabel}]" : "";
-        return $"{req.LessonType}{sub} teacher={req.TeacherId:D} subj={req.SubjectId:D} grp={grp} wk={req.WeekType}";
+        return $"{req.LessonType}{sub} teacher={tch} subj={sbj} grp={grp} wk={req.WeekType}";
     }
 
     /// <summary>

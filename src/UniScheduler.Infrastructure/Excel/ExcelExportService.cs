@@ -66,7 +66,7 @@ public class ExcelExportService : IExcelExportService
     {
         const int NumPairs = 7;
         const int NumDays  = 6;
-        int lastRow = 1 + NumPairs * 2; // header + 7 pairs × 2 rows
+        int lastRow = 1 + NumPairs * 2; // header + 7 pairs * 2 rows
 
         //  Header 
         ws.Cell(1, 1).Value = "Пара / Время";

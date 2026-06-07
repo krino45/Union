@@ -13,7 +13,7 @@ public class GetRoomsQueryHandler : IRequestHandler<GetRoomsQuery, List<RoomDto>
     private readonly IApplicationDbContext db;
     public GetRoomsQueryHandler(IApplicationDbContext db) => this.db = db;
 
-    // 6 working days × 7 pair slots = 42 weekly slots; Both-week pair counts as 2, Odd/Even as 1.
+    // 6 working days * 7 pair slots = 42 weekly slots; Both-week pair counts as 2, Odd/Even as 1.
     private const int TotalWeeklySlots = 42 * 2;
 
     public async Task<List<RoomDto>> Handle(GetRoomsQuery request, CancellationToken cancellationToken)
