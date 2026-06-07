@@ -47,6 +47,14 @@ public class LnsOptimizerService : ILnsOptimizerService
         var (reqs, riToPlanId) = ScheduleRequirementBuilder.BuildAllRequirementsStable(shared);
         var (entryByRi, riByEntryId, unmatchedEntries, unmatchedReqs) = MatchIncumbent(reqs, seed);
 
+        // Recover parallel drift: language and PE pick the teacher with a load check we canat reproduce,
+        // in a stable manner, so the rebuilt req has a different teacher than the real one.
+        // Rebind those reqs to the actual teacher.
+        int driftBefore = unmatchedEntries.Count;
+        ReconcileParallelStreams(reqs, entryByRi, riByEntryId, unmatchedEntries, unmatchedReqs);
+        if (driftBefore != unmatchedEntries.Count)
+            progress?.Report($"LNS: согласовано {driftBefore - unmatchedEntries.Count} паралл. потоков по преподавателю");
+
         // Coverage gate - if the seed and the rebuilt requirement set drift too far, polish is
         // not the right tool; the user should rerun the seed pass. Skip cleanly (but keep the
         // feasibility-repaired entries, which are still an improvement).
@@ -418,6 +426,48 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         return (entryByRi, riByEntryId, unmatched, unmatchedReqs);
     }
+
+    private static void ReconcileParallelStreams(
+        List<SchedulerRequirement> reqs,
+        Dictionary<int, ScheduleEntry> entryByRi,
+        Dictionary<Guid, int> riByEntryId,
+        List<ScheduleEntry> unmatchedEntries,
+        HashSet<int> unmatchedReqs)
+    {
+        if (unmatchedEntries.Count == 0 || unmatchedReqs.Count == 0) return;
+
+        var reqsByRelaxed = new Dictionary<string, Queue<int>>();
+        foreach (var ri in unmatchedReqs.OrderBy(x => x))
+        {
+            if (reqs[ri].ParallelKey is not int) continue;
+            var key = RelaxedKey(reqs[ri]);
+            if (!reqsByRelaxed.TryGetValue(key, out var q)) reqsByRelaxed[key] = q = new Queue<int>();
+            q.Enqueue(ri);
+        }
+        if (reqsByRelaxed.Count == 0) return;
+
+        var stillUnmatched = new List<ScheduleEntry>();
+        foreach (var e in unmatchedEntries)
+        {
+            if (reqsByRelaxed.TryGetValue(RelaxedKey(e), out var q) && q.Count > 0)
+            {
+                int ri = q.Dequeue();
+                reqs[ri] = reqs[ri] with { TeacherId = e.TeacherId };
+                entryByRi[ri] = e;
+                riByEntryId[e.Id] = ri;
+                unmatchedReqs.Remove(ri);
+            }
+            else stillUnmatched.Add(e);
+        }
+        unmatchedEntries.Clear();
+        unmatchedEntries.AddRange(stillUnmatched);
+    }
+
+    private static string RelaxedKey(SchedulerRequirement r) =>
+        $"{r.SubjectId}|{r.LessonType}|{r.WeekType}|{string.Join(",", r.GroupIds.OrderBy(x => x))}|{r.SubgroupLabel ?? ""}|{(r.IsOnline ? 1 : 0)}";
+
+    private static string RelaxedKey(ScheduleEntry e) =>
+        $"{e.SubjectId}|{e.LessonType}|{e.WeekType}|{string.Join(",", e.StudentGroups.Select(sg => sg.StudentGroupId).OrderBy(x => x))}|{e.SubgroupLabel ?? ""}|{(e.IsOnline ? 1 : 0)}";
 
     private static string NaturalKey(SchedulerRequirement r)
     {
