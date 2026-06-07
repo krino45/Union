@@ -32,7 +32,9 @@ public record SharedData(
     IReadOnlyDictionary<(Guid buildingId, int floor), int> ZoneEntryDistByZone,
     List<SchedulerBuildingDistance> BldgDistList,
     ScoreContext ScoreCtx,
-    SolverWeights Weights);
+    SolverWeights Weights,
+    // Hard (subject, lessonType) -> allowed room ids. Empty when none configured.
+    IReadOnlyDictionary<(Guid SubjectId, LessonType LessonType), List<Guid>> SubjectRoomBindings);
 
 public static class ScheduleBuildContext
 {
@@ -65,6 +67,13 @@ public static class ScheduleBuildContext
             .ToListAsync(ct);
         var subjectFacultyIds = subjectsWithDepts.ToDictionary(s => s.Id, s => s.Department?.FacultyId);
         var subjectsById = subjectsWithDepts.ToDictionary(s => s.Id);
+
+        var bindingRows = await db.SubjectRoomBindings
+            .Where(b => subjectIds.Contains(b.SubjectId))
+            .ToListAsync(ct);
+        var subjectRoomBindings = bindingRows
+            .GroupBy(b => (b.SubjectId, b.LessonType))
+            .ToDictionary(g => g.Key, g => g.Select(b => b.RoomId).ToList());
         var groupSizes = groups.ToDictionary(g => g.Id, g => g.StudentCount);
 
         var distances = await db.BuildingDistances.ToListAsync(ct);
@@ -90,14 +99,16 @@ public static class ScheduleBuildContext
             .Select(kv => new SchedulerBuildingDistance(kv.Key.Item1, kv.Key.Item2, kv.Value))
             .ToList();
 
+        var entranceConns = await db.EntranceConnections.ToListAsync(ct);
         var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(
             floorPlanNodes, floorPlanEdges, distances, rooms, pairSlots, subjectsWithDepts, weights,
-            groups: groups, teacherAvailabilities: teacherAvail);
+            groups: groups, teacherAvailabilities: teacherAvail, entranceConnections: entranceConns,
+            subjectRoomBindings: subjectRoomBindings);
 
         return new SharedData(schedule, rooms, teachers, groups, groupIds, studyPlans, teacherSubjects,
             subjectsById, subjectFacultyIds, groupSizes, distances, floorPlanNodes, floorPlanEdges,
             teacherAvail, pairSlots, pairsPerDay, breakMinutes, roomDistList, entryDistByRoom,
-            zoneEntryDist, bldDistList, scoreCtx, weights);
+            zoneEntryDist, bldDistList, scoreCtx, weights, subjectRoomBindings);
     }
 
     // Per-university distributed sentinel room (placeholder for classes with no fixed location,
@@ -156,7 +167,7 @@ public static class ScheduleBuildContext
 
         return new SchedulerInput(
             scheduleId,
-            shared.Rooms.Select(r => new SchedulerRoom(r.Id, r.BuildingId, r.RoomType, r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
+            shared.Rooms.Select(r => new SchedulerRoom(r.Id, r.BuildingId, r.RoomType, r.Capacity, r.HasProjector, r.HasComputers, r.IsOnline,
                 r.Floor, r.AllowedLessonTypes, r.Department?.FacultyId, r.IsDistributed,
                 EntryDistanceMeters: shared.EntryDistByRoom.TryGetValue(r.Id, out var ed) ? ed : 0)).ToList(),
             relevantTeachers.Select(t => new SchedulerTeacher(t.Id)).ToList(),

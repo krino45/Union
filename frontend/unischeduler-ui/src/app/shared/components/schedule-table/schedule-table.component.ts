@@ -1,4 +1,4 @@
-import { Component, Input, OnChanges } from '@angular/core';
+import { Component, Input, OnChanges, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -7,7 +7,8 @@ import { RussianDayOfWeek } from '../../../core/models/enums';
 import { DayOfWeekPipe } from '../../pipes/day-of-week.pipe';
 import { WeekTypePipe } from '../../pipes/week-type.pipe';
 import { LessonTypePipe } from '../../pipes/lesson-type.pipe';
-import { PAIR_TIMES, DAYS, PAIRS } from '../../constants/pairs';
+import { DAYS, PAIRS } from '../../constants/pairs';
+import { PairTimesService } from '../../../core/services/pair-times.service';
 
 interface CellData {
   numerator: ScheduleEntry[];
@@ -136,14 +137,20 @@ export class EntryCardComponent {
     .week-badge { font-size: 9px; font-weight: 700; color: #888; }
   `]
 })
-export class ScheduleTableComponent implements OnChanges {
+export class ScheduleTableComponent implements OnChanges, OnInit {
   @Input() entries: ScheduleEntry[] = [];
 
   days = [...DAYS];
   pairs = [...PAIRS];
-  pairTimes = PAIR_TIMES;
+  pairTimes = this.pairTimesSvc.times;
 
   private cellMap = new Map<string, CellData>();
+
+  constructor(private pairTimesSvc: PairTimesService) {}
+
+  ngOnInit(): void {
+    this.pairTimesSvc.ensureLoaded();
+  }
 
   ngOnChanges(): void {
     this.buildCellMap();

@@ -243,6 +243,12 @@ export class ApiService {
   updateSubject(id: string, dto: UpdateSubjectDto): Observable<void> {
     return this.http.put<void>(`${this.base}/subjects/${id}`, dto);
   }
+  getSubjectRoomBindings(subjectId: string): Observable<{ lessonType: string; roomIds: string[] }[]> {
+    return this.http.get<{ lessonType: string; roomIds: string[] }[]>(`${this.base}/subjects/${subjectId}/room-bindings`);
+  }
+  updateSubjectRoomBinding(subjectId: string, lessonType: string, roomIds: string[]): Observable<void> {
+    return this.http.put<void>(`${this.base}/subjects/${subjectId}/room-bindings`, { lessonType, roomIds });
+  }
   deleteSubject(id: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/subjects/${id}`);
   }
@@ -281,6 +287,17 @@ export class ApiService {
   //  Pair Times
   getPairTimes(): Observable<{ pairNumber: number; startTime: string; endTime: string }[]> {
     return this.http.get<{ pairNumber: number; startTime: string; endTime: string }[]>(`${this.base}/pair-times`);
+  }
+  updatePairTimes(pairs: { pairNumber: number; startTime: string; endTime: string }[]): Observable<void> {
+    return this.http.put<void>(`${this.base}/pair-times`, pairs);
+  }
+
+  //  Current university (admin self-service)
+  getCurrentUniversity(): Observable<{ id: string; name: string; shortName: string; logoUrl?: string; city?: string }> {
+    return this.http.get<any>(`${this.base}/universities/current`);
+  }
+  updateCurrentUniversity(dto: { name: string; shortName: string; logoUrl?: string | null; city?: string | null }): Observable<void> {
+    return this.http.put<void>(`${this.base}/universities/current`, dto);
   }
 
   //  Schedules

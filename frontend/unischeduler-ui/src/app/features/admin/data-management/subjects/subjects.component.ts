@@ -14,9 +14,10 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
-import { Subject, Department } from '../../../../core/models';
-import { Term } from '../../../../core/models/enums';
+import { Subject, Department, Room } from '../../../../core/models';
+import { Term, LessonType } from '../../../../core/models/enums';
 import { SearchSelectComponent } from '../../../../shared/components/search-select.component';
+import { forkJoin } from 'rxjs';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -66,6 +67,7 @@ const CURRENT_YEAR = new Date().getFullYear();
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
           <td mat-cell *matCellDef="let s">
+            <button mat-icon-button (click)="openRoomBindings(s)" matTooltip="Закрепить аудитории"><mat-icon>meeting_room</mat-icon></button>
             <button mat-icon-button (click)="openDialog(s)" matTooltip="Редактировать"><mat-icon>edit</mat-icon></button>
             <button mat-icon-button color="warn" (click)="delete(s)" matTooltip="Удалить"><mat-icon>delete</mat-icon></button>
           </td>
@@ -135,6 +137,10 @@ export class SubjectsComponent implements OnInit {
         });
       }
     });
+  }
+
+  openRoomBindings(subject: Subject): void {
+    this.dialog.open(SubjectRoomBindingsDialogComponent, { data: { subject }, width: '560px' });
   }
 
   delete(subject: Subject): void {
@@ -221,5 +227,82 @@ export class SubjectDialogComponent {
 
   submit(): void {
     if (this.form.valid) this.dialogRef.close(this.form.value);
+  }
+}
+
+// Manage the hard (subject, lessonType) -> allowed rooms binding. Empty selection = no restriction.
+@Component({
+  selector: 'app-subject-room-bindings-dialog',
+  standalone: true,
+  imports: [
+    CommonModule, FormsModule, MatButtonModule, MatFormFieldModule, MatSelectModule,
+    MatDialogModule, MatIconModule, MatProgressSpinnerModule, MatSnackBarModule
+  ],
+  template: `
+    <h2 mat-dialog-title>Аудитории: {{ data.subject.name }}</h2>
+    <mat-dialog-content>
+      <p class="hint">Если для типа занятия выбраны аудитории — это занятие можно ставить только в них.
+        Пусто = без ограничений (по типу аудитории).</p>
+      <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="32"></mat-spinner></div>
+      <div *ngIf="!loading">
+        <mat-form-field appearance="outline" class="full" *ngFor="let lt of lessonTypes">
+          <mat-label>{{ lt.label }}</mat-label>
+          <mat-select multiple [(ngModel)]="selected[lt.value]">
+            <mat-option *ngFor="let r of rooms" [value]="r.id">{{ roomLabel(r) }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Отмена</button>
+      <button mat-raised-button color="primary" [disabled]="loading || saving" (click)="save()">Сохранить</button>
+    </mat-dialog-actions>
+  `,
+  styles: [`.full { width: 100%; } .hint { color: #888; font-size: 12px; margin: 0 0 8px; } .loading-wrap { display: flex; justify-content: center; padding: 24px; }`]
+})
+export class SubjectRoomBindingsDialogComponent implements OnInit {
+  loading = true;
+  saving = false;
+  rooms: Room[] = [];
+  lessonTypes = [
+    { value: LessonType.Lecture, label: 'Лекция' },
+    { value: LessonType.Practical, label: 'Практика' },
+    { value: LessonType.Lab, label: 'Лабораторная' },
+    { value: LessonType.Seminar, label: 'Семинар' },
+  ];
+  selected: Record<string, string[]> = {};
+
+  constructor(
+    private api: ApiService,
+    private dialogRef: MatDialogRef<SubjectRoomBindingsDialogComponent>,
+    private snackBar: MatSnackBar,
+    @Inject(MAT_DIALOG_DATA) public data: { subject: Subject }
+  ) {}
+
+  roomLabel = (r: Room): string => (r.buildingShortCode ? r.buildingShortCode + '-' : '') + r.number;
+
+  ngOnInit(): void {
+    for (const lt of this.lessonTypes) this.selected[lt.value] = [];
+    forkJoin({
+      rooms: this.api.getRooms(),
+      bindings: this.api.getSubjectRoomBindings(this.data.subject.id),
+    }).subscribe({
+      next: ({ rooms, bindings }) => {
+        this.rooms = rooms.filter(r => !r.isOnline && !r.isDistributed);
+        for (const b of bindings) this.selected[b.lessonType] = b.roomIds;
+        this.loading = false;
+      },
+      error: () => { this.loading = false; this.snackBar.open('Ошибка загрузки', 'OK', { duration: 4000 }); }
+    });
+  }
+
+  save(): void {
+    this.saving = true;
+    const calls = this.lessonTypes.map(lt =>
+      this.api.updateSubjectRoomBinding(this.data.subject.id, lt.value, this.selected[lt.value] ?? []));
+    forkJoin(calls).subscribe({
+      next: () => { this.snackBar.open('Сохранено', 'OK', { duration: 2000 }); this.dialogRef.close(true); },
+      error: e => { this.saving = false; this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 }); }
+    });
   }
 }

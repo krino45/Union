@@ -46,6 +46,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<CalendarPlan> CalendarPlans => Set<CalendarPlan>();
     public DbSet<CalendarWeek> CalendarWeeks => Set<CalendarWeek>();
     public DbSet<SolverSettings> SolverSettings => Set<SolverSettings>();
+    public DbSet<SubjectRoomBinding> SubjectRoomBindings => Set<SubjectRoomBinding>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -69,6 +70,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
         modelBuilder.Entity<Subject>()
             .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
+        modelBuilder.Entity<SubjectRoomBinding>()
+            .HasQueryFilter(e => !_currentUniversity.HasContext || e.Subject.UniversityId == _currentUniversity.UniversityId);
         modelBuilder.Entity<StudyPlan>()
             .HasQueryFilter(e => !_currentUniversity.HasContext || e.UniversityId == _currentUniversity.UniversityId);
         modelBuilder.Entity<Room>()

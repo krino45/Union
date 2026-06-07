@@ -603,10 +603,10 @@ export class CreateScheduleDialogComponent {
           </div>
           <div class="row polish-row">
             <mat-checkbox formControlName="polish">
-              Полировка (LNS) после генерации
+              Починка и оптимизация (LNS) после генерации
             </mat-checkbox>
             <span class="polish-hint">
-              Добавляет фазу оптимизации: до 5 минут попыток улучшить оценку перестановкой занятий. Применяется к итогу.
+              Чинит нарушения (аудитории, окна, выход за сетку пар) и улучшает оценку перестановкой занятий — до 5 минут. Применяется к итогу.
             </span>
           </div>
         </section>
@@ -662,7 +662,7 @@ export class CreateScheduleDialogComponent {
 
         <section class="block">
           <h3 class="block-title">Потоки и подгруппы</h3>
-          <p class="block-desc">Сколько студентов вмещает один поток. Группа делится на ceil(размер / вместимость) параллельных потоков. Сохраняется со схемой, чтобы полировка пересобирала то же число потоков.</p>
+          <p class="block-desc">Сколько студентов вмещает один поток. Группа делится на ceil(размер / вместимость) параллельных потоков. Сохраняется со схемой, чтобы починка пересобирала то же число потоков.</p>
           <div class="row">
             <mat-form-field appearance="outline" class="flex1">
               <mat-label>Язык: студентов на поток</mat-label>

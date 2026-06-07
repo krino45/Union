@@ -14,7 +14,8 @@ import { AuthService } from '../../../core/services/auth.service';
 import { TeacherAvailability } from '../../../core/models';
 import { RussianDayOfWeek, WeekType } from '../../../core/models/enums';
 import { DayOfWeekPipe } from '../../../shared/pipes/day-of-week.pipe';
-import { PAIR_TIMES, DAYS, PAIRS } from '../../../shared/constants/pairs';
+import { DAYS, PAIRS } from '../../../shared/constants/pairs';
+import { PairTimesService } from '../../../core/services/pair-times.service';
 
 @Component({
   selector: 'app-availability-editor',
@@ -112,7 +113,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../shared/constants/pairs';
 export class AvailabilityEditorComponent implements OnInit {
   days = [...DAYS];
   pairs = [...PAIRS];
-  pairTimes = PAIR_TIMES;
+  pairTimes = this.pairTimesSvc.times;
   selectedWeekType: string = WeekType.Both;
   availabilities: TeacherAvailability[] = [];
   blockedSet = new Set<string>();
@@ -120,10 +121,12 @@ export class AvailabilityEditorComponent implements OnInit {
   constructor(
     private api: ApiService,
     private auth: AuthService,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private pairTimesSvc: PairTimesService
   ) {}
 
   ngOnInit(): void {
+    this.pairTimesSvc.ensureLoaded();
     const teacherId = this.auth.currentUser?.teacherId;
     if (!teacherId) return;
     this.api.getAvailability(teacherId).subscribe(data => {

@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnChanges } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnChanges, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   CdkDragDrop, CdkDrag, CdkDropList, CdkDropListGroup
@@ -12,7 +12,8 @@ import { RussianDayOfWeek, WeekType } from '../../../../core/models/enums';
 import { DayOfWeekPipe } from '../../../../shared/pipes/day-of-week.pipe';
 import { WeekTypePipe } from '../../../../shared/pipes/week-type.pipe';
 import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
-import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
+import { DAYS, PAIRS } from '../../../../shared/constants/pairs';
+import { PairTimesService } from '../../../../core/services/pair-times.service';
 
 @Component({
   selector: 'app-schedule-grid',
@@ -197,7 +198,7 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../../shared/constants/pairs';
     .empty-slot { min-height: 16px; }
   `]
 })
-export class ScheduleGridComponent implements OnChanges {
+export class ScheduleGridComponent implements OnChanges, OnInit {
   @Input() scheduleId!: string;
   @Input() entries: ScheduleEntry[] = [];
   @Input() groups: StudentGroup[] = [];
@@ -211,13 +212,17 @@ export class ScheduleGridComponent implements OnChanges {
 
   days = [...DAYS];
   pairs = [...PAIRS];
-  pairTimes = PAIR_TIMES;
+  pairTimes = this.pairTimesSvc.times;
 
   allCellIds: string[] = [];
   private cellMapNum = new Map<string, ScheduleEntry[]>();
   private cellMapDen = new Map<string, ScheduleEntry[]>();
 
-  constructor(private dialog: MatDialog) {}
+  constructor(private dialog: MatDialog, private pairTimesSvc: PairTimesService) {}
+
+  ngOnInit(): void {
+    this.pairTimesSvc.ensureLoaded();
+  }
 
   ngOnChanges(): void {
     this.buildCellMaps();

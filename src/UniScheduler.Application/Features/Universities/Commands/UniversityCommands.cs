@@ -10,6 +10,7 @@ namespace UniScheduler.Application.Features.Universities.Commands;
 
 public record CreateUniversityCommand(string Name, string ShortName, string? LogoUrl, string? City) : IRequest<UniversityDto>;
 public record UpdateUniversityCommand(Guid Id, string Name, string ShortName, string? LogoUrl, string? City) : IRequest;
+public record UpdateCurrentUniversityCommand(string Name, string ShortName, string? LogoUrl, string? City) : IRequest;
 public record DeleteUniversityCommand(Guid Id) : IRequest;
 public record AssignUniversityUserCommand(Guid UniversityId, Guid UserId, UniversityRole Role) : IRequest;
 public record RevokeUniversityUserCommand(Guid UniversityId, Guid UserId) : IRequest;
@@ -31,6 +32,10 @@ public class CreateUniversityCommandHandler : IRequestHandler<CreateUniversityCo
         };
         _db.Universities.Add(university);
         await _db.SaveChangesAsync(cancellationToken);
+
+        _db.PairTimeSlots.AddRange(PairTimes.PairTimeDefaults.CreateFor(university.Id));
+        await _db.SaveChangesAsync(cancellationToken);
+
         return new UniversityDto(university.Id, university.Name, university.ShortName, university.LogoUrl, university.City);
     }
 }
@@ -44,6 +49,28 @@ public class UpdateUniversityCommandHandler : IRequestHandler<UpdateUniversityCo
     {
         var university = await _db.Universities.FindAsync(new object[] { request.Id }, cancellationToken)
             ?? throw new NotFoundException(nameof(University), request.Id);
+        university.Name = request.Name;
+        university.ShortName = request.ShortName;
+        university.LogoUrl = request.LogoUrl;
+        university.City = request.City;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+}
+
+public class UpdateCurrentUniversityCommandHandler : IRequestHandler<UpdateCurrentUniversityCommand>
+{
+    private readonly IApplicationDbContext _db;
+    private readonly ICurrentUniversityService _current;
+    public UpdateCurrentUniversityCommandHandler(IApplicationDbContext db, ICurrentUniversityService current)
+    { _db = db; _current = current; }
+
+    public async Task Handle(UpdateCurrentUniversityCommand request, CancellationToken cancellationToken)
+    {
+        if (!_current.HasContext)
+            throw new ForbiddenException("Требуется выбрать университет.");
+        var id = _current.UniversityId!.Value;
+        var university = await _db.Universities.FindAsync(new object[] { id }, cancellationToken)
+            ?? throw new NotFoundException(nameof(University), id);
         university.Name = request.Name;
         university.ShortName = request.ShortName;
         university.LogoUrl = request.LogoUrl;

@@ -231,9 +231,15 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
 
         var settings = await db.SolverSettings.FirstOrDefaultAsync(ct);
         var teacherAvail = await db.TeacherAvailabilities.ToListAsync(ct);
+        var entranceConns = await db.EntranceConnections.ToListAsync(ct);
+        var bindingRows = await db.SubjectRoomBindings.Where(b => subjectIds.Contains(b.SubjectId)).ToListAsync(ct);
+        var subjectRoomBindings = bindingRows
+            .GroupBy(b => (b.SubjectId, b.LessonType))
+            .ToDictionary(g => g.Key, g => g.Select(b => b.RoomId).ToList());
         var scoreCtx = ScheduleScoreCalculator.BuildScoreContext(
             nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings),
-            groups: groups, teacherAvailabilities: teacherAvail);
+            groups: groups, teacherAvailabilities: teacherAvail, entranceConnections: entranceConns,
+            subjectRoomBindings: subjectRoomBindings);
 
         var breakdown = ScheduleScoreCalculator.ComputeBreakdown(entries, scoreCtx);
         var bd = new ScoreBreakdownDto(

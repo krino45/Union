@@ -37,6 +37,20 @@ public class UniversitiesController : ControllerBase
         return NoContent();
     }
 
+    // Admin self-service for the university they are currently acting in.
+    [HttpGet("current")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
+    public async Task<ActionResult<UniversityDto>> GetCurrent(CancellationToken ct)
+        => Ok(await _mediator.Send(new GetCurrentUniversityQuery(), ct));
+
+    [HttpPut("current")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
+    public async Task<IActionResult> UpdateCurrent([FromBody] UpdateCurrentUniversityCommand command, CancellationToken ct)
+    {
+        await _mediator.Send(command, ct);
+        return NoContent();
+    }
+
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "SuperAdmin")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)

@@ -457,8 +457,12 @@ static (string lastName, string firstName) SplitTeacher(string? fullName)
 
 static LessonType MapLessonType(string? type, string? discipline)
 {
+    // Discipline name wins over lesson-type text: language and PE are routed to dedicated venues
+    // regardless of how SibSUTIS labels the period (often "Практ.").
     if (IsLanguageDiscipline(discipline))
         return LessonType.Language;
+    if (IsPhysicalEducationDiscipline(discipline))
+        return LessonType.PhysicalEducation;
     return type switch
     {
         var t when t?.Contains("Лекц") == true => LessonType.Lecture,
@@ -466,6 +470,7 @@ static LessonType MapLessonType(string? type, string? discipline)
         var t when t?.Contains("Лаб") == true => LessonType.Lab,
         var t when t?.Contains("Семин") == true => LessonType.Seminar,
         var t when t?.Contains("ин.яз") == true => LessonType.Language,
+        var t when t?.Contains("физ") == true => LessonType.PhysicalEducation,
         _ => LessonType.Lecture
     };
 }
@@ -475,6 +480,13 @@ static bool IsLanguageDiscipline(string? discipline)
     if (string.IsNullOrWhiteSpace(discipline)) return false;
     var d = discipline.ToLowerInvariant();
     return d.Contains("иностранн") || d.Contains("ин.яз") || d.Contains("ин. яз");
+}
+
+static bool IsPhysicalEducationDiscipline(string? discipline)
+{
+    if (string.IsNullOrWhiteSpace(discipline)) return false;
+    var d = discipline.ToLowerInvariant();
+    return d.Contains("физическ") || d.Contains("физкультур") || d.Contains("элективные дисциплины по физ");
 }
 
 static string NormalizeSubgroup(string? subgroup)
@@ -487,7 +499,7 @@ static string NormalizeSubgroup(string? subgroup)
 
 enum RussianDayOfWeek { Monday = 1, Tuesday, Wednesday, Thursday, Friday, Saturday }
 enum WeekType         { Both = 0, Odd = 1, Even = 2 }
-enum LessonType       { Lecture = 1, Practical = 2, Lab = 3, Seminar = 4, Language = 5 }
+enum LessonType       { Lecture = 1, Practical = 2, Lab = 3, Seminar = 4, Language = 5, PhysicalEducation = 6 }
 
 //  output record (mirror JsonEntryImport)
 

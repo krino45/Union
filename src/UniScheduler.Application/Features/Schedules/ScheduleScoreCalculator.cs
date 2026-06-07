@@ -23,7 +23,10 @@ public record ScoreContext(
     IReadOnlySet<Guid>? MultiOccupancyRoomIds = null,
     IReadOnlyDictionary<Guid, IReadOnlySet<LessonType>>? RoomAllowedLessonTypes = null,
     IReadOnlyDictionary<Guid, IReadOnlySet<RussianDayOfWeek>>? GroupBlockedDays = null,
-    IReadOnlySet<(Guid teacherId, RussianDayOfWeek day, int pair, int calWeek)>? TeacherBlockedSlots = null);
+    IReadOnlySet<(Guid teacherId, RussianDayOfWeek day, int pair, int calWeek)>? TeacherBlockedSlots = null,
+    IReadOnlyDictionary<(Guid SubjectId, LessonType LessonType), IReadOnlySet<Guid>>? SubjectRoomBindings = null,
+    int MaxPairNumber = 0,
+    int DaysPerWeek = 0);
 
 public record ScoreBreakdown(
     int HardConflicts,
@@ -67,14 +70,17 @@ public static class ScheduleScoreCalculator
         IEnumerable<Subject>? subjects = null,
         SolverWeights? penalties = null,
         IEnumerable<StudentGroup>? groups = null,
-        IEnumerable<UniScheduler.Domain.Entities.TeacherAvailability>? teacherAvailabilities = null)
+        IEnumerable<UniScheduler.Domain.Entities.TeacherAvailability>? teacherAvailabilities = null,
+        IEnumerable<EntranceConnection>? entranceConnections = null,
+        IReadOnlyDictionary<(Guid SubjectId, LessonType LessonType), List<Guid>>? subjectRoomBindings = null,
+        int daysPerWeek = 6)
     {
         penalties ??= new SolverWeights();
 
         var roomList = rooms.ToList();
         var nodeList = nodes.ToList();
         var edgeList = edges.ToList();
-        var roomDists = ComputeRoomDistances(nodeList, edgeList, penalties.StairFloorMeters);
+        var roomDists = ComputeRoomDistances(nodeList, edgeList, penalties.StairFloorMeters, entranceConnections);
         var roomEntryDists = ComputeRoomEntryDistances(nodeList, edgeList, penalties.StairFloorMeters);
 
         // Transitive all-pairs over the building-distance graph: A-B + B-C is reachable even when
@@ -82,7 +88,9 @@ public static class ScheduleScoreCalculator
         var bldDists = ComputeAllPairsBuildingDistances(buildingDistances);
 
         var roomToBuilding = roomList.ToDictionary(r => r.Id, r => r.BuildingId);
-        var breakMins = ComputeBreakMinutes(pairSlots);
+        var pairList = pairSlots.ToList();
+        var breakMins = ComputeBreakMinutes(pairList);
+        int maxPairNumber = pairList.Count > 0 ? pairList.Max(p => p.PairNumber) : 0;
 
         // Distributed sentinel + sports halls are shared concurrently by many classes - never a
         // room double-book. Matches OrToolsSchedulerService H4 (skips AddAtMostOne for these).
@@ -92,6 +100,11 @@ public static class ScheduleScoreCalculator
             .ToHashSet();
 
         var roomAllowed = roomList.ToDictionary(r => r.Id, AllowedLessonTypes);
+
+        IReadOnlyDictionary<(Guid, LessonType), IReadOnlySet<Guid>>? bindingSets =
+            subjectRoomBindings != null && subjectRoomBindings.Count > 0
+                ? subjectRoomBindings.ToDictionary(kv => kv.Key, kv => (IReadOnlySet<Guid>)kv.Value.ToHashSet())
+                : null;
 
         IReadOnlyDictionary<Guid, IReadOnlySet<RussianDayOfWeek>>? groupBlockedDays = groups?
             .ToDictionary(g => g.Id, g => (IReadOnlySet<RussianDayOfWeek>)g.BlockedDays.Select(b => b.DayOfWeek).ToHashSet());
@@ -124,7 +137,10 @@ public static class ScheduleScoreCalculator
             multiOccupancy,
             roomAllowed,
             groupBlockedDays,
-            teacherBlocked);
+            teacherBlocked,
+            bindingSets,
+            maxPairNumber,
+            daysPerWeek);
     }
 
     public static int Compute(IReadOnlyList<ScheduleEntry> entries, ScoreContext ctx)
@@ -200,16 +216,22 @@ public static class ScheduleScoreCalculator
     {
         var gbd = ctx?.GroupBlockedDays;
         var tbs = ctx?.TeacherBlockedSlots;
-        if (gbd == null && tbs == null) return 0;
+        int maxPair = ctx?.MaxPairNumber ?? 0;
+        int daysPerWeek = ctx?.DaysPerWeek ?? 0;
+        if (gbd == null && tbs == null && maxPair <= 0 && daysPerWeek <= 0) return 0;
         int count = 0;
         foreach (var e in entries)
         {
+            if (maxPair > 0 && e.PairNumber > maxPair) { count++; continue; }
+            if (daysPerWeek > 0 && (int)e.DayOfWeek > daysPerWeek) { count++; continue; }
+            bool blocked = false;
             if (gbd != null)
                 foreach (var sg in e.StudentGroups)
-                    if (gbd.TryGetValue(sg.StudentGroupId, out var days) && days.Contains(e.DayOfWeek)) { count++; break; }
-            if (tbs != null)
+                    if (gbd.TryGetValue(sg.StudentGroupId, out var days) && days.Contains(e.DayOfWeek)) { blocked = true; break; }
+            if (!blocked && tbs != null)
                 foreach (int cw in CalWeekIndices(e.WeekType))
-                    if (tbs.Contains((e.TeacherId, e.DayOfWeek, e.PairNumber, cw))) { count++; break; }
+                    if (tbs.Contains((e.TeacherId, e.DayOfWeek, e.PairNumber, cw))) { blocked = true; break; }
+            if (blocked) count++;
         }
         return count * BlockedPlacementPenalty;
     }
@@ -218,13 +240,24 @@ public static class ScheduleScoreCalculator
 
     public static int Score_RoomTypeMismatch(IReadOnlyList<ScheduleEntry> entries, ScoreContext ctx)
     {
-        if (ctx?.RoomAllowedLessonTypes is not { } allowedMap) return 0;
+        var allowedMap = ctx?.RoomAllowedLessonTypes;
+        var bindings = ctx?.SubjectRoomBindings;
+        if (allowedMap == null && bindings == null) return 0;
         int count = 0;
         foreach (var e in entries)
         {
             if (e.IsOnline || !e.RoomId.HasValue) continue;
             if (e.RoomId.Value == SchedulerSentinels.OverflowRoomId) continue;
-            if (allowedMap.TryGetValue(e.RoomId.Value, out var allowed) && !allowed.Contains(e.LessonType))
+
+            if (bindings != null &&
+                bindings.TryGetValue((e.SubjectId, e.LessonType), out var bound) && bound.Count > 0)
+            {
+                if (!bound.Contains(e.RoomId.Value)) count++;
+                continue;
+            }
+
+            if (allowedMap != null &&
+                allowedMap.TryGetValue(e.RoomId.Value, out var allowed) && !allowed.Contains(e.LessonType))
                 count++;
         }
         return count * RoomTypeMismatchPenalty;
@@ -517,6 +550,9 @@ public static class ScheduleScoreCalculator
         if (bldA == bldB)
             return ctx.RoomDistances.TryGetValue((roomA, roomB), out int d) ? d : 0;
 
+        if (ctx.RoomDistances.TryGetValue((roomA, roomB), out int gd))
+            return gd;
+
         if (!ctx.BuildingDistances.TryGetValue((bldA, bldB), out int bd))
             return int.MaxValue / 2;
 
@@ -527,7 +563,8 @@ public static class ScheduleScoreCalculator
 
     // Runs Dijkstra on the floor plan graph; returns room-to-room distances.
     internal static IReadOnlyDictionary<(Guid, Guid), int> ComputeRoomDistances(
-        IEnumerable<FloorPlanNode> nodes, IEnumerable<FloorPlanEdge> edges, int stairFloorMeters = 20)
+        IEnumerable<FloorPlanNode> nodes, IEnumerable<FloorPlanEdge> edges, int stairFloorMeters = 20,
+        IEnumerable<EntranceConnection>? entranceConnections = null)
     {
         var nodeList = nodes.ToList();
         if (nodeList.Count == 0) return new Dictionary<(Guid, Guid), int>();
@@ -545,6 +582,26 @@ public static class ScheduleScoreCalculator
 
             adj[e.FromNodeId].Add((e.ToNodeId, weight));
             adj[e.ToNodeId].Add((e.FromNodeId, weight));
+        }
+
+        if (entranceConnections != null)
+        {
+            var entrancesByBuilding = nodeList
+                .Where(n => n.NodeType == FloorPlanNodeType.Entrance)
+                .GroupBy(n => n.BuildingId)
+                .ToDictionary(g => g.Key, g => g.Select(n => n.Id).ToList());
+
+            foreach (var c in entranceConnections)
+            {
+                if (!adj.ContainsKey(c.FromNodeId)) continue;
+                if (!entrancesByBuilding.TryGetValue(c.ToBuildingId, out var targets)) continue;
+                foreach (var toId in targets)
+                {
+                    if (toId == c.FromNodeId) continue;
+                    adj[c.FromNodeId].Add((toId, c.DistanceMeters));
+                    adj[toId].Add((c.FromNodeId, c.DistanceMeters));
+                }
+            }
         }
 
         var roomNodes = nodeList

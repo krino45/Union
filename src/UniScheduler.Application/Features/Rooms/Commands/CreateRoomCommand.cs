@@ -9,7 +9,7 @@ namespace UniScheduler.Application.Features.Rooms.Commands;
 
 public record CreateRoomCommand(
     Guid BuildingId, string Number, RoomType RoomType, int Capacity,
-    bool HasProjector, bool HasComputers, bool HasLab, bool IsOnline,
+    bool HasProjector, bool HasComputers, bool IsOnline,
     int Floor = 1,
     List<LessonType>? AllowedLessonTypes = null,
     bool IsEnabled = true,
@@ -26,7 +26,7 @@ public class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand, RoomD
         {
             BuildingId = r.BuildingId, Number = r.Number, RoomType = r.RoomType,
             Capacity = r.Capacity, HasProjector = r.HasProjector,
-            HasComputers = r.HasComputers, HasLab = r.HasLab, IsOnline = r.IsOnline,
+            HasComputers = r.HasComputers, IsOnline = r.IsOnline,
             Floor = r.Floor, AllowedLessonTypes = r.AllowedLessonTypes ?? new List<LessonType>(),
             IsEnabled = r.IsEnabled, DepartmentId = r.DepartmentId
         };
@@ -41,7 +41,7 @@ public class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand, RoomD
             deptName = dept?.Name;
         }
         return new RoomDto(room.Id, room.BuildingId, building.ShortCode, room.Number, room.RoomType,
-            room.Capacity, room.HasProjector, room.HasComputers, room.HasLab, room.IsOnline,
+            room.Capacity, room.HasProjector, room.HasComputers, room.IsOnline,
             room.Floor, room.AllowedLessonTypes, room.IsEnabled, room.DepartmentId, deptName);
     }
 }

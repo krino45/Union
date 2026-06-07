@@ -42,7 +42,7 @@ public class GetRoomsQueryHandler : IRequestHandler<GetRoomsQuery, List<RoomDto>
                     g.Sum(x => x.WeekType == WeekType.Both ? x.Count * 2 : x.Count) * 100.0 / TotalWeeklySlots)));
 
         return rooms.Select(r => new RoomDto(r.Id, r.BuildingId, r.Building.ShortCode, r.Number, r.RoomType,
-                r.Capacity, r.HasProjector, r.HasComputers, r.HasLab, r.IsOnline,
+                r.Capacity, r.HasProjector, r.HasComputers, r.IsOnline,
                 r.Floor, r.AllowedLessonTypes, r.IsEnabled, r.DepartmentId, r.Department?.Name,
                 utilizationByRoom.TryGetValue(r.Id, out var u) ? u : 0))
             .ToList();

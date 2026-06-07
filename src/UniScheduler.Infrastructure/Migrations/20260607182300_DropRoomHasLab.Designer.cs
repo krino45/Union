@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using UniScheduler.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using UniScheduler.Infrastructure.Persistence;
 namespace UniScheduler.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260607182300_DropRoomHasLab")]
+    partial class DropRoomHasLab
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1012,31 +1015,6 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.ToTable("Subjects");
                 });
 
-            modelBuilder.Entity("UniScheduler.Domain.Entities.SubjectRoomBinding", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("LessonType")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("RoomId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("SubjectId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RoomId");
-
-                    b.HasIndex("SubjectId", "LessonType", "RoomId")
-                        .IsUnique();
-
-                    b.ToTable("SubjectRoomBindings");
-                });
-
             modelBuilder.Entity("UniScheduler.Domain.Entities.Teacher", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1651,25 +1629,6 @@ namespace UniScheduler.Infrastructure.Migrations
                     b.Navigation("Department");
 
                     b.Navigation("University");
-                });
-
-            modelBuilder.Entity("UniScheduler.Domain.Entities.SubjectRoomBinding", b =>
-                {
-                    b.HasOne("UniScheduler.Domain.Entities.Room", "Room")
-                        .WithMany()
-                        .HasForeignKey("RoomId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("UniScheduler.Domain.Entities.Subject", "Subject")
-                        .WithMany()
-                        .HasForeignKey("SubjectId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Room");
-
-                    b.Navigation("Subject");
                 });
 
             modelBuilder.Entity("UniScheduler.Domain.Entities.Teacher", b =>

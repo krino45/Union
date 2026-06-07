@@ -185,7 +185,6 @@ public record SchedulerRoom(
     int Capacity,
     bool HasProjector,
     bool HasComputers,
-    bool HasLab,
     bool IsOnline,
     int Floor = 1,
     IReadOnlyList<LessonType>? AllowedLessonTypes = null,
@@ -215,7 +214,6 @@ public record SchedulerRequirement(
     bool IsOnline,
     bool NeedsProjector,
     bool NeedsComputers,
-    bool NeedsLab,
     Guid? SubjectFacultyId = null,
     // Requirements sharing a non-null ParallelKey are parallel sessions of one logical class
     // (language streams / lab subgroups): co-scheduled to the same slot, exempt from mutual
@@ -224,7 +222,10 @@ public record SchedulerRequirement(
     string? SubgroupLabel = null,
     int? HeadcountOverride = null,
     bool RequiresDistributedRoom = false,
-    bool RequiresSportsHall = false
+    bool RequiresSportsHall = false,
+    // Hard room binding: when non-empty, this requirement may ONLY be placed in one of these rooms
+    // (the overflow sentinel still applies as the unplaced escape). Null/empty = no restriction.
+    IReadOnlyList<Guid>? AllowedRoomIds = null
 );
 
 public record SchedulerBuildingDistance(Guid FromId, Guid ToId, int DistanceMeters);

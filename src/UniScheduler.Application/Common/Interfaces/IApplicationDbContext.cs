@@ -22,6 +22,7 @@ public interface IApplicationDbContext
     DbSet<Teacher> Teachers { get; }
     DbSet<TeacherSubject> TeacherSubjects { get; }
     DbSet<Subject> Subjects { get; }
+    DbSet<SubjectRoomBinding> SubjectRoomBindings { get; }
     DbSet<StudentGroup> StudentGroups { get; }
     DbSet<Schedule> Schedules { get; }
     DbSet<ScheduleEntry> ScheduleEntries { get; }

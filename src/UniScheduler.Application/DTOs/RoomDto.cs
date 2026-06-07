@@ -11,7 +11,6 @@ public record RoomDto(
     int Capacity,
     bool HasProjector,
     bool HasComputers,
-    bool HasLab,
     bool IsOnline,
     int Floor,
     List<LessonType> AllowedLessonTypes,

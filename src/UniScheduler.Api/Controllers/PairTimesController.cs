@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UniScheduler.Application.Features.PairTimes;
 
@@ -14,4 +15,12 @@ public class PairTimesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<PairTimeDto>>> GetAll(CancellationToken ct)
         => Ok(await mediator.Send(new GetPairTimesQuery(), ct));
+
+    [HttpPut]
+    [Authorize(Roles = "Admin,SuperAdmin")]
+    public async Task<IActionResult> Update([FromBody] List<PairTimeDto> pairs, CancellationToken ct)
+    {
+        await mediator.Send(new UpdatePairTimesCommand(pairs), ct);
+        return NoContent();
+    }
 }

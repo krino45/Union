@@ -26,9 +26,9 @@ public static class ScheduleRequirementBuilder
             shared.SubjectsById.TryGetValue(entry.SubjectId, out var subj);
 
             AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lecture,
-                entry.LectureHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: true, isLab: false, subjFacultyId);
+                entry.LectureHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: true, subjFacultyId);
             AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Practical,
-                entry.PracticalHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, isLab: false, subjFacultyId);
+                entry.PracticalHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, subjFacultyId);
 
             if (subj is { AllowsSubgroups: true } &&
                 AddSubgroupLabRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
@@ -40,11 +40,11 @@ public static class ScheduleRequirementBuilder
             else
             {
                 AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lab,
-                    entry.LabHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, isLab: true, subjFacultyId);
+                    entry.LabHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, subjFacultyId);
             }
 
             AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Seminar,
-                entry.SeminarHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, isLab: false, subjFacultyId);
+                entry.SeminarHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, subjFacultyId);
 
             AddLanguageRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
                 entry.LanguageHours, studyWeeks, planGroupIds, shared.TeacherSubjects,
@@ -55,6 +55,7 @@ public static class ScheduleRequirementBuilder
                 shared.GroupSizes, subjFacultyId, shared.Weights.PhysicalEducationPerTeacherCap, teacherLoad);
         }
 
+        ApplyRoomBindings(requirements, shared.SubjectRoomBindings);
         return requirements;
     }
 
@@ -87,10 +88,10 @@ public static class ScheduleRequirementBuilder
 
                 AddRequirements(reqs, ref idx, entry.SubjectId, LessonType.Lecture,
                     entry.LectureHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
-                    shared.TeacherSubjects, merged: true, isLab: false, subjFacultyId);
+                    shared.TeacherSubjects, merged: true, subjFacultyId);
                 AddRequirements(reqs, ref idx, entry.SubjectId, LessonType.Practical,
                     entry.PracticalHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
-                    shared.TeacherSubjects, merged: false, isLab: false, subjFacultyId);
+                    shared.TeacherSubjects, merged: false, subjFacultyId);
 
                 if (subj is { AllowsSubgroups: true } &&
                     AddSubgroupLabRequirements(reqs, ref idx, ref parallelSeq, entry.SubjectId,
@@ -103,12 +104,12 @@ public static class ScheduleRequirementBuilder
                 {
                     AddRequirements(reqs, ref idx, entry.SubjectId, LessonType.Lab,
                         entry.LabHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
-                        shared.TeacherSubjects, merged: false, isLab: true, subjFacultyId);
+                        shared.TeacherSubjects, merged: false, subjFacultyId);
                 }
 
                 AddRequirements(reqs, ref idx, entry.SubjectId, LessonType.Seminar,
                     entry.SeminarHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
-                    shared.TeacherSubjects, merged: false, isLab: false, subjFacultyId);
+                    shared.TeacherSubjects, merged: false, subjFacultyId);
 
                 AddLanguageRequirements(reqs, ref idx, ref parallelSeq, entry.SubjectId,
                     entry.LanguageHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
@@ -121,14 +122,26 @@ public static class ScheduleRequirementBuilder
             for (int i = before; i < idx; i++) riToPlanId[i] = plan.Id;
         }
 
+        ApplyRoomBindings(reqs, shared.SubjectRoomBindings);
         return (reqs, riToPlanId);
+    }
+
+    // Stamp the hard (subject, lessonType) -> allowed-room set onto matching requirements.
+    private static void ApplyRoomBindings(
+        List<SchedulerRequirement> reqs,
+        IReadOnlyDictionary<(Guid SubjectId, LessonType LessonType), List<Guid>> bindings)
+    {
+        if (bindings == null || bindings.Count == 0) return;
+        for (int i = 0; i < reqs.Count; i++)
+            if (bindings.TryGetValue((reqs[i].SubjectId, reqs[i].LessonType), out var rooms) && rooms.Count > 0)
+                reqs[i] = reqs[i] with { AllowedRoomIds = rooms };
     }
 
     private static void AddRequirements(
         List<SchedulerRequirement> requirements, ref int idx,
         Guid subjectId, LessonType lt, double totalHours, int studyWeeks,
         List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
-        bool merged, bool isLab, Guid? subjectFacultyId = null)
+        bool merged, Guid? subjectFacultyId = null)
     {
         if (totalHours <= 0) return;
         var teachers = teacherSubjects
@@ -144,7 +157,7 @@ public static class ScheduleRequirementBuilder
                 for (int i = 0; i < teachers.Count; i++)
                 {
                     if (chunks[i].Count == 0) continue;
-                    requirements.Add(new SchedulerRequirement(idx++, chunks[i], subjectId, lt, teachers[i], wt, false, lt == LessonType.Lecture, false, isLab, subjectFacultyId));
+                    requirements.Add(new SchedulerRequirement(idx++, chunks[i], subjectId, lt, teachers[i], wt, false, lt == LessonType.Lecture, false, subjectFacultyId));
                 }
             }
             else
@@ -152,7 +165,7 @@ public static class ScheduleRequirementBuilder
                 for (int gi = 0; gi < planGroupIds.Count; gi++)
                 {
                     var teacherId = teachers[gi % teachers.Count];
-                    requirements.Add(new SchedulerRequirement(idx++, [planGroupIds[gi]], subjectId, lt, teacherId, wt, false, false, false, isLab, subjectFacultyId));
+                    requirements.Add(new SchedulerRequirement(idx++, [planGroupIds[gi]], subjectId, lt, teacherId, wt, false, false, false, subjectFacultyId));
                 }
             }
         }
@@ -207,7 +220,7 @@ public static class ScheduleRequirementBuilder
                 {
                     requirements.Add(new SchedulerRequirement(
                         idx++, new[] { gId }, subjectId, LessonType.Language, picks[i], wt,
-                        IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: false,
+                        IsOnline: false, NeedsProjector: false, NeedsComputers: false,
                         SubjectFacultyId: subjectFacultyId,
                         ParallelKey: pkey,
                         SubgroupLabel: needed > 1 ? $"Поток {i + 1}" : null,
@@ -267,7 +280,7 @@ public static class ScheduleRequirementBuilder
                 {
                     requirements.Add(new SchedulerRequirement(
                         idx++, new[] { gId }, subjectId, LessonType.Lab, teachers[s], wt,
-                        IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: true,
+                        IsOnline: false, NeedsProjector: false, NeedsComputers: false,
                         SubjectFacultyId: subjectFacultyId,
                         ParallelKey: pkey,
                         SubgroupLabel: $"Подгр. {s + 1}",
@@ -309,7 +322,7 @@ public static class ScheduleRequirementBuilder
                 {
                     requirements.Add(new SchedulerRequirement(
                         idx++, new[] { gId }, subjectId, LessonType.PhysicalEducation, picks[i], wt,
-                        IsOnline: false, NeedsProjector: false, NeedsComputers: false, NeedsLab: false,
+                        IsOnline: false, NeedsProjector: false, NeedsComputers: false,
                         SubjectFacultyId: subjectFacultyId,
                         ParallelKey: pkey,
                         SubgroupLabel: needed > 1 ? $"Группа {i + 1}" : null,

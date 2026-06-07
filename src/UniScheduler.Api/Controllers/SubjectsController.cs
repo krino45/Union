@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UniScheduler.Application.DTOs;
+using UniScheduler.Application.Features.Subjects;
 using UniScheduler.Application.Features.Subjects.Commands;
 using UniScheduler.Application.Features.Subjects.Queries;
 using UniScheduler.Domain.Enums;
@@ -39,7 +40,21 @@ public class SubjectsController : ControllerBase
         await mediator.Send(new DeleteSubjectCommand(id), ct);
         return NoContent();
     }
+
+    // Hard room bindings per (subject, lesson type).
+    [HttpGet("{id:guid}/room-bindings")]
+    public async Task<ActionResult<List<SubjectRoomBindingDto>>> GetRoomBindings(Guid id, CancellationToken ct)
+        => Ok(await mediator.Send(new GetSubjectRoomBindingsQuery(id), ct));
+
+    [HttpPut("{id:guid}/room-bindings")]
+    public async Task<IActionResult> UpdateRoomBinding(Guid id, [FromBody] UpdateRoomBindingRequest req, CancellationToken ct)
+    {
+        await mediator.Send(new UpdateSubjectRoomBindingCommand(id, req.LessonType, req.RoomIds ?? new List<Guid>()), ct);
+        return NoContent();
+    }
 }
+
+public record UpdateRoomBindingRequest(LessonType LessonType, List<Guid> RoomIds);
 
 public record UpdateSubjectRequest(
     string Name, string ShortName,

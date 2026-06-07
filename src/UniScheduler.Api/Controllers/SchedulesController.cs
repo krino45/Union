@@ -186,7 +186,11 @@ public class SchedulesController : ControllerBase
             e.StudentGroups.Select(g => g.Name).ToList(),
             e.BuildingShortCode,
             e.RoomNumber,
-            e.DayOfWeek, e.PairNumber, e.WeekType, e.LessonType, e.IsOnline
+            e.DayOfWeek, e.PairNumber, e.WeekType, e.LessonType, e.IsOnline,
+            // Preserve parallel-session grouping (language streams, lab subgroups, PE groups) and
+            // subgroup labels so an export round-trips back through import as the same siblings.
+            ParallelGroupKey: e.ParallelGroupId?.ToString("N"),
+            SubgroupLabel: e.SubgroupLabel
         )).ToList();
 
         var opts = new JsonSerializerOptions

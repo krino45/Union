@@ -11,7 +11,6 @@ public class Room : Entity
     public int Capacity { get; set; }
     public bool HasProjector { get; set; }
     public bool HasComputers { get; set; }
-    public bool HasLab { get; set; }
     public bool IsOnline { get; set; }
     /// <summary>Sentinel placeholder room for classes with no fixed location (language streams
     /// taught "по подгруппам"). Exempt from capacity, double-booking, and travel checks.</summary>

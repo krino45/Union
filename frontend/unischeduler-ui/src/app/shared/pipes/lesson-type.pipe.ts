@@ -10,6 +10,7 @@ export class LessonTypePipe implements PipeTransform {
       case LessonType.Lab: return 'Лабораторная';
       case LessonType.Seminar: return 'Семинар';
       case LessonType.Language: return 'Ин. язык';
+      case LessonType.PhysicalEducation: return 'Физкультура';
       default: return value;
     }
   }

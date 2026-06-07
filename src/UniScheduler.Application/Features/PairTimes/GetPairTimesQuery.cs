@@ -16,6 +16,10 @@ public class GetPairTimesQueryHandler : IRequestHandler<GetPairTimesQuery, List<
     public async Task<List<PairTimeDto>> Handle(GetPairTimesQuery request, CancellationToken cancellationToken)
     {
         var slots = await db.PairTimeSlots.OrderBy(p => p.PairNumber).ToListAsync(cancellationToken);
+        // Tenants that never customised their grid (e.g. created before pair times were seeded) fall
+        // back to the standard defaults so the schedule UI and break calculations still work.
+        if (slots.Count == 0)
+            return PairTimeDefaults.Dtos();
         return slots.Select(s => new PairTimeDto(
             s.PairNumber,
             s.StartTime.ToString("HH:mm"),

@@ -2,26 +2,29 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using UniScheduler.Application.Common.Exceptions;
 using UniScheduler.Application.Common.Interfaces;
+using UniScheduler.Application.Common.Models;
 using UniScheduler.Application.Features.StudyPlans;
 using UniScheduler.Domain.Entities;
 using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.Schedules.Commands;
 
-public record BackfillTargets(bool Rooms = true, bool Teachers = true, bool StudyPlans = true);
+public record BackfillTargets(bool Rooms = true, bool Teachers = true, bool StudyPlans = true, bool RoomBindings = true);
 
 public record RoomBackfillChange(Guid RoomId, string RoomLabel, List<LessonType> AddedTypes);
 public record TeacherSubjectAddDto(Guid SubjectId, string SubjectName, LessonType LessonType);
 public record TeacherBackfillChange(Guid TeacherId, string TeacherName, List<TeacherSubjectAddDto> Added);
 public record StudyPlanHourChangeDto(Guid SubjectId, string SubjectName, string Field, string FieldLabel, double OldHours, double NewHours);
 public record StudyPlanBackfillChange(Guid StudyPlanId, string PlanName, List<StudyPlanHourChangeDto> Changes);
+public record SubjectRoomBindingChange(Guid SubjectId, string SubjectName, LessonType LessonType, List<string> RoomLabels);
 
 public record BackfillPreviewDto(
     List<RoomBackfillChange> Rooms,
     List<TeacherBackfillChange> Teachers,
-    List<StudyPlanBackfillChange> StudyPlans);
+    List<StudyPlanBackfillChange> StudyPlans,
+    List<SubjectRoomBindingChange> RoomBindings);
 
-public record BackfillResultDto(int RoomsUpdated, int TeacherLinksAdded, int StudyPlanFieldsUpdated);
+public record BackfillResultDto(int RoomsUpdated, int TeacherLinksAdded, int StudyPlanFieldsUpdated, int RoomBindingsAdded);
 
 public record PreviewBackfillQuery(Guid ScheduleId, BackfillTargets Targets) : IRequest<BackfillPreviewDto>;
 
@@ -69,6 +72,8 @@ internal static class BackfillEngine
         var teacherApply = new List<(Teacher Teacher, List<(Guid SubjectId, LessonType Lt)> Add)>();
         var planChanges = new List<StudyPlanBackfillChange>();
         var planApply = new List<(StudyPlan Plan, List<StudyPlanHourChangeDto> Changes)>();
+        var bindingChanges = new List<SubjectRoomBindingChange>();
+        var bindingApply = new List<(Guid SubjectId, LessonType Lt, List<Guid> AddRoomIds)>();
 
         //  Rooms - observed lesson types per room
         if (targets.Rooms)
@@ -120,6 +125,47 @@ internal static class BackfillEngine
                     .OrderBy(d => d.SubjectName).ToList();
                 teacherChanges.Add(new TeacherBackfillChange(teacher.Id, teacher.DisplayName, dtos));
                 teacherApply.Add((teacher, add));
+            }
+        }
+
+        //  Subject -> lab room bindings: learn "this discipline's lab uses these rooms" from the
+        //  observed schedule and turn it into a hard constraint (the equipped-lab-room case).
+        if (targets.RoomBindings)
+        {
+            var labEntries = entries.Where(e =>
+                    e.LessonType == LessonType.Lab && !e.IsOnline &&
+                    e.RoomId.HasValue && e.RoomId.Value != SchedulerSentinels.OverflowRoomId)
+                .ToList();
+            if (labEntries.Count > 0)
+            {
+                var usedRoomsBySubject = labEntries
+                    .GroupBy(e => e.SubjectId)
+                    .ToDictionary(g => g.Key, g => g.Select(e => e.RoomId!.Value).Distinct().ToList());
+
+                var subjIds = usedRoomsBySubject.Keys.ToList();
+                var existingBindings = await db.SubjectRoomBindings
+                    .Where(b => subjIds.Contains(b.SubjectId) && b.LessonType == LessonType.Lab)
+                    .ToListAsync(ct);
+                var existingBySubject = existingBindings
+                    .GroupBy(b => b.SubjectId)
+                    .ToDictionary(g => g.Key, g => g.Select(b => b.RoomId).ToHashSet());
+
+                var bindRoomIds = usedRoomsBySubject.SelectMany(kv => kv.Value).Distinct().ToList();
+                var bindRooms = await db.Rooms.Include(r => r.Building)
+                    .Where(r => bindRoomIds.Contains(r.Id) && !r.IsDistributed).ToListAsync(ct);
+                var roomLabelById = bindRooms.ToDictionary(r => r.Id,
+                    r => (string.IsNullOrEmpty(r.Building?.ShortCode) ? "" : r.Building!.ShortCode + "-") + r.Number);
+
+                foreach (var (subjId, roomIds) in usedRoomsBySubject)
+                {
+                    var existing = existingBySubject.GetValueOrDefault(subjId) ?? new HashSet<Guid>();
+                    var add = roomIds.Where(rid => !existing.Contains(rid) && roomLabelById.ContainsKey(rid)).ToList();
+                    if (add.Count == 0) continue;
+                    bindingChanges.Add(new SubjectRoomBindingChange(
+                        subjId, subjectNames.GetValueOrDefault(subjId, "?"), LessonType.Lab,
+                        add.Select(rid => roomLabelById[rid]).OrderBy(x => x).ToList()));
+                    bindingApply.Add((subjId, LessonType.Lab, add));
+                }
             }
         }
 
@@ -182,7 +228,7 @@ internal static class BackfillEngine
             }
         }
 
-        int roomsUpdated = 0, teacherLinks = 0, planFields = 0;
+        int roomsUpdated = 0, teacherLinks = 0, planFields = 0, bindingsAdded = 0;
         if (apply)
         {
             foreach (var (room, add) in roomApply)
@@ -190,6 +236,12 @@ internal static class BackfillEngine
                 room.AllowedLessonTypes = room.AllowedLessonTypes.Concat(add).Distinct().ToList();
                 roomsUpdated++;
             }
+            foreach (var (subjId, lt, addRoomIds) in bindingApply)
+                foreach (var rid in addRoomIds)
+                {
+                    db.SubjectRoomBindings.Add(new SubjectRoomBinding { SubjectId = subjId, LessonType = lt, RoomId = rid });
+                    bindingsAdded++;
+                }
             foreach (var (teacher, add) in teacherApply)
                 foreach (var (subjId, lt) in add)
                 {
@@ -215,8 +267,8 @@ internal static class BackfillEngine
         }
 
         return (
-            new BackfillPreviewDto(roomChanges, teacherChanges, planChanges),
-            new BackfillResultDto(roomsUpdated, teacherLinks, planFields));
+            new BackfillPreviewDto(roomChanges, teacherChanges, planChanges, bindingChanges),
+            new BackfillResultDto(roomsUpdated, teacherLinks, planFields, bindingsAdded));
     }
 
     private static (string Field, string Label) FieldFor(LessonType lt) => lt switch

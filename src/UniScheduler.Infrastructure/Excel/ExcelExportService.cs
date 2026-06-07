@@ -198,6 +198,8 @@ public class ExcelExportService : IExcelExportService
         LessonType.Practical => "Пр",
         LessonType.Lab       => "Лаб",
         LessonType.Seminar   => "Сем",
+        LessonType.Language  => "Ин.яз",
+        LessonType.PhysicalEducation => "Физ",
         _                    => "?"
     };
 

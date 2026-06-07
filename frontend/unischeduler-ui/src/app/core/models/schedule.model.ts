@@ -104,6 +104,7 @@ export interface BackfillTargets {
   rooms: boolean;
   teachers: boolean;
   studyPlans: boolean;
+  roomBindings: boolean;
 }
 
 export interface RoomBackfillChange {
@@ -139,16 +140,25 @@ export interface StudyPlanBackfillChange {
   changes: StudyPlanHourChange[];
 }
 
+export interface SubjectRoomBindingChange {
+  subjectId: string;
+  subjectName: string;
+  lessonType: string;
+  roomLabels: string[];
+}
+
 export interface BackfillPreview {
   rooms: RoomBackfillChange[];
   teachers: TeacherBackfillChange[];
   studyPlans: StudyPlanBackfillChange[];
+  roomBindings: SubjectRoomBindingChange[];
 }
 
 export interface BackfillResult {
   roomsUpdated: number;
   teacherLinksAdded: number;
   studyPlanFieldsUpdated: number;
+  roomBindingsAdded: number;
 }
 
 export interface StageLogItem {

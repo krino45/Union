@@ -105,6 +105,10 @@ import { ThemeService } from './core/services/theme.service';
               <mat-icon matListItemIcon>table_chart</mat-icon>
               <span matListItemTitle>Excel</span>
             </a>
+            <a mat-list-item routerLink="/admin/settings" routerLinkActive="active">
+              <mat-icon matListItemIcon>settings</mat-icon>
+              <span matListItemTitle>Настройки университета</span>
+            </a>
           </mat-nav-list>
         </ng-container>
 
@@ -237,8 +241,16 @@ export class AppComponent {
       this.isMobile = state.matches;
     });
 
-    this.router.events.pipe(filter(e => e instanceof NavigationEnd)).subscribe(() => {
+    this.router.events.pipe(filter(e => e instanceof NavigationEnd)).subscribe(e => {
       if (this.isMobile) this.sidenav?.close();
+      // Tenant pages render their chrome (header/sidenav) only when a university is selected. A
+      // SuperAdmin who opened /superadmin (which clears the selection) and then pressed Back would
+      // otherwise land on /admin/* with no selection — a chrome-less page. Bounce them to the picker.
+      const url = (e as NavigationEnd).urlAfterRedirects;
+      if (this.auth.isAuthenticated && !this.auth.currentUniversity &&
+          (url.startsWith('/admin') || url.startsWith('/teacher'))) {
+        this.router.navigate(['/select-university']);
+      }
     });
 
     let wasAuthenticated = this.auth.isAuthenticated;

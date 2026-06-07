@@ -9,7 +9,6 @@ export interface Room {
   capacity: number;
   hasProjector: boolean;
   hasComputers: boolean;
-  hasLab: boolean;
   isOnline: boolean;
   isDistributed?: boolean;
   floor: number;
@@ -27,7 +26,6 @@ export interface CreateRoomDto {
   capacity: number;
   hasProjector: boolean;
   hasComputers: boolean;
-  hasLab: boolean;
   isOnline: boolean;
   floor: number;
   allowedLessonTypes: LessonType[];

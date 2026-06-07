@@ -34,12 +34,14 @@ public class GetRoomDistanceQueryHandler : IRequestHandler<GetRoomDistanceQuery,
         var nodes = await _db.FloorPlanNodes.ToListAsync(ct);
         var edges = await _db.FloorPlanEdges.ToListAsync(ct);
         var bldDists = await _db.BuildingDistances.ToListAsync(ct);
+        var entranceConns = await _db.EntranceConnections.ToListAsync(ct);
         var pairSlots = await _db.PairTimeSlots.ToListAsync(ct);
         var settings = await _db.SolverSettings.FirstOrDefaultAsync(ct);
         var weights = settings == null ? new SolverWeights() : new SolverWeights(settings);
 
         var ctx = ScheduleScoreCalculator.BuildScoreContext(
-            nodes, edges, bldDists, rooms, pairSlots, subjects: null, penalties: weights);
+            nodes, edges, bldDists, rooms, pairSlots, subjects: null, penalties: weights,
+            entranceConnections: entranceConns);
 
         int meters = ScheduleScoreCalculator.RoomDistanceMeters(from.Id, to.Id, ctx);
         bool sameBuilding = from.BuildingId == to.BuildingId;

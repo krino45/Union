@@ -248,9 +248,9 @@ public class InsertUnplacedEntriesCommandHandler
 
     private static bool RegularRoomFits(Common.Models.SchedulerRequirement req, Room room, int headcount)
     {
+        if (req.AllowedRoomIds is { Count: > 0 } bound && !bound.Contains(room.Id)) return false;
         if (req.NeedsProjector && !room.HasProjector) return false;
         if (req.NeedsComputers && !room.HasComputers) return false;
-        if (req.NeedsLab && !room.HasLab) return false;
         if (room.AllowedLessonTypes is { Count: > 0 } allowed && !allowed.Contains(req.LessonType)) return false;
         if (room.Capacity > 0 && headcount > 0 && room.Capacity < headcount) return false;
         return true;

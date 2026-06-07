@@ -47,7 +47,7 @@ public class GetAvailableRoomsQueryHandler : IRequestHandler<GetAvailableRoomsQu
             .ToListAsync(ct);
 
         return rooms.Select(rm => new RoomDto(rm.Id, rm.BuildingId, rm.Building.ShortCode, rm.Number, rm.RoomType,
-                rm.Capacity, rm.HasProjector, rm.HasComputers, rm.HasLab, rm.IsOnline,
+                rm.Capacity, rm.HasProjector, rm.HasComputers, rm.IsOnline,
                 rm.Floor, rm.AllowedLessonTypes, rm.IsEnabled, rm.DepartmentId, rm.Department != null ? rm.Department.Name : null,
                 0))
             .ToList();

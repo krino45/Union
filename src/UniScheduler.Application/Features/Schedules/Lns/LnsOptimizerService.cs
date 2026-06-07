@@ -143,7 +143,11 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         var stuckOps = new HashSet<string>();
         var forcedCount = new Dictionary<string, int>();
-        const int maxForcedTries = 6;
+        // Forced repair ops persist for many kicks - fixing a hard violation (wrong room / blocked /
+        // out-of-grid after a settings change) is the priority. An op is only abandoned early when it
+        // can't target anything (empty destroy, below) - the cap is just a safety valve so a
+        // genuinely-unfixable-but-targetable violation can't monopolise the whole budget.
+        const int maxForcedTries = 50;
 
         // 4. Main loop.
         var incumbent = seed.ToList();
@@ -164,6 +168,14 @@ public class LnsOptimizerService : ILnsOptimizerService
         var deadline = DateTime.UtcNow + opts.TotalBudget;
         int kicks = 0, accepted = 0;
 
+        // Overflow stuck-detection: the overflow re-home op is exempt from the forced-retry cap, but
+        // if it keeps running without ever shrinking the overflow count the remaining unplaced classes
+        // are infeasible (e.g. a room binding whose rooms are fully booked by immovable classes). After
+        // this many consecutive no-progress overflow kicks we stop forcing it so the rest of the budget
+        // isn't burned churning - those classes stay in overflow and surface to the admin.
+        const int maxOverflowStaleKicks = 8;
+        int overflowStaleKicks = 0;
+
         IDestroyOperator? forced = null;
         while (DateTime.UtcNow < deadline && kicks < opts.MaxIterations && !ct.IsCancellationRequested)
         {
@@ -171,12 +183,15 @@ public class LnsOptimizerService : ILnsOptimizerService
                 forced = wrongRoomOp;
             else if (currentBreakdown.S12_BlockedPlacement > 0 && !stuckOps.Contains(blockedSlotOp.Name))
                 forced = blockedSlotOp;
-            else if (currentBreakdown.S10_Overflow > 0)
+            else if (currentBreakdown.S10_Overflow > 0 && !stuckOps.Contains(overflowOp.Name))
                 forced = overflowOp;
-            else 
+            else
                 forced = null;
             
-            if (forced != null && (forcedCount[forced.Name] = forcedCount.GetValueOrDefault(forced.Name) + 1) > maxForcedTries)
+            // The overflow destroyer is exempt from the retry cap: unplaced classes must keep being
+            // re-homed for the whole run, however many attempts it takes.
+            if (forced != null && forced.Name != overflowOp.Name &&
+                (forcedCount[forced.Name] = forcedCount.GetValueOrDefault(forced.Name) + 1) > maxForcedTries)
             {
                 stuckOps.Add(forced.Name);
                 forced = null;
@@ -296,6 +311,9 @@ public class LnsOptimizerService : ILnsOptimizerService
             if (output.Status != SolverStatus.Feasible && output.Status != SolverStatus.Optimal)
             {
                 MarkFailed(telemetry, op.Name);
+                // A failed overflow solve is also "no progress" toward clearing overflow.
+                if (op.Name == overflowOp.Name && ++overflowStaleKicks >= maxOverflowStaleKicks)
+                    stuckOps.Add(overflowOp.Name);
                 var why = string.IsNullOrWhiteSpace(output.Message) ? "" : $" — {Trunc(output.Message, 240)}";
                 progress?.Report($"{kickPrefix} | решатель: {output.Status}{why} (best {bestScore})");
                 continue;
@@ -304,6 +322,19 @@ public class LnsOptimizerService : ILnsOptimizerService
             // 7. Convert assignments to entries, score, accept/reject via LAHC.
             var candidate = AssignmentsToEntries(output.Assignments, reqs, scheduleId, unmatchedEntries);
             var newBreakdown = ScheduleScoreCalculator.ComputeBreakdown(candidate, shared.ScoreCtx);
+
+            // Overflow stuck-detection: forced overflow kicks that never shrink the overflow count mean
+            // the leftover classes have no feasible (slot, room) - stop forcing overflow once stale.
+            if (op.Name == overflowOp.Name)
+            {
+                if (newBreakdown.S10_Overflow < currentBreakdown.S10_Overflow)
+                    overflowStaleKicks = 0;
+                else if (++overflowStaleKicks >= maxOverflowStaleKicks)
+                {
+                    stuckOps.Add(overflowOp.Name);
+                    progress?.Report($"{kickPrefix} | переполнение не убирается за {maxOverflowStaleKicks} попыток — оставляю как есть");
+                }
+            }
 
             long candCost = newBreakdown.Total;
             int vIdx = kicks % lahcL;

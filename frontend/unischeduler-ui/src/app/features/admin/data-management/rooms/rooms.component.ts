@@ -86,7 +86,6 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
           <td mat-cell *matCellDef="let r" data-label="Оснащение">
             <mat-chip *ngIf="r.hasProjector" class="features-chip">Проектор</mat-chip>
             <mat-chip *ngIf="r.hasComputers" class="features-chip">ПК</mat-chip>
-            <mat-chip *ngIf="r.hasLab" class="features-chip">Лаборатория</mat-chip>
             <mat-chip *ngIf="r.isOnline" class="features-chip">Онлайн</mat-chip>
           </td>
         </ng-container>
@@ -293,7 +292,6 @@ export class RoomsComponent implements OnInit {
         <div class="checkboxes">
           <mat-checkbox formControlName="hasProjector">Проектор</mat-checkbox>
           <mat-checkbox formControlName="hasComputers">Компьютеры</mat-checkbox>
-          <mat-checkbox formControlName="hasLab">Лабораторное оборудование</mat-checkbox>
           <mat-checkbox formControlName="isOnline">Онлайн</mat-checkbox>
         </div>
         <mat-form-field appearance="outline" class="full-width">
@@ -367,7 +365,6 @@ export class RoomDialogComponent implements OnDestroy {
       capacity: [r?.capacity ?? 30, [Validators.required, Validators.min(1)]],
       hasProjector: [r?.hasProjector ?? false],
       hasComputers: [r?.hasComputers ?? false],
-      hasLab: [r?.hasLab ?? false],
       isOnline: [r?.isOnline ?? false],
       allowedLessonTypes: [r?.allowedLessonTypes ?? []],
       isEnabled: [r?.isEnabled ?? true],

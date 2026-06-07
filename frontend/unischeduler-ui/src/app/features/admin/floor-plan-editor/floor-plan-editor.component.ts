@@ -983,7 +983,6 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
       capacity:         this.newRoomCapacity || 30,
       hasProjector:     false,
       hasComputers:     false,
-      hasLab:           false,
       isOnline:         false,
       isEnabled:        true,
       floor:            node.floor,

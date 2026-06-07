@@ -98,6 +98,10 @@ export const routes: Routes = [
       {
         path: 'schedule-viewer',
         loadComponent: () => import('./features/admin/schedule-viewer/schedule-viewer.component').then(m => m.ScheduleViewerComponent)
+      },
+      {
+        path: 'settings',
+        loadComponent: () => import('./features/admin/university-settings/university-settings.component').then(m => m.UniversitySettingsComponent)
       }
     ]
   },

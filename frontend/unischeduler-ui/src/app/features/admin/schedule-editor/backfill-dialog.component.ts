@@ -34,6 +34,7 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
         <mat-checkbox [(ngModel)]="targets.rooms">Разрешенные типы занятий в аудиториях</mat-checkbox>
         <mat-checkbox [(ngModel)]="targets.teachers">Дисциплины преподавателей</mat-checkbox>
         <mat-checkbox [(ngModel)]="targets.studyPlans">Часы учебных планов</mat-checkbox>
+        <mat-checkbox [(ngModel)]="targets.roomBindings">Закрепление аудиторий за лабораторными</mat-checkbox>
       </div>
 
       <div class="note" *ngIf="targets.rooms">
@@ -71,6 +72,18 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
                 <mat-chip *ngFor="let a of t.added" class="add-chip">
                   + {{ a.subjectName }} · {{ a.lessonType | lessonType }}
                 </mat-chip>
+              </span>
+            </div>
+          </mat-expansion-panel>
+
+          <mat-expansion-panel *ngIf="preview.roomBindings.length" expanded>
+            <mat-expansion-panel-header>
+              <mat-panel-title>Закрепление аудиторий (лаб.) ({{ preview.roomBindings.length }})</mat-panel-title>
+            </mat-expansion-panel-header>
+            <div class="change-row" *ngFor="let b of preview.roomBindings">
+              <span class="entity">{{ b.subjectName }} · {{ b.lessonType | lessonType }}</span>
+              <span class="adds">
+                <mat-chip *ngFor="let r of b.roomLabels" class="add-chip">+ {{ r }}</mat-chip>
               </span>
             </div>
           </mat-expansion-panel>
@@ -128,7 +141,7 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
   `]
 })
 export class BackfillDialogComponent {
-  targets: BackfillTargets = { rooms: true, teachers: true, studyPlans: true };
+  targets: BackfillTargets = { rooms: true, teachers: true, studyPlans: true, roomBindings: true };
   preview: BackfillPreview | null = null;
   loading = false;
 
@@ -140,14 +153,15 @@ export class BackfillDialogComponent {
   ) {}
 
   anyTarget(): boolean {
-    return this.targets.rooms || this.targets.teachers || this.targets.studyPlans;
+    return this.targets.rooms || this.targets.teachers || this.targets.studyPlans || this.targets.roomBindings;
   }
 
   isEmpty(): boolean {
     return !!this.preview
       && this.preview.rooms.length === 0
       && this.preview.teachers.length === 0
-      && this.preview.studyPlans.length === 0;
+      && this.preview.studyPlans.length === 0
+      && this.preview.roomBindings.length === 0;
   }
 
   loadPreview(): void {
@@ -165,7 +179,7 @@ export class BackfillDialogComponent {
       next: r => {
         this.loading = false;
         this.snackBar.open(
-          `Аудитории: ${r.roomsUpdated}, дисциплины: ${r.teacherLinksAdded}, часы планов: ${r.studyPlanFieldsUpdated}`,
+          `Аудитории: ${r.roomsUpdated}, дисциплины: ${r.teacherLinksAdded}, часы планов: ${r.studyPlanFieldsUpdated}, закрепл. аудиторий: ${r.roomBindingsAdded}`,
           'OK', { duration: 5000 });
         this.dialogRef.close(true);
       },

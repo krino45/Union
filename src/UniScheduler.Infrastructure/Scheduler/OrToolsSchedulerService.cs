@@ -49,7 +49,7 @@ public class OrToolsSchedulerService : ISchedulerService
         if (overflowPenalty > 0)
         {
             rooms.Add(new SchedulerRoom(SchedulerSentinels.OverflowRoomId, Guid.Empty, RoomType.RegularCabinet,
-                Capacity: int.MaxValue, HasProjector: true, HasComputers: true, HasLab: true, IsOnline: false,
+                Capacity: int.MaxValue, HasProjector: true, HasComputers: true, IsOnline: false,
                 IsOverflow: true));
             overflowRmi = rooms.Count - 1;
         }
@@ -1722,9 +1722,10 @@ public class OrToolsSchedulerService : ISchedulerService
 
         if (req.IsOnline) return room.IsOnline;
         if (room.IsOnline) return false;
+        // Hard room binding for this (subject, lesson type): only the listed rooms are allowed.
+        if (req.AllowedRoomIds is { Count: > 0 } boundRooms && !boundRooms.Contains(room.Id)) return false;
         if (req.NeedsProjector && !room.HasProjector) return false;
         if (req.NeedsComputers && !room.HasComputers) return false;
-        if (req.NeedsLab && !room.HasLab) return false;
         if (room.AllowedLessonTypes is { Count: > 0 } allowed && !allowed.Contains(req.LessonType)) return false;
 
         if (room.Capacity < headcount) return false;
@@ -1741,8 +1742,9 @@ public class OrToolsSchedulerService : ISchedulerService
             (LessonType.Practical, RoomType.LectureHall) => true,
             (LessonType.Practical, RoomType.ComputerLab) => true,
             (LessonType.Seminar, RoomType.RegularCabinet) => true,
+            // Lab classes hard-bind to lab-type rooms; a computer lab is an acceptable lab venue too.
             (LessonType.Lab, RoomType.Lab) => true,
-            (LessonType.Lab, RoomType.ComputerLab) => req.NeedsComputers,
+            (LessonType.Lab, RoomType.ComputerLab) => true,
             _ => false
         };
     }

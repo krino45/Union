@@ -1,4 +1,5 @@
 using UniScheduler.Application.Common.Models;
+using UniScheduler.Domain.Entities;
 using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.Schedules.Lns;
@@ -216,23 +217,71 @@ public sealed class DestroyRandomK : IDestroyOperator
 public sealed class DestroyWrongRoom : IDestroyOperator
 {
     public string Name => "WrongRoom";
-    public RepairAxis Axis => RepairAxis.Space;
+    // Full (not Space): a class bound to a specific room may need to change BOTH its room and its
+    // time slot. If the bound room is busy at the class's current slot, a room-only (Space) repair
+    // can't relocate it and it spills to overflow. Full lets it find a slot where the room is free;
+    // we additionally free whoever currently occupies the bound room at that slot so the repair can
+    // evict them into another room.
+    public RepairAxis Axis => RepairAxis.Full;
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
-        if (ctx.RoomAllowedLessonTypes is not { } allowed) return new HashSet<int>();
-        var wrong = new List<int>();
+        var allowed = ctx.RoomAllowedLessonTypes;
+        var bindings = ctx.ScoreCtx.SubjectRoomBindings;
+        if (allowed == null && bindings == null) return new HashSet<int>();
+
+        // Occupants indexed by room, so a bound class can evict whoever sits in its target room.
+        var byRoom = new Dictionary<Guid, List<(int ri, ScheduleEntry e)>>();
+        foreach (var (ri, e) in ctx.EntryByRi)
+        {
+            if (e.IsOnline || e.RoomId is not { } rid || rid == SchedulerSentinels.OverflowRoomId) continue;
+            if (!byRoom.TryGetValue(rid, out var lst)) byRoom[rid] = lst = new();
+            lst.Add((ri, e));
+        }
+
+        var violators = new List<(int ri, ScheduleEntry e, IReadOnlySet<Guid>? bound)>();
         foreach (var (ri, e) in ctx.EntryByRi)
         {
             if (e.IsOnline || !e.RoomId.HasValue) continue;
             if (e.RoomId.Value == SchedulerSentinels.OverflowRoomId) continue;
-            if (allowed.TryGetValue(e.RoomId.Value, out var ok) && !ok.Contains(e.LessonType))
-                wrong.Add(ri);
+
+            // A hard (subject, lessonType) -> room binding overrides the room-type check.
+            if (bindings != null &&
+                bindings.TryGetValue((e.SubjectId, e.LessonType), out var bound) && bound.Count > 0)
+            {
+                if (!bound.Contains(e.RoomId.Value)) violators.Add((ri, e, bound));
+                continue;
+            }
+            if (allowed != null &&
+                allowed.TryGetValue(e.RoomId.Value, out var ok) && !ok.Contains(e.LessonType))
+                violators.Add((ri, e, null));
         }
-        if (wrong.Count <= ctx.TargetDestroySize) return wrong.ToHashSet();
-        DestroyHelpers.Shuffle(wrong, ctx.Rng);
-        return wrong.Take(ctx.TargetDestroySize).ToHashSet();
+        if (violators.Count == 0) return new HashSet<int>();
+
+        if (violators.Count > ctx.TargetDestroySize)
+        {
+            DestroyHelpers.Shuffle(violators, ctx.Rng);
+            violators = violators.Take(ctx.TargetDestroySize).ToList();
+        }
+
+        var result = new HashSet<int>();
+        foreach (var (ri, e, bound) in violators)
+        {
+            result.Add(ri);
+            if (bound == null) continue;
+            // Free the current occupants of the bound rooms at this class's slot so the repair can
+            // make space for it there (they get re-placed into other compatible rooms).
+            foreach (var roomId in bound)
+                if (byRoom.TryGetValue(roomId, out var occupants))
+                    foreach (var (ori, oe) in occupants)
+                        if (ori != ri && SameSlot(oe, e)) result.Add(ori);
+        }
+        return result;
     }
+
+    private static bool SameSlot(ScheduleEntry a, ScheduleEntry b)
+        => a.DayOfWeek == b.DayOfWeek && a.PairNumber == b.PairNumber
+           && (a.WeekType == b.WeekType || a.WeekType == WeekType.Both || b.WeekType == WeekType.Both);
 }
 
 // TIME op: free every class on a day its group cant attend, or on a slot its teacher is unavailable.
@@ -246,12 +295,17 @@ public sealed class DestroyBlockedSlot : IDestroyOperator
     {
         var gbd = ctx.GroupBlockedDays;
         var tbs = ctx.TeacherBlockedSlots;
-        if (gbd == null && tbs == null) return new HashSet<int>();
+        int maxPair = ctx.ScoreCtx.MaxPairNumber;
+        int daysPerWeek = ctx.ScoreCtx.DaysPerWeek;
+        if (gbd == null && tbs == null && maxPair <= 0 && daysPerWeek <= 0) return new HashSet<int>();
         var bad = new List<int>();
         foreach (var (ri, e) in ctx.EntryByRi)
         {
             bool violates = false;
-            if (gbd != null)
+            // Out-of-grid placement after a settings change (shrunk pair grid / dropped day).
+            if (maxPair > 0 && e.PairNumber > maxPair) violates = true;
+            else if (daysPerWeek > 0 && (int)e.DayOfWeek > daysPerWeek) violates = true;
+            if (!violates && gbd != null)
                 foreach (var sg in e.StudentGroups)
                     if (gbd.TryGetValue(sg.StudentGroupId, out var days) && days.Contains(e.DayOfWeek)) { violates = true; break; }
             if (!violates && tbs != null)
