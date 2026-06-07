@@ -21,6 +21,11 @@ public class RoomsController : ControllerBase
         [FromQuery] Guid? buildingId, [FromQuery] RoomType? type, [FromQuery] int? minCapacity, CancellationToken ct)
         => Ok(await _mediator.Send(new GetRoomsQuery(buildingId, type, minCapacity), ct));
 
+    [HttpGet("distance")]
+    public async Task<ActionResult<RoomDistanceDto>> Distance(
+        [FromQuery] Guid from, [FromQuery] Guid to, CancellationToken ct)
+        => Ok(await _mediator.Send(new GetRoomDistanceQuery(from, to), ct));
+
     [HttpPost]
     public async Task<ActionResult<RoomDto>> Create([FromBody] CreateRoomCommand cmd, CancellationToken ct)
     {

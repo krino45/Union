@@ -17,10 +17,27 @@ public record ScheduleAuditDto(
     string? GenerationNotes,
     int TotalEntries,
     int CurrentScore,
-    int? BaseScore
+    int? BaseScore,
+    ScoreBreakdownDto Breakdown
 );
 
 public record AuditIssueDto(string Type, string Description);
+
+public record ScoreBreakdownDto(
+    int HardConflicts,
+    int StudentWindows,
+    int TeacherWindows,
+    int ActiveDays,
+    int Walking,
+    int SanPinOverload,
+    int ConsecSameLesson,
+    int TimeOfDay,
+    int Saturday,
+    int DeptMismatch,
+    int Overflow,
+    int RoomTypeMismatch,
+    int BlockedPlacement,
+    int Total);
 
 public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuery, ScheduleAuditDto>
 {
@@ -218,8 +235,14 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings),
             groups: groups, teacherAvailabilities: teacherAvail);
 
-        var currentScore = ScheduleScoreCalculator.Compute(entries, scoreCtx);
-        return new ScheduleAuditDto(conflicts, warnings, schedule.GenerationNotes, entries.Count, currentScore, schedule.BaseScore);
+        var breakdown = ScheduleScoreCalculator.ComputeBreakdown(entries, scoreCtx);
+        var bd = new ScoreBreakdownDto(
+            breakdown.HardConflicts, breakdown.S1_StudentWindows, breakdown.S2_TeacherWindows,
+            breakdown.S3_ActiveDays, breakdown.S4_Walking, breakdown.S5_SanPinOverload,
+            breakdown.S6_ConsecSameLesson, breakdown.S7_TimeOfDay, breakdown.S8_Saturday,
+            breakdown.S9_DeptMismatch, breakdown.S10_Overflow, breakdown.S11_RoomTypeMismatch,
+            breakdown.S12_BlockedPlacement, breakdown.Total);
+        return new ScheduleAuditDto(conflicts, warnings, schedule.GenerationNotes, entries.Count, breakdown.Total, schedule.BaseScore, bd);
     }
 
     //  Validation helpers 

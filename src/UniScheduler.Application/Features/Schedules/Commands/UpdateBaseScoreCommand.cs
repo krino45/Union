@@ -28,7 +28,7 @@ public class UpdateBaseScoreCommandHandler : IRequestHandler<UpdateBaseScoreComm
         var nodes = await _db.FloorPlanNodes.ToListAsync(cancellationToken);
         var edges = await _db.FloorPlanEdges.ToListAsync(cancellationToken);
         var bldDists = await _db.BuildingDistances.ToListAsync(cancellationToken);
-        var rooms = await _db.Rooms.Include(r => r.Department).ToListAsync(cancellationToken);
+        var rooms = await _db.Rooms.Include(r => r.Department).Include(r => r.Building).ToListAsync(cancellationToken);
         var pairSlots = await _db.PairTimeSlots.ToListAsync(cancellationToken);
 
         var subjectIds = entries.Select(e => e.SubjectId).Distinct().ToList();
@@ -36,7 +36,11 @@ public class UpdateBaseScoreCommandHandler : IRequestHandler<UpdateBaseScoreComm
             .Where(s => subjectIds.Contains(s.Id)).ToListAsync(cancellationToken);
 
         var settings = await _db.SolverSettings.FirstOrDefaultAsync(cancellationToken);
-        var groups = await _db.StudentGroups.Include(g => g.BlockedDays).ToListAsync(cancellationToken);
+
+        var groupsQuery = _db.StudentGroups.Include(g => g.BlockedDays).AsQueryable();
+        if (schedule.FacultyId.HasValue && !schedule.AllowCrossFacultyLessons)
+            groupsQuery = groupsQuery.Where(g => g.FacultyId == schedule.FacultyId);
+        var groups = await groupsQuery.ToListAsync(cancellationToken);
         var teacherAvail = await _db.TeacherAvailabilities.ToListAsync(cancellationToken);
         var ctx = ScheduleScoreCalculator.BuildScoreContext(
             nodes, edges, bldDists, rooms, pairSlots, subjects, new SolverWeights(settings),

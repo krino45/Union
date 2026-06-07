@@ -17,7 +17,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { RouterModule } from '@angular/router';
 import { ApiService } from '../../../../core/services/api.service';
-import { Room, Building, Department } from '../../../../core/models';
+import { Room, Building, Department, RoomDistance } from '../../../../core/models';
 import { LessonType, RoomType } from '../../../../core/models/enums';
 import { RoomTypePipe } from '../../../../shared/pipes/room-type.pipe';
 import { LessonTypePipe } from '../../../../shared/pipes/lesson-type.pipe';
@@ -36,9 +36,14 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
   template: `
     <div class="page-header">
       <h1>Аудитории</h1>
-      <button mat-raised-button color="primary" (click)="openDialog(null)">
-        <mat-icon>add</mat-icon> Добавить
-      </button>
+      <div class="header-actions">
+        <button mat-stroked-button (click)="openDistance()" matTooltip="Расстояние между двумя аудиториями">
+          <mat-icon>straighten</mat-icon> Расстояние
+        </button>
+        <button mat-raised-button color="primary" (click)="openDialog(null)">
+          <mat-icon>add</mat-icon> Добавить
+        </button>
+      </div>
     </div>
 
     <mat-card>
@@ -137,6 +142,7 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .header-actions { display: flex; gap: 10px; align-items: center; }
     h1 { margin: 0; }
     .table-scroll { overflow-x: auto; }
     .search-field { width: 100%; max-width: 420px; margin-top: 8px; margin-bottom: 8px; }
@@ -228,6 +234,12 @@ export class RoomsComponent implements OnInit {
           error: (e) => this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 })
         });
       }
+    });
+  }
+
+  openDistance(): void {
+    this.dialog.open(RoomDistanceDialogComponent, {
+      data: { rooms: this.rooms.filter(r => !r.isOnline && !r.isDistributed) }, width: '460px'
     });
   }
 
@@ -381,5 +393,113 @@ export class RoomDialogComponent implements OnDestroy {
 
   submit(): void {
     if (this.form.valid) this.dialogRef.close(this.form.value);
+  }
+}
+
+
+@Component({
+  selector: 'app-room-distance-dialog',
+  standalone: true,
+  imports: [
+    CommonModule, ReactiveFormsModule,
+    MatButtonModule, MatIconModule, MatDialogModule,
+    MatProgressSpinnerModule, MatTooltipModule, SearchSelectComponent
+  ],
+  template: `
+    <h2 mat-dialog-title>Расстояние между аудиториями</h2>
+    <mat-dialog-content>
+      <form [formGroup]="form" class="dist-form">
+        <app-search-select class="full-width" label="Аудитория 1" formControlName="from"
+          [options]="data.rooms" [displayWith]="roomLabel"></app-search-select>
+        <button mat-icon-button type="button" class="swap-btn" (click)="swap()" matTooltip="Поменять местами">
+          <mat-icon>swap_vert</mat-icon>
+        </button>
+        <app-search-select class="full-width" label="Аудитория 2" formControlName="to"
+          [options]="data.rooms" [displayWith]="roomLabel"></app-search-select>
+      </form>
+
+      <div class="result" *ngIf="result">
+        <ng-container *ngIf="result.reachable; else unreachable">
+          <div class="dist-main">
+            <mat-icon>directions_walk</mat-icon>
+            <span class="meters">{{ result.meters }} м</span>
+            <span class="mins" *ngIf="result.meters > 0">≈ {{ result.walkMinutes }} мин пешком</span>
+          </div>
+          <div class="dist-note">
+            {{ result.fromLabel }} → {{ result.toLabel }} ·
+            {{ result.sameBuilding ? 'в одном корпусе' : 'между корпусами' }}
+          </div>
+          <div class="dist-zero" *ngIf="result.meters === 0">
+            0 м — аудитории рядом или маршрут на плане ещё не задан.
+          </div>
+        </ng-container>
+        <ng-template #unreachable>
+          <div class="dist-err">
+            <mat-icon>link_off</mat-icon>
+            Между корпусами не задано расстояние — добавьте его в редакторе планировок.
+          </div>
+        </ng-template>
+      </div>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Закрыть</button>
+      <button mat-raised-button color="primary" [disabled]="form.invalid || loading" (click)="calculate()">
+        <mat-spinner *ngIf="loading" diameter="18" class="btn-spinner"></mat-spinner>
+        <span *ngIf="!loading">Рассчитать</span>
+      </button>
+    </mat-dialog-actions>
+  `,
+  styles: [`
+    .dist-form { display: flex; flex-direction: column; align-items: stretch; padding-top: 8px; min-width: 360px; }
+    .full-width { width: 100%; }
+    .swap-btn { align-self: center; margin: -4px 0; color: #1565c0; }
+    .result { margin-top: 8px; padding: 14px 16px; background: #e8f0fe; border-radius: 8px; }
+    .dist-main { display: flex; align-items: baseline; gap: 10px; }
+    .dist-main mat-icon { color: #1565c0; align-self: center; }
+    .meters { font-size: 24px; font-weight: 700; color: #0d47a1; }
+    .mins { font-size: 13px; color: #555; }
+    .dist-note { font-size: 12px; color: #666; margin-top: 4px; }
+    .dist-zero { font-size: 12px; color: #8d6e00; margin-top: 6px; }
+    .dist-err { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #b71c1c; }
+    .btn-spinner { display: inline-block; }
+    :host-context(body.dark-mode) .result { background: #1a2a3a; }
+    :host-context(body.dark-mode) .meters { color: #90caf9; }
+    :host-context(body.dark-mode) .dist-note { color: #aaa; }
+  `]
+})
+export class RoomDistanceDialogComponent {
+  form: FormGroup;
+  result: RoomDistance | null = null;
+  loading = false;
+
+  roomLabel = (r: Room): string => (r.buildingShortCode ? r.buildingShortCode + '-' : '') + r.number;
+
+  constructor(
+    private dialogRef: MatDialogRef<RoomDistanceDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: { rooms: Room[] },
+    private fb: FormBuilder,
+    private api: ApiService
+  ) {
+    this.form = this.fb.group({
+      from: [null, Validators.required],
+      to: [null, Validators.required]
+    });
+    this.form.valueChanges.subscribe(() => this.result = null);
+  }
+
+  swap(): void {
+    const { from, to } = this.form.value;
+    this.form.setValue({ from: to, to: from });
+  }
+
+  calculate(): void {
+    if (this.form.invalid) return;
+    const { from, to } = this.form.value;
+    this.loading = true;
+    this.result = null;
+    this.api.getRoomDistance(from, to).subscribe({
+      next: (d) => { this.result = d; this.loading = false; },
+      error: () => { this.loading = false; }
+    });
   }
 }

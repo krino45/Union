@@ -13,7 +13,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { forkJoin, switchMap } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
-import { Schedule, ScheduleEntry, MoveEntryDto, StudentGroup, Teacher, Subject, Room, PlanProgressItem, StudyPlan } from '../../../core/models';
+import { Schedule, ScheduleEntry, MoveEntryDto, StudentGroup, Teacher, Subject, Room, PlanProgressItem, StudyPlan, ScoreBreakdown } from '../../../core/models';
 import { RussianDayOfWeek, WeekType } from '../../../core/models/enums';
 import { ScheduleGridComponent } from './schedule-grid/schedule-grid.component';
 import { AddEntryDialogComponent, AddEntryDialogData, AddEntryDialogResult } from './add-entry-dialog.component';
@@ -27,6 +27,7 @@ interface AuditResult {
   totalEntries: number;
   currentScore: number;
   baseScore: number | null;
+  breakdown: ScoreBreakdown;
 }
 
 @Component({
@@ -135,6 +136,22 @@ interface AuditResult {
       </div>
       <div *ngIf="audit.conflicts.length === 0 && audit.warnings.length === 0" class="no-issues">
         Расписание не содержит конфликтов и предупреждений.
+      </div>
+
+      <div class="issue-section score-section" *ngIf="audit.breakdown">
+        <div class="issue-section-label score-label">
+          Из чего складывается оценка: {{ audit.breakdown.total }}
+          <span class="score-hint">меньше — лучше</span>
+        </div>
+        <div class="score-grid">
+          <div class="score-row" *ngFor="let item of scoreItems(audit.breakdown)">
+            <span class="score-name">{{ item.label }}</span>
+            <span class="score-val" [class.score-hard]="item.hard" [class.score-reward]="item.value < 0">{{ item.value }}</span>
+          </div>
+          <div class="score-empty" *ngIf="scoreItems(audit.breakdown).length === 0">
+            Пусто — либо нет пар, либо не указаны штрафы.
+          </div>
+        </div>
       </div>
     </mat-expansion-panel>
 
@@ -251,6 +268,21 @@ interface AuditResult {
     .ii { font-size: 15px; color: #c62828; flex-shrink: 0; margin-top: 1px; }
     .warn-ii { color: #e65100; }
     .no-issues { font-size: 13px; color: #2e7d32; padding: 4px 8px; }
+    .score-section { border-top: 1px solid #eee; margin-top: 6px; padding-top: 8px; }
+    .score-label { color: #1565c0; display: flex; align-items: baseline; gap: 8px; }
+    .score-hint { font-size: 10px; font-weight: 400; text-transform: none; letter-spacing: 0; color: #999; }
+    .score-grid { display: flex; flex-direction: column; gap: 2px; max-width: 460px; }
+    .score-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+      font-size: 13px; color: #444; padding: 2px 4px; border-radius: 4px; }
+    .score-row:nth-child(odd) { background: rgba(0,0,0,0.025); }
+    .score-name { min-width: 0; }
+    .score-val { font-variant-numeric: tabular-nums; font-weight: 600; color: #555; flex-shrink: 0; }
+    .score-val.score-hard { color: #c62828; }
+    .score-val.score-reward { color: #2e7d32; }
+    .score-empty { font-size: 13px; color: #2e7d32; padding: 2px 4px; }
+    :host-context(body.dark-mode) .score-section { border-top-color: #3a3a3a; }
+    :host-context(body.dark-mode) .score-row:nth-child(odd) { background: rgba(255,255,255,0.04); }
+    :host-context(body.dark-mode) .score-val { color: #bbb; }
     .plan-names { font-size: 12px; color: #888; margin-left: 8px; flex: 1 1 auto; min-width: 0;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .progress-panel { margin-bottom: 12px; border-radius: 6px !important; }
@@ -595,6 +627,27 @@ export class ScheduleEditorComponent implements OnInit {
     if (type === 'RoomDoubleBooked') return 'meeting_room';
     if (type === 'TeacherDoubleBooked') return 'person';
     return 'group';
+  }
+
+  scoreItems(b: ScoreBreakdown): { label: string; value: number; hard: boolean }[] {
+    const defs: { key: keyof ScoreBreakdown; label: string; hard?: boolean }[] = [
+      { key: 'hardConflicts',    label: 'Жёсткие конфликты',              hard: true },
+      { key: 'overflow',         label: 'Не размещено (вирт. аудитория)', hard: true },
+      { key: 'roomTypeMismatch', label: 'Неподходящий тип аудитории',     hard: true },
+      { key: 'blockedPlacement', label: 'Нарушены занятость / выходной',  hard: true },
+      { key: 'studentWindows',   label: 'Окна у студентов' },
+      { key: 'teacherWindows',   label: 'Окна у преподавателей' },
+      { key: 'activeDays',       label: 'Учебные дни' },
+      { key: 'walking',          label: 'Переходы между аудиториями' },
+      { key: 'sanPinOverload',   label: 'Перегруз (СанПиН)' },
+      { key: 'consecSameLesson', label: 'Одинаковые занятия подряд' },
+      { key: 'timeOfDay',        label: 'Время пар (ранние / поздние)' },
+      { key: 'saturday',         label: 'Суббота' },
+      { key: 'deptMismatch',     label: 'Кафедра аудитории ≠ предмета' },
+    ];
+    return defs
+      .map(d => ({ label: d.label, value: b[d.key] as number, hard: !!d.hard }))
+      .filter(x => x.value !== 0);
   }
 
   get unplacedCount(): number { return this.planProgress.filter(p => p.isUnplaced).length; }

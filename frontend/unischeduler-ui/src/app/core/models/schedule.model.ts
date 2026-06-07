@@ -29,6 +29,23 @@ export interface CreateScheduleDto {
   name?: string;
 }
 
+export interface ScoreBreakdown {
+  hardConflicts: number;
+  studentWindows: number;
+  teacherWindows: number;
+  activeDays: number;
+  walking: number;
+  sanPinOverload: number;
+  consecSameLesson: number;
+  timeOfDay: number;
+  saturday: number;
+  deptMismatch: number;
+  overflow: number;
+  roomTypeMismatch: number;
+  blockedPlacement: number;
+  total: number;
+}
+
 export interface ValidationIssue {
   severity: 'error' | 'warning' | 'info';
   code: string;

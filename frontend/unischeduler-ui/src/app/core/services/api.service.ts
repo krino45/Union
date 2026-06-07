@@ -18,7 +18,8 @@ import {
   FloorPlan, SaveFloorPlanRequest,
   FloorPlanDraftSummary, FloorPlanDraft, FloorPlanSummary,
   ValidationIssue, ValidateEditBody, SplitEditBody, InvitationDto,
-  InvitationInfo, BackfillTargets, BackfillPreview, BackfillResult
+  InvitationInfo, BackfillTargets, BackfillPreview, BackfillResult,
+  RoomDistance, ScoreBreakdown
 } from '../models';
 import { RussianDayOfWeek, WeekType } from '../models/enums';
 
@@ -184,6 +185,10 @@ export class ApiService {
   getRoom(id: string): Observable<Room> {
     return this.http.get<Room>(`${this.base}/rooms/${id}`);
   }
+  getRoomDistance(fromId: string, toId: string): Observable<RoomDistance> {
+    const params = new HttpParams().set('from', fromId).set('to', toId);
+    return this.http.get<RoomDistance>(`${this.base}/rooms/distance`, { params });
+  }
   createRoom(dto: CreateRoomDto): Observable<Room> {
     return this.http.post<Room>(`${this.base}/rooms`, dto);
   }
@@ -339,6 +344,7 @@ export class ApiService {
     totalEntries: number;
     currentScore: number;
     baseScore: number | null;
+    breakdown: ScoreBreakdown;
   }> {
     return this.http.get<any>(`${this.base}/schedules/${scheduleId}/audit`);
   }

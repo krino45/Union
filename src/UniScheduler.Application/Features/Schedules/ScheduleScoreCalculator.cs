@@ -449,6 +449,12 @@ public static class ScheduleScoreCalculator
         return score;
     }
 
+    public const double WalkMetersPerMinute = WalkSpeedMperMin;
+    public const int UnreachableDistance = int.MaxValue / 2;
+
+    public static int RoomDistanceMeters(Guid roomA, Guid roomB, ScoreContext ctx)
+        => TravelDistance(roomA, roomB, ctx);
+
     private static int TravelDistance(Guid roomA, Guid roomB, ScoreContext ctx)
     {
         if (!ctx.RoomToBuilding.TryGetValue(roomA, out var bldA) ||

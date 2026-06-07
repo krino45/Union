@@ -36,3 +36,12 @@ export interface CreateRoomDto {
 }
 
 export interface UpdateRoomDto extends CreateRoomDto {}
+
+export interface RoomDistance {
+  reachable: boolean;
+  sameBuilding: boolean;
+  meters: number;
+  walkMinutes: number;
+  fromLabel: string;
+  toLabel: string;
+}
