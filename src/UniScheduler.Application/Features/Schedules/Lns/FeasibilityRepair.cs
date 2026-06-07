@@ -9,10 +9,11 @@ public static class FeasibilityRepair
 {
     private const int NumDays = 6;
 
-    public sealed record Result(List<ScheduleEntry> Entries, int Before, int After, int Relocated, int Unresolved)
+    public sealed record Result(List<ScheduleEntry> Entries, int Before, int After, int Relocated, int Unresolved,
+        int BlockedBefore, int BlockedAfter)
     {
         public bool ChangedAnything => Relocated > 0;
-        public string Summary => Before == 0
+        public string Summary => Before == 0 && BlockedBefore == 0
             ? "Конфликты: нет."
             : $"Конфликты: было {Before}, перемещено {Relocated}, осталось {Unresolved}.";
     }
@@ -22,8 +23,9 @@ public static class FeasibilityRepair
         int numPairs = shared.PairsPerDay;
         int maxPe = Math.Max(1, shared.Weights.MaxPePerDay);
         int before = ScheduleScoreCalculator.Score_HardConflicts(entries, shared.ScoreCtx) / 100_000;
-        if (before == 0)
-            return new Result(entries.ToList(), 0, 0, 0, 0);
+        int blockedBefore = ScheduleScoreCalculator.Score_BlockedPlacement(entries, shared.ScoreCtx) / ScheduleScoreCalculator.BlockedPlacementPenalty;
+        if (before == 0 && blockedBefore == 0)
+            return new Result(entries.ToList(), 0, 0, 0, 0, 0, 0);
 
         var multiOcc = shared.Rooms
             .Where(r => r.IsDistributed || r.RoomType == RoomType.SportsHall)
@@ -71,7 +73,9 @@ public static class FeasibilityRepair
         }
 
         int after = ScheduleScoreCalculator.Score_HardConflicts(result, shared.ScoreCtx) / 100_000;
-        return new Result(result, before, after, relocated, unresolved);
+        int blockedAfter = ScheduleScoreCalculator.Score_BlockedPlacement(entries, shared.ScoreCtx) / ScheduleScoreCalculator.BlockedPlacementPenalty;
+
+        return new Result(result, before, after, relocated, unresolved, blockedBefore, blockedAfter);
     }
 
     // True if the units current placement collides with nothing accepted so far. Multi-occupancy venues never collide.
@@ -89,11 +93,18 @@ public static class FeasibilityRepair
         foreach (int wi in CalWeeks(e.WeekType))
         {
             foreach (var sg in e.StudentGroups)
+            {
                 if (occ.GroupBusy.Contains((sg.StudentGroupId, d, p, wi))) return false;
+                if (occ.GroupBlockedDay.Contains((sg.StudentGroupId, d))) return false;
+            }
+
             if (occ.TeacherBusy.Contains((e.TeacherId, d, p, wi))) return false;
+            if (occ.TeacherBlocked.Contains((e.TeacherId, d, p, wi))) return false;
+
             if (checkRoomId && e.RoomId.HasValue && !multiOcc.Contains(e.RoomId.Value)
                 && occ.RoomBusy.Contains((e.RoomId.Value, d, p, wi))) return false;
         }
+
         return true;
     }
 

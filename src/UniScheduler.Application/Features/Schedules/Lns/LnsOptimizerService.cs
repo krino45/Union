@@ -31,9 +31,12 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         // Phase 0: feasibility repair.
         var feas = FeasibilityRepair.Resolve(seed, shared);
-        if (feas.Before > 0)
+        if (feas.Before > 0 || feas.BlockedBefore > 0)
         {
-            progress?.Report($"Починка конфликтов: конфликтов было {feas.Before}, перемещено {feas.Relocated}, осталось {feas.Unresolved}");
+            var conflictStr = feas.Before > 0 ? $"конфликтов {feas.Before-feas.After}/{feas.Before}, " : "";
+            var blockStr = feas.BlockedBefore > 0 ? $"блокировок {feas.Before-feas.BlockedAfter}/{feas.BlockedBefore}" : "";
+
+            progress?.Report($"Починка конфликтов: исправлено {conflictStr}{blockStr}");
             seed = feas.Entries;
         }
         var seedBreakdown = feas.ChangedAnything
@@ -102,8 +105,11 @@ public class LnsOptimizerService : ILnsOptimizerService
         var telemetry = allOps.ToDictionary(o => o.Name, _ => (Attempts: 0, Accepted: 0, Failed: 0, Total: 0L));
 
         var wrongRoomOp = spaceOps.FirstOrDefault(o => o.Name == "WrongRoom");
-        if (wrongRoomOp != null) weights[wrongRoomOp.Name] = 6.0;
-        if (weights.ContainsKey("BlockedSlot")) weights["BlockedSlot"] = 6.0;
+        var blockedSlotOp = timeOps.FirstOrDefault(o => o.Name == "BlockedSlot");
+
+        var stuckOps = new HashSet<string>();
+        var forcedCount = new Dictionary<string, int>();
+        const int maxForcedTries = 6;
 
         // 4. Main loop.
         var incumbent = seed.ToList();
@@ -126,16 +132,27 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         while (DateTime.UtcNow < deadline && kicks < opts.MaxIterations && !ct.IsCancellationRequested)
         {
-            // Space kicks are mostly cleanup, so they run only every Nth kick
+            IDestroyOperator? forced = null;
+            if (currentBreakdown.S11_RoomTypeMismatch > 0 && wrongRoomOp != null && !stuckOps.Contains(wrongRoomOp.Name))
+                forced = wrongRoomOp;
+            else if (currentBreakdown.S12_BlockedPlacement > 0 && blockedSlotOp != null && !stuckOps.Contains(blockedSlotOp.Name))
+                forced = blockedSlotOp;
+            if (forced != null && (forcedCount[forced.Name] = forcedCount.GetValueOrDefault(forced.Name) + 1) > maxForcedTries)
+            {
+                stuckOps.Add(forced.Name);
+                forced = null;
+            }
+
             IDestroyOperator[] axisOps;
             IDestroyOperator op;
-            if (kicks == 0 && wrongRoomOp != null && currentBreakdown.S11_RoomTypeMismatch > 0)
+            if (forced != null)
             {
-                axisOps = spaceOps;
-                op = wrongRoomOp;
+                axisOps = forced.Axis == RepairAxis.Space ? spaceOps : timeOps;
+                op = forced;
             }
             else
             {
+                // Space kicks are mostly cleanup, so they run only every Nth kick.
                 bool spaceKick = opts.SpaceKickEvery <= 1 || (kicks % opts.SpaceKickEvery) == opts.SpaceKickEvery - 1;
                 axisOps = spaceKick ? spaceOps : timeOps;
                 op = PickOperator(axisOps, weights, rng);
@@ -170,8 +187,14 @@ public class LnsOptimizerService : ILnsOptimizerService
             {
                 MarkFailed(telemetry, op.Name);
                 weights[op.Name] = Math.Max(MinWeight, weights[op.Name] * 0.2);
+                string note = "";
+                if (forced != null)
+                {
+                    stuckOps.Add(op.Name);
+                    note = " — нарушение на занятии вне модели (не сопоставлено с требованием); полировка не может его передвинуть";
+                }
                 kicks++;
-                progress?.Report($"{kickPrefix} | пустое разрушение, пропуск (score={currentBreakdown.Total}, best={bestScore})");
+                progress?.Report($"{kickPrefix} | пустое разрушение, пропуск (score={currentBreakdown.Total}, best={bestScore}){note}");
                 continue;
             }
 
