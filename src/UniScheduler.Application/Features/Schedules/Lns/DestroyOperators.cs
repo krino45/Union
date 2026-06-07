@@ -286,13 +286,19 @@ public sealed class DestroyWorstK(SolverWeights weights) : IDestroyOperator
         if (penaltyByGroupDay.Count == 0) return [];
 
         var byGroupDay = new Dictionary<(Guid g, RussianDayOfWeek d), List<int>>();
+        var byTeacherDay = new Dictionary<(Guid t, RussianDayOfWeek d), List<int>>();
         foreach (var (ri, e) in ctx.EntryByRi)
+        {
+            var tk = (e.TeacherId, e.DayOfWeek);
+            if (!byTeacherDay.TryGetValue(tk, out var tl)) byTeacherDay[tk] = tl = [];
+            tl.Add(ri);
             foreach (var sg in e.StudentGroups)
             {
                 var k = (sg.StudentGroupId, e.DayOfWeek);
                 if (!byGroupDay.TryGetValue(k, out var lst)) byGroupDay[k] = lst = [];
                 lst.Add(ri);
             }
+        }
 
         var ranked = byGroupDay
             .Where(kv => penaltyByGroupDay.ContainsKey(kv.Key))
@@ -308,7 +314,13 @@ public sealed class DestroyWorstK(SolverWeights weights) : IDestroyOperator
         var result = new HashSet<int>();
         foreach (var bucket in top)
         {
-            foreach (var ri in bucket) result.Add(ri);
+            foreach (var ri in bucket)
+            {
+                result.Add(ri);
+                var e = ctx.EntryByRi[ri];
+                if (!byTeacherDay.TryGetValue((e.TeacherId, e.DayOfWeek), out var tl)) continue;
+                foreach (var tri in tl) result.Add(tri);
+            }
             if (result.Count >= ctx.TargetDestroySize) break;
         }
         return result;

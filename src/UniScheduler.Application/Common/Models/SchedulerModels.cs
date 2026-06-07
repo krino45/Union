@@ -103,7 +103,7 @@ public record SchedulerFreedReq(
 public static class SchedulerSentinels
 {
     public static readonly Guid OverflowRoomId = new("ffffffff-0000-0000-0000-0000000000f1");
-    public const long OverflowPenalty = 50_000;
+    public const long OverflowPenalty = 20_000;
 }
 
 public record SchedulerInput(
