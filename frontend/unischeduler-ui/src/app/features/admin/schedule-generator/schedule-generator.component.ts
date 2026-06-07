@@ -661,6 +661,21 @@ export class CreateScheduleDialogComponent {
         </section>
 
         <section class="block">
+          <h3 class="block-title">Потоки и подгруппы</h3>
+          <p class="block-desc">Сколько студентов вмещает один поток. Группа делится на ceil(размер / вместимость) параллельных потоков. Сохраняется со схемой, чтобы полировка пересобирала то же число потоков.</p>
+          <div class="row">
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Язык: студентов на поток</mat-label>
+              <input matInput type="number" formControlName="languagePerTeacherCap" min="1">
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="flex1">
+              <mat-label>Физкультура: студентов на группу</mat-label>
+              <input matInput type="number" formControlName="physicalEducationPerTeacherCap" min="1">
+            </mat-form-field>
+          </div>
+        </section>
+
+        <section class="block">
           <h3 class="block-title">Подряд идущие пары одного типа (S6)</h3>
           <p class="block-desc">Штраф за каждую пару того же предмета и типа сразу после предыдущей.</p>
           <div class="row">
@@ -894,6 +909,8 @@ export class SolverSettingsDialogComponent implements OnInit {
       maxPePerDay:              [w.maxPePerDay ?? 1,         [Validators.required, Validators.min(1), Validators.max(4)]],
       peNotLastPenalty:         [w.peNotLastPenalty ?? 40,   [Validators.required, Validators.min(0)]],
       peConsecutiveReward:      [w.peConsecutiveReward ?? 30,[Validators.required, Validators.min(0)]],
+      languagePerTeacherCap:    [w.languagePerTeacherCap ?? 15,          [Validators.required, Validators.min(1)]],
+      physicalEducationPerTeacherCap: [w.physicalEducationPerTeacherCap ?? 40, [Validators.required, Validators.min(1)]],
     });
   }
 
@@ -906,6 +923,7 @@ export class SolverSettingsDialogComponent implements OnInit {
       earlyPair: [15], middlePair: [0], latePair: [25], consecRunScalar: [3],
       saturdayPenalty: [30], departmentMismatchPenalty: [50], walkingPenaltyMax: [120],
       stairFloorMeters: [20], maxPePerDay: [1], peNotLastPenalty: [40], peConsecutiveReward: [30],
+      languagePerTeacherCap: [15], physicalEducationPerTeacherCap: [40],
     });
   }
 }

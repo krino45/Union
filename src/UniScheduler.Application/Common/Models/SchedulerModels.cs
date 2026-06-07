@@ -23,7 +23,10 @@ public record SolverWeights(
     // SanPiN PE rules.
     int MaxPePerDay = 1,
     int PeNotLastPenalty = 40,
-    int PeConsecutiveReward = 30)
+    int PeConsecutiveReward = 30,
+    // Stream sizing: students per language stream / PE group.
+    int LanguagePerTeacherCap = 15,
+    int PhysicalEducationPerTeacherCap = 40)
 {
     #region  Constructors
 
@@ -54,6 +57,8 @@ public record SolverWeights(
         MaxPePerDay = solverSettings.MaxPePerDay;
         PeNotLastPenalty = solverSettings.PeNotLastPenalty;
         PeConsecutiveReward = solverSettings.PeConsecutiveReward;
+        LanguagePerTeacherCap = solverSettings.LanguagePerTeacherCap;
+        PhysicalEducationPerTeacherCap = solverSettings.PhysicalEducationPerTeacherCap;
     }
 
     public SolverSettings ToSolverSettings()
@@ -78,7 +83,9 @@ public record SolverWeights(
             StairFloorMeters = StairFloorMeters,
             MaxPePerDay = MaxPePerDay,
             PeNotLastPenalty = PeNotLastPenalty,
-            PeConsecutiveReward = PeConsecutiveReward
+            PeConsecutiveReward = PeConsecutiveReward,
+            LanguagePerTeacherCap = LanguagePerTeacherCap,
+            PhysicalEducationPerTeacherCap = PhysicalEducationPerTeacherCap
         };
     }
 

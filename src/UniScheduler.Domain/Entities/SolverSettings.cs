@@ -47,5 +47,9 @@ public class SolverSettings : Entity
     // Reward (applied as a negative S6 weight) for placing two same-day PE pairs consecutively
     public int PeConsecutiveReward { get; set; } = 30;
 
+    // Stream sizing: max students that one teachers group holds.
+    public int LanguagePerTeacherCap { get; set; } = 15;
+    public int PhysicalEducationPerTeacherCap { get; set; } = 40;
+
     public University University { get; set; } = null!;
 }

@@ -1,4 +1,3 @@
-using UniScheduler.Application.Common.Config;
 using UniScheduler.Application.Common.Models;
 using UniScheduler.Application.Features.StudyPlans;
 using UniScheduler.Domain.Entities;
@@ -49,11 +48,11 @@ public static class ScheduleRequirementBuilder
 
             AddLanguageRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
                 entry.LanguageHours, studyWeeks, planGroupIds, shared.TeacherSubjects,
-                shared.GroupSizes, subjFacultyId, teacherLoad);
+                shared.GroupSizes, subjFacultyId, shared.Weights.LanguagePerTeacherCap, teacherLoad);
 
             AddPhysicalEducationRequirements(requirements, ref idx, ref parallelSeq, entry.SubjectId,
                 entry.PhysicalEducationHours, studyWeeks, planGroupIds, shared.TeacherSubjects,
-                shared.GroupSizes, subjFacultyId, teacherLoad);
+                shared.GroupSizes, subjFacultyId, shared.Weights.PhysicalEducationPerTeacherCap, teacherLoad);
         }
 
         return requirements;
@@ -113,11 +112,11 @@ public static class ScheduleRequirementBuilder
 
                 AddLanguageRequirements(reqs, ref idx, ref parallelSeq, entry.SubjectId,
                     entry.LanguageHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
-                    shared.TeacherSubjects, shared.GroupSizes, subjFacultyId);
+                    shared.TeacherSubjects, shared.GroupSizes, subjFacultyId, shared.Weights.LanguagePerTeacherCap);
 
                 AddPhysicalEducationRequirements(reqs, ref idx, ref parallelSeq, entry.SubjectId,
                     entry.PhysicalEducationHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
-                    shared.TeacherSubjects, shared.GroupSizes, subjFacultyId);
+                    shared.TeacherSubjects, shared.GroupSizes, subjFacultyId, shared.Weights.PhysicalEducationPerTeacherCap);
             }
             for (int i = before; i < idx; i++) riToPlanId[i] = plan.Id;
         }
@@ -184,6 +183,7 @@ public static class ScheduleRequirementBuilder
         Guid subjectId, double totalHours, int studyWeeks,
         List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
         Dictionary<Guid, int> groupSizes, Guid? subjectFacultyId,
+        int perTeacherCap,
         Dictionary<Guid, int>? teacherLoad = null)
     {
         if (totalHours <= 0) return;
@@ -192,7 +192,7 @@ public static class ScheduleRequirementBuilder
             .Select(ts => ts.TeacherId).Distinct().OrderBy(g => g).ToList();
         if (teachers.Count == 0) return;
 
-        int perTeacherCap = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.LangPerTeacherCap), out var c) && c > 0 ? c : 15;
+        if (perTeacherCap <= 0) perTeacherCap = 15;
 
         foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
         {
@@ -285,6 +285,7 @@ public static class ScheduleRequirementBuilder
         Guid subjectId, double totalHours, int studyWeeks,
         List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
         Dictionary<Guid, int> groupSizes, Guid? subjectFacultyId,
+        int perTeacherCap,
         Dictionary<Guid, int>? teacherLoad = null)
     {
         if (totalHours <= 0) return;
@@ -293,7 +294,7 @@ public static class ScheduleRequirementBuilder
             .Select(ts => ts.TeacherId).Distinct().OrderBy(g => g).ToList();
         if (teachers.Count == 0) return;
 
-        int perTeacherCap = int.TryParse(Environment.GetEnvironmentVariable(SchedulerEnv.PePerTeacherCap), out var c) && c > 0 ? c : 40;
+        if (perTeacherCap <= 0) perTeacherCap = 40;
 
         foreach (var wt in HoursToWeekTypes(totalHours, studyWeeks))
         {

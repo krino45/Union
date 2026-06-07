@@ -194,4 +194,6 @@ export interface SolverWeights {
   maxPePerDay: number;
   peNotLastPenalty: number;
   peConsecutiveReward: number;
+  languagePerTeacherCap: number;
+  physicalEducationPerTeacherCap: number;
 }

@@ -21,6 +21,8 @@ public class GetSolverSettingsQueryHandler : IRequestHandler<GetSolverSettingsQu
             s.EarlyPair, s.MiddlePair, s.LatePair, s.ConsecRunScalar,
             s.SaturdayPenalty, s.DepartmentMismatchPenalty, s.WalkingPenaltyMax,
             s.StairFloorMeters, MaxPePerDay: s.MaxPePerDay,
-            PeNotLastPenalty: s.PeNotLastPenalty, PeConsecutiveReward: s.PeConsecutiveReward);
+            PeNotLastPenalty: s.PeNotLastPenalty, PeConsecutiveReward: s.PeConsecutiveReward,
+            LanguagePerTeacherCap: s.LanguagePerTeacherCap,
+            PhysicalEducationPerTeacherCap: s.PhysicalEducationPerTeacherCap);
     }
 }

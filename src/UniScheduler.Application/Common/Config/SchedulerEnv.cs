@@ -23,12 +23,4 @@ public static class SchedulerEnv
     // Run a space (re-room) kick every Nth kick; the rest are time (re-time) kicks. Space kicks are
     // mostly cleanup, so they are neded rarer. Default 3 (1 in 3).
     public const string LnsSpaceEvery = "UNISCHEDULER_LNS_SPACE_EVERY";
-
-    // Foreign-language requirement-builder: students-per-teacher cap. ⌈groupSize / cap⌉ teachers
-    // are emitted per group's language slot. Default 15.
-    public const string LangPerTeacherCap = "UNISCHEDULER_LANG_PER_TEACHER_CAP";
-
-    // Physical-education requirement-builder: students-per-teacher cap. ⌈groupSize / cap⌉ teachers
-    // are emitted per group's PE slot. Default 40.
-    public const string PePerTeacherCap = "UNISCHEDULER_PE_PER_TEACHER_CAP";
 }

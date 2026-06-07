@@ -50,6 +50,8 @@ public class UpdateSolverSettingsCommandHandler : IRequestHandler<UpdateSolverSe
         s.MaxPePerDay = w.MaxPePerDay;
         s.PeNotLastPenalty = w.PeNotLastPenalty;
         s.PeConsecutiveReward = w.PeConsecutiveReward;
+        s.LanguagePerTeacherCap = w.LanguagePerTeacherCap;
+        s.PhysicalEducationPerTeacherCap = w.PhysicalEducationPerTeacherCap;
 
         await _db.SaveChangesAsync(cancellationToken);
     }
