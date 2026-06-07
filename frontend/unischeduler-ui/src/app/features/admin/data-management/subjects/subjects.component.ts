@@ -15,7 +15,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../../core/services/api.service';
 import { Subject, Department, Room } from '../../../../core/models';
-import { Term, LessonType } from '../../../../core/models/enums';
+import { Term, LessonType, RoomType } from '../../../../core/models/enums';
 import { SearchSelectComponent } from '../../../../shared/components/search-select.component';
 import { forkJoin } from 'rxjs';
 
@@ -236,21 +236,20 @@ export class SubjectDialogComponent {
   standalone: true,
   imports: [
     CommonModule, FormsModule, MatButtonModule, MatFormFieldModule, MatSelectModule,
-    MatDialogModule, MatIconModule, MatProgressSpinnerModule, MatSnackBarModule
+    MatDialogModule, MatIconModule, MatProgressSpinnerModule, MatSnackBarModule, SearchSelectComponent
   ],
   template: `
     <h2 mat-dialog-title>Аудитории: {{ data.subject.name }}</h2>
     <mat-dialog-content>
       <p class="hint">Если для типа занятия выбраны аудитории — это занятие можно ставить только в них.
-        Пусто = без ограничений (по типу аудитории).</p>
+        Пусто = без ограничений (по типу аудитории). Показаны только аудитории, подходящие по типу занятия.</p>
       <div class="loading-wrap" *ngIf="loading"><mat-spinner diameter="32"></mat-spinner></div>
       <div *ngIf="!loading">
-        <mat-form-field appearance="outline" class="full" *ngFor="let lt of lessonTypes">
-          <mat-label>{{ lt.label }}</mat-label>
-          <mat-select multiple [(ngModel)]="selected[lt.value]">
-            <mat-option *ngFor="let r of rooms" [value]="r.id">{{ roomLabel(r) }}</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <app-search-select class="full" *ngFor="let lt of lessonTypes"
+          [label]="lt.label" [multiple]="true"
+          [options]="compatibleRooms(lt.value)" [displayWith]="roomLabel"
+          searchPlaceholder="Поиск аудитории..."
+          [(ngModel)]="selected[lt.value]"></app-search-select>
       </div>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -280,6 +279,23 @@ export class SubjectRoomBindingsDialogComponent implements OnInit {
   ) {}
 
   roomLabel = (r: Room): string => (r.buildingShortCode ? r.buildingShortCode + '-' : '') + r.number;
+
+  compatibleRooms(lt: LessonType): Room[] {
+    const sel = new Set(this.selected[lt] ?? []);
+    return this.rooms.filter(r => sel.has(r.id) || this.isCompatible(r, lt));
+  }
+
+  private isCompatible(room: Room, lt: LessonType): boolean {
+    if (room.allowedLessonTypes?.length) return room.allowedLessonTypes.includes(lt);
+    switch (room.roomType) {
+      case RoomType.LectureHall:    return lt === LessonType.Lecture || lt === LessonType.Practical;
+      case RoomType.RegularCabinet: return lt === LessonType.Lecture || lt === LessonType.Practical || lt === LessonType.Seminar;
+      case RoomType.Lab:            return lt === LessonType.Lab;
+      case RoomType.ComputerLab:    return lt === LessonType.Practical || lt === LessonType.Lab;
+      case RoomType.SportsHall:     return lt === LessonType.PhysicalEducation;
+      default:                      return true; // Virtual / unknown — don't filter out
+    }
+  }
 
   ngOnInit(): void {
     for (const lt of this.lessonTypes) this.selected[lt.value] = [];
