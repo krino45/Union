@@ -155,7 +155,8 @@ public class LnsOptimizerService : ILnsOptimizerService
                 // Space kicks are mostly cleanup, so they run only every Nth kick.
                 bool spaceKick = opts.SpaceKickEvery <= 1 || (kicks % opts.SpaceKickEvery) == opts.SpaceKickEvery - 1;
                 axisOps = spaceKick ? spaceOps : timeOps;
-                op = PickOperator(axisOps, weights, rng);
+                var untried = axisOps.Where(o => telemetry[o.Name].Attempts == 0).ToList();
+                op = untried.Count > 0 ? untried[rng.Next(untried.Count)] : PickOperator(axisOps, weights, rng);
             }
             int kickTimeout = Math.Max(1, (int)Math.Round(opts.KickTimeoutSeconds * op.Factor));
             int attemptNum = kicks + 1;
@@ -267,8 +268,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             int vIdx = kicks % lahcL;
 
             var candHard = (newBreakdown.HardConflicts, newBreakdown.S10_Overflow, newBreakdown.S11_RoomTypeMismatch, newBreakdown.S12_BlockedPlacement);
-            var curHard = (currentBreakdown.HardConflicts, currentBreakdown.S10_Overflow, currentBreakdown.S11_RoomTypeMismatch, currentBreakdown.S12_BlockedPlacement);
-            int hardCmp = candHard.CompareTo(curHard);
+            int hardCmp = newBreakdown.HardConflicts.CompareTo(currentBreakdown.HardConflicts);
             bool softAccept = candCost <= currentCost || candCost <= lahcHistory[vIdx];
             bool acceptThis = hardCmp < 0 || (hardCmp == 0 && softAccept);
 
@@ -305,7 +305,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             {
                 UpdateLnsWeights(weights, axisOps, op, 0);
                 MarkRejected(telemetry, op.Name);
-                progress?.Report($"{kickPrefix} | отклонено score={candCost} (best {bestScore})");
+                progress?.Report($"{kickPrefix} | отклонено score={candCost} Δ={candCost - currentCost} [{DeltaString(currentBreakdown, newBreakdown)}] (best {bestScore})");
             }
 
             if (currentCost < lahcHistory[vIdx]) lahcHistory[vIdx] = currentCost;
@@ -489,6 +489,27 @@ public class LnsOptimizerService : ILnsOptimizerService
             result.Add(clone);
         }
         return result;
+    }
+
+    private static string DeltaString(ScoreBreakdown cur, ScoreBreakdown cand)
+    {
+        var parts = new List<string>();
+        void Add(string name, int a, int b) { if (a != b) parts.Add($"{name} {(b - a > 0 ? "+" : "")}{b - a}"); }
+        Add("Hard", cur.HardConflicts, cand.HardConflicts);
+        if (cur.S10_Overflow != cand.S10_Overflow)
+            parts.Add($"ovf {cur.S10_Overflow / (long)SchedulerSentinels.OverflowPenalty}->{cand.S10_Overflow / SchedulerSentinels.OverflowPenalty}");
+        Add("S1win", cur.S1_StudentWindows, cand.S1_StudentWindows);
+        Add("S2win", cur.S2_TeacherWindows, cand.S2_TeacherWindows);
+        Add("S3day", cur.S3_ActiveDays, cand.S3_ActiveDays);
+        Add("S4walk", cur.S4_Walking, cand.S4_Walking);
+        Add("S5sp", cur.S5_SanPinOverload, cand.S5_SanPinOverload);
+        Add("S6con", cur.S6_ConsecSameLesson, cand.S6_ConsecSameLesson);
+        Add("S7tod", cur.S7_TimeOfDay, cand.S7_TimeOfDay);
+        Add("S8sat", cur.S8_Saturday, cand.S8_Saturday);
+        Add("S9dept", cur.S9_DeptMismatch, cand.S9_DeptMismatch);
+        Add("S11rt", cur.S11_RoomTypeMismatch, cand.S11_RoomTypeMismatch);
+        Add("S12blk", cur.S12_BlockedPlacement, cand.S12_BlockedPlacement);
+        return parts.Count == 0 ? "no Δ" : string.Join(", ", parts);
     }
 
     private static string Trunc(string s, int max) => s.Length <= max ? s : s[..max] + "…";
