@@ -79,7 +79,7 @@ public class GenerateScheduleCommandHandler : IRequestHandler<GenerateScheduleCo
                 .Select(gid => groupToPlanId[gid])
                 .ToHashSet();
             plansToRun = shared.StudyPlans
-                .Where(sp => !plansWithEntries.Contains(sp.Id))
+                .Where(sp => sp.Groups.Count > 0 && !plansWithEntries.Contains(sp.Id))
                 .OrderByDescending(sp => sp.Groups.Count)
                 .ThenByDescending(sp => sp.Entries.Count)
                 .ToList();

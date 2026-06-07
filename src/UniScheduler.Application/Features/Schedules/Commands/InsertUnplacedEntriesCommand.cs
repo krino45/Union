@@ -75,6 +75,7 @@ public class InsertUnplacedEntriesCommandHandler
             .ToList();
 
         var parallelGuids = new Dictionary<int, Guid>();
+        var placedEntries = new List<ScheduleEntry>();
         int inserted = 0, failed = 0;
 
         foreach (var unit in units)
@@ -86,6 +87,7 @@ public class InsertUnplacedEntriesCommandHandler
                 {
                     _db.ScheduleEntries.Add(e);
                     foreach (var sg in e.StudentGroups) _db.ScheduleEntryStudentGroups.Add(sg);
+                    placedEntries.Add(e);
                 }
                 inserted++;
             }
@@ -95,10 +97,16 @@ public class InsertUnplacedEntriesCommandHandler
             }
         }
 
-        if (inserted > 0 && schedule.Status == ScheduleStatus.Published)
+        if (inserted > 0)
         {
-            schedule.Status = ScheduleStatus.Draft;
-            ScheduleAccessGuard.TransferOwnershipOnDemote(schedule, _user);
+            var combined = existing.Concat(placedEntries).ToList();
+            schedule.BaseScore = ScheduleScoreCalculator.Compute(combined, shared.ScoreCtx);
+
+            if (schedule.Status == ScheduleStatus.Published)
+            {
+                schedule.Status = ScheduleStatus.Draft;
+                ScheduleAccessGuard.TransferOwnershipOnDemote(schedule, _user);
+            }
         }
 
         await _db.SaveChangesAsync(ct);

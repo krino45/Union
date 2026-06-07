@@ -317,9 +317,9 @@ export class ScheduleEditorComponent implements OnInit {
     });
   }
 
-  loadEntries(): void {
+  loadEntries(silent = false): void {
     if (!this.schedule) return;
-    this.loading = true;
+    if (!silent) this.loading = true;
     this.api.getScheduleEntries(this.schedule.id, {
       groupId: this.selectedGroupId ?? undefined,
       teacherId: this.selectedTeacherId ?? undefined,
@@ -366,7 +366,8 @@ export class ScheduleEditorComponent implements OnInit {
       next: (r) => {
         this.inserting = false;
         this.snackBar.open(r.message, 'OK', { duration: 3500 });
-        this.loadEntries();
+        this.loadEntries(true);
+        this.loadAudit();
         this.loadPlanProgress();
       },
       error: (e) => {
@@ -706,7 +707,7 @@ export class ScheduleEditorComponent implements OnInit {
 
   private refreshAfterMutation(): void {
     this.pendingMergeCheck = true;
-    this.loadEntries();
+    this.loadEntries(true);
     this.loadAudit();
     this.loadPlanProgress();
     if (this.schedule) {
