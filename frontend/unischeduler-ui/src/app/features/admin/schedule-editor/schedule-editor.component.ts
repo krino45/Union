@@ -264,6 +264,12 @@ interface AuditResult {
     .unplaced-badge { background: #ffccbc; color: #bf360c; }
     .partial-badge  { background: #fff9c4; color: #f57f17; }
     .ok-badge       { background: #c8e6c9; color: #1b5e20; }
+    @media (max-width: 768px) {
+      .header-right { width: 100%; }
+      .header-filters { flex-wrap: wrap; width: 100%; }
+      .filter-field { min-width: 0; flex: 1 1 140px; }
+      .action-buttons { flex-wrap: wrap; }
+    }
   `]
 })
 export class ScheduleEditorComponent implements OnInit {

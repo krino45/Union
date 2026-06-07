@@ -59,9 +59,9 @@ import { ThemeToggleComponent } from '../../../shared/components/theme-toggle/th
   styles: [`
     .login-container {
       display: flex; justify-content: center; align-items: center;
-      min-height: 100vh; background: #f5f5f5;
+      min-height: 100vh; background: #f5f5f5; padding: 16px;
     }
-    .login-card { width: 360px; padding: 16px; }
+    .login-card { width: 100%; max-width: 360px; padding: 16px; }
     .full-width { width: 100%; margin-bottom: 12px; }
     .error-msg { color: #f44336; font-size: 13px; margin-bottom: 12px; }
     button[type=submit] { height: 44px; }

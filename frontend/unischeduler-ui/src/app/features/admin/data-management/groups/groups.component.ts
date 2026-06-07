@@ -49,31 +49,31 @@ import { DegreeType, RussianDayOfWeek } from '../../../../core/models/enums';
       <table mat-table [dataSource]="filteredGroups" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Группа</th>
-          <td mat-cell *matCellDef="let g">{{ g.name }}</td>
+          <td mat-cell *matCellDef="let g" data-label="Группа">{{ g.name }}</td>
         </ng-container>
         <ng-container matColumnDef="faculty">
           <th mat-header-cell *matHeaderCellDef>Факультет</th>
-          <td mat-cell *matCellDef="let g">{{ g.facultyName }}</td>
+          <td mat-cell *matCellDef="let g" data-label="Факультет">{{ g.facultyName }}</td>
         </ng-container>
         <ng-container matColumnDef="year">
           <th mat-header-cell *matHeaderCellDef>Курс</th>
-          <td mat-cell *matCellDef="let g">{{ g.year }}</td>
+          <td mat-cell *matCellDef="let g" data-label="Курс">{{ g.year }}</td>
         </ng-container>
         <ng-container matColumnDef="degree">
           <th mat-header-cell *matHeaderCellDef>Уровень</th>
-          <td mat-cell *matCellDef="let g">{{ degreeLabel(g.degreeType) }}</td>
+          <td mat-cell *matCellDef="let g" data-label="Уровень">{{ degreeLabel(g.degreeType) }}</td>
         </ng-container>
         <ng-container matColumnDef="specialty">
           <th mat-header-cell *matHeaderCellDef>Специальность / Профиль</th>
-          <td mat-cell *matCellDef="let g">{{ g.specialty }}</td>
+          <td mat-cell *matCellDef="let g" data-label="Специальность / Профиль">{{ g.specialty }}</td>
         </ng-container>
         <ng-container matColumnDef="count">
           <th mat-header-cell *matHeaderCellDef>Студентов</th>
-          <td mat-cell *matCellDef="let g">{{ g.studentCount }}</td>
+          <td mat-cell *matCellDef="let g" data-label="Студентов">{{ g.studentCount }}</td>
         </ng-container>
         <ng-container matColumnDef="blockedDays">
           <th mat-header-cell *matHeaderCellDef>Заблок. дни</th>
-          <td mat-cell *matCellDef="let g">
+          <td mat-cell *matCellDef="let g" data-label="Заблок. дни">
             <span *ngIf="!g.blockedDays?.length" class="no-block">—</span>
             <span *ngFor="let d of g.blockedDays" class="day-chip">{{ dayLabel(d) }}</span>
           </td>

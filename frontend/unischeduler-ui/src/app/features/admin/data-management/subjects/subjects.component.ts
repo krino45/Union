@@ -48,17 +48,17 @@ const CURRENT_YEAR = new Date().getFullYear();
       <table mat-table [dataSource]="filteredSubjects" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Название</th>
-          <td mat-cell *matCellDef="let s">{{ s.name }} <span class="short">({{ s.shortName }})</span>
+          <td mat-cell *matCellDef="let s" data-label="Название">{{ s.name }} <span class="short">({{ s.shortName }})</span>
             <span *ngIf="s.allowsSubgroups" class="sg-badge" matTooltip="Лабораторные по подгруппам">×{{ s.subgroupCount }} подгр.</span>
           </td>
         </ng-container>
         <ng-container matColumnDef="period">
           <th mat-header-cell *matHeaderCellDef>Год / Семестр</th>
-          <td mat-cell *matCellDef="let s">{{ s.academicYear }} / {{ s.term === 'First' ? '1' : '2' }}</td>
+          <td mat-cell *matCellDef="let s" data-label="Год / Семестр">{{ s.academicYear }} / {{ s.term === 'First' ? '1' : '2' }}</td>
         </ng-container>
         <ng-container matColumnDef="department">
           <th mat-header-cell *matHeaderCellDef>Кафедра</th>
-          <td mat-cell *matCellDef="let s">
+          <td mat-cell *matCellDef="let s" data-label="Кафедра">
             <span *ngIf="s.departmentName" class="dept-name">{{ s.departmentName }}</span>
             <span *ngIf="!s.departmentName" class="no-dept">—</span>
           </td>

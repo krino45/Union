@@ -49,19 +49,19 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
       <table mat-table [dataSource]="filteredTeachers" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>ФИО</th>
-          <td mat-cell *matCellDef="let t">{{ t.displayName }}</td>
+          <td mat-cell *matCellDef="let t" data-label="ФИО">{{ t.displayName }}</td>
         </ng-container>
         <ng-container matColumnDef="email">
           <th mat-header-cell *matHeaderCellDef>Email</th>
-          <td mat-cell *matCellDef="let t">{{ t.email }}</td>
+          <td mat-cell *matCellDef="let t" data-label="Email">{{ t.email }}</td>
         </ng-container>
         <ng-container matColumnDef="subjects">
           <th mat-header-cell *matHeaderCellDef>Дисциплин</th>
-          <td mat-cell *matCellDef="let t">{{ t.subjects?.length || 0 }}</td>
+          <td mat-cell *matCellDef="let t" data-label="Дисциплин">{{ t.subjects?.length || 0 }}</td>
         </ng-container>
         <ng-container matColumnDef="load">
           <th mat-header-cell *matHeaderCellDef>Нагрузка</th>
-          <td mat-cell *matCellDef="let t">
+          <td mat-cell *matCellDef="let t" data-label="Нагрузка">
             <a [routerLink]="['/admin/schedule-viewer']" [queryParams]="{teacherId: t.id}"
                class="load-link" [matTooltip]="loadTooltip(t.loadHoursPerWeek)">
               <mat-chip [class]="'load-chip load-' + loadBand(t.loadHoursPerWeek)">

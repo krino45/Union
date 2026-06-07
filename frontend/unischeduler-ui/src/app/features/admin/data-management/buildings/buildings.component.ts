@@ -49,15 +49,15 @@ import { Building } from '../../../../core/models';
       <table mat-table [dataSource]="buildings" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="shortCode">
           <th mat-header-cell *matHeaderCellDef>Код</th>
-          <td mat-cell *matCellDef="let b"><strong>{{ b.shortCode }}</strong></td>
+          <td mat-cell *matCellDef="let b" data-label="Код"><strong>{{ b.shortCode }}</strong></td>
         </ng-container>
         <ng-container matColumnDef="address">
           <th mat-header-cell *matHeaderCellDef>Адрес</th>
-          <td mat-cell *matCellDef="let b">{{ b.address }}</td>
+          <td mat-cell *matCellDef="let b" data-label="Адрес">{{ b.address }}</td>
         </ng-container>
         <ng-container matColumnDef="floors">
           <th mat-header-cell *matHeaderCellDef matTooltip="Этажей наземных / подземных">Этажи</th>
-          <td mat-cell *matCellDef="let b">
+          <td mat-cell *matCellDef="let b" data-label="Этажи">
             {{ b.numberOfFloors }}
             <span *ngIf="b.numberOfBasementFloors > 0" class="basement-badge">+{{ b.numberOfBasementFloors }}п</span>
           </td>

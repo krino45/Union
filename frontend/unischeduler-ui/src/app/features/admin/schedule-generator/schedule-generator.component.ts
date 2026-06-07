@@ -201,6 +201,11 @@ export class StickToBottomDirective implements OnInit, OnDestroy {
     .access-toggle { font-size: 12px; margin-right: 8px; }
     mat-card-actions { display: flex; align-items: center; }
     mat-card-actions .spacer { flex: 1; }
+    @media (max-width: 768px) {
+      mat-card-actions { flex-wrap: wrap; gap: 4px; }
+      mat-card-actions .spacer { flex-basis: 100%; height: 0; }
+      .header-right { flex-wrap: wrap; }
+    }
   `]
 })
 export class ScheduleGeneratorComponent implements OnInit, OnDestroy {

@@ -53,32 +53,32 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
       <table mat-table [dataSource]="filteredRooms" class="full-width">
         <ng-container matColumnDef="number">
           <th mat-header-cell *matHeaderCellDef>Аудитория</th>
-          <td mat-cell *matCellDef="let r">
+          <td mat-cell *matCellDef="let r" data-label="Аудитория">
             {{ r.buildingShortCode ? r.buildingShortCode + '-' : '' }}{{ r.number }}
           </td>
         </ng-container>
         <ng-container matColumnDef="building">
           <th mat-header-cell *matHeaderCellDef>Корпус</th>
-          <td mat-cell *matCellDef="let r">{{ r.buildingShortCode }}</td>
+          <td mat-cell *matCellDef="let r" data-label="Корпус">{{ r.buildingShortCode }}</td>
         </ng-container>
         <ng-container matColumnDef="location">
           <th mat-header-cell *matHeaderCellDef>Этаж</th>
-          <td mat-cell *matCellDef="let r">
+          <td mat-cell *matCellDef="let r" data-label="Этаж">
             <span *ngIf="!r.isOnline">{{ r.floor }} эт.</span>
             <span *ngIf="r.isOnline">—</span>
           </td>
         </ng-container>
         <ng-container matColumnDef="type">
           <th mat-header-cell *matHeaderCellDef>Тип</th>
-          <td mat-cell *matCellDef="let r">{{ r.roomType | roomType }}</td>
+          <td mat-cell *matCellDef="let r" data-label="Тип">{{ r.roomType | roomType }}</td>
         </ng-container>
         <ng-container matColumnDef="capacity">
           <th mat-header-cell *matHeaderCellDef>Вместимость</th>
-          <td mat-cell *matCellDef="let r">{{ r.capacity }}</td>
+          <td mat-cell *matCellDef="let r" data-label="Вместимость">{{ r.capacity }}</td>
         </ng-container>
         <ng-container matColumnDef="features">
           <th mat-header-cell *matHeaderCellDef>Оснащение</th>
-          <td mat-cell *matCellDef="let r">
+          <td mat-cell *matCellDef="let r" data-label="Оснащение">
             <mat-chip *ngIf="r.hasProjector" class="features-chip">Проектор</mat-chip>
             <mat-chip *ngIf="r.hasComputers" class="features-chip">ПК</mat-chip>
             <mat-chip *ngIf="r.hasLab" class="features-chip">Лаборатория</mat-chip>
@@ -87,21 +87,21 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
         </ng-container>
         <ng-container matColumnDef="allowedTypes">
           <th mat-header-cell *matHeaderCellDef>Разрешённые занятия</th>
-          <td mat-cell *matCellDef="let r">
+          <td mat-cell *matCellDef="let r" data-label="Разрешённые занятия">
             <span *ngIf="!r.allowedLessonTypes?.length" class="all-types">Любые</span>
             <mat-chip *ngFor="let lt of r.allowedLessonTypes" class="type-chip">{{ lt | lessonType }}</mat-chip>
           </td>
         </ng-container>
         <ng-container matColumnDef="department">
           <th mat-header-cell *matHeaderCellDef>Кафедра</th>
-          <td mat-cell *matCellDef="let r">
+          <td mat-cell *matCellDef="let r" data-label="Кафедра">
             <span *ngIf="r.departmentName" class="dept-name">{{ r.departmentName }}</span>
             <span *ngIf="!r.departmentName" class="no-dept">—</span>
           </td>
         </ng-container>
         <ng-container matColumnDef="enabled">
           <th mat-header-cell *matHeaderCellDef>Статус</th>
-          <td mat-cell *matCellDef="let r">
+          <td mat-cell *matCellDef="let r" data-label="Статус">
             <mat-chip [class]="r.isEnabled ? 'chip-enabled' : 'chip-disabled'">
               {{ r.isEnabled ? 'Активна' : 'Отключена' }}
             </mat-chip>
@@ -109,7 +109,7 @@ import { SearchSelectComponent } from '../../../../shared/components/search-sele
         </ng-container>
         <ng-container matColumnDef="utilization">
           <th mat-header-cell *matHeaderCellDef>Загруженность</th>
-          <td mat-cell *matCellDef="let r">
+          <td mat-cell *matCellDef="let r" data-label="Загруженность">
             <a [routerLink]="['/admin/schedule-viewer']" [queryParams]="{roomId: r.id}"
                class="util-link" [matTooltip]="utilizationTooltip(r.utilizationPercent)">
               <mat-chip [class]="'util-chip util-' + utilizationBand(r.utilizationPercent)">

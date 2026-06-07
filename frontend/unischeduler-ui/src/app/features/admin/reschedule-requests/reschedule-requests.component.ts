@@ -36,15 +36,15 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
       <table mat-table [dataSource]="requests" class="full-width">
         <ng-container matColumnDef="teacher">
           <th mat-header-cell *matHeaderCellDef>Преподаватель</th>
-          <td mat-cell *matCellDef="let r">{{ r.teacherName }}</td>
+          <td mat-cell *matCellDef="let r" data-label="Преподаватель">{{ r.teacherName }}</td>
         </ng-container>
         <ng-container matColumnDef="entry">
           <th mat-header-cell *matHeaderCellDef>Занятие</th>
-          <td mat-cell *matCellDef="let r">{{ r.originalEntryDescription || '—' }}</td>
+          <td mat-cell *matCellDef="let r" data-label="Занятие">{{ r.originalEntryDescription || '—' }}</td>
         </ng-container>
         <ng-container matColumnDef="proposed">
           <th mat-header-cell *matHeaderCellDef>Предлагает</th>
-          <td mat-cell *matCellDef="let r">
+          <td mat-cell *matCellDef="let r" data-label="Предлагает">
             <span *ngIf="r.proposedDayOfWeek">{{ r.proposedDayOfWeek | dayOfWeek: 'short' }}, пара {{ r.proposedPairNumber }}</span>
             <span *ngIf="r.proposedWeekType"> ({{ r.proposedWeekType | weekType }})</span>
             <span *ngIf="!r.proposedDayOfWeek">Любое свободное</span>
@@ -54,17 +54,17 @@ import { WeekTypePipe } from '../../../shared/pipes/week-type.pipe';
         </ng-container>
         <ng-container matColumnDef="reason">
           <th mat-header-cell *matHeaderCellDef>Причина</th>
-          <td mat-cell *matCellDef="let r">{{ r.reason }}</td>
+          <td mat-cell *matCellDef="let r" data-label="Причина">{{ r.reason }}</td>
         </ng-container>
         <ng-container matColumnDef="status">
           <th mat-header-cell *matHeaderCellDef>Статус</th>
-          <td mat-cell *matCellDef="let r">
+          <td mat-cell *matCellDef="let r" data-label="Статус">
             <mat-chip [class]="statusClass(r.status)">{{ statusLabel(r.status) }}</mat-chip>
           </td>
         </ng-container>
         <ng-container matColumnDef="date">
           <th mat-header-cell *matHeaderCellDef>Дата</th>
-          <td mat-cell *matCellDef="let r">{{ r.createdAt | date:'dd.MM.yyyy' }}</td>
+          <td mat-cell *matCellDef="let r" data-label="Дата">{{ r.createdAt | date:'dd.MM.yyyy' }}</td>
         </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>

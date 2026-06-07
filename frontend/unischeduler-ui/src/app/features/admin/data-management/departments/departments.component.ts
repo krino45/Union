@@ -37,15 +37,15 @@ import { Department, Faculty } from '../../../../core/models';
       <table mat-table [dataSource]="departments" class="full-width" *ngIf="!loading">
         <ng-container matColumnDef="shortCode">
           <th mat-header-cell *matHeaderCellDef>Код</th>
-          <td mat-cell *matCellDef="let d">{{ d.shortCode }}</td>
+          <td mat-cell *matCellDef="let d" data-label="Код">{{ d.shortCode }}</td>
         </ng-container>
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Название</th>
-          <td mat-cell *matCellDef="let d">{{ d.name }}</td>
+          <td mat-cell *matCellDef="let d" data-label="Название">{{ d.name }}</td>
         </ng-container>
         <ng-container matColumnDef="faculty">
           <th mat-header-cell *matHeaderCellDef>Факультет</th>
-          <td mat-cell *matCellDef="let d">{{ d.facultyName }}</td>
+          <td mat-cell *matCellDef="let d" data-label="Факультет">{{ d.facultyName }}</td>
         </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>

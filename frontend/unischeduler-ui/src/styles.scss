@@ -449,3 +449,149 @@ body.dark-mode {
   .err-label      { color: #ef9a9a !important; }
   .warn-label     { color: #ffa726 !important; }
 }
+
+/* mobile */
+
+.mat-mdc-card,
+.grid-wrapper,
+.schedule-table-wrapper {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 600px) {
+  .mat-mdc-dialog-panel.mat-mdc-dialog-panel {
+    max-width: 100vw !important;
+    width: 100vw !important;
+  }
+  .cdk-overlay-pane.mat-mdc-dialog-panel { margin: 0; }
+
+  .mat-mdc-dialog-container {
+    max-height: 100vh;
+    max-height: 100dvh;
+  }
+  .mat-mdc-dialog-container .mat-mdc-dialog-surface {
+    display: flex;
+    flex-direction: column;
+    border-radius: 0;
+    max-height: 100vh;
+    max-height: 100dvh;
+  }
+  .mat-mdc-dialog-container .mat-mdc-dialog-content {
+    max-height: none !important;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mat-mdc-dialog-container .mat-mdc-dialog-actions {
+    flex: 0 0 auto;
+  }
+
+  .mat-mdc-dialog-container .mat-mdc-dialog-content,
+  .mat-mdc-dialog-container .dialog-form,
+  .mat-mdc-dialog-container .settings-form,
+  .mat-mdc-dialog-container .assign-form,
+  .mat-mdc-dialog-container .invite-form,
+  .mat-mdc-dialog-container .form {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+  .mat-mdc-dialog-container .full-table {
+    min-width: 0 !important;
+  }
+  .mat-mdc-dialog-container .mat-mdc-dialog-content > .mat-mdc-table,
+  .mat-mdc-dialog-container .full-table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .mat-mdc-dialog-container .row,
+  .mat-mdc-dialog-container .row-fields,
+  .mat-mdc-dialog-container .session-row,
+  .mat-mdc-dialog-container .subgroup-row {
+    flex-wrap: wrap;
+  }
+  .mat-mdc-dialog-container .row > *,
+  .mat-mdc-dialog-container .row-fields > *,
+  .mat-mdc-dialog-container .session-row > * {
+    min-width: 0;
+    flex: 1 1 120px;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header,
+  .editor-header {
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+    align-items: flex-start !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .mat-mdc-table {
+    min-width: 0 !important;
+    border: 0;
+  }
+  .mat-mdc-table,
+  .mat-mdc-table tbody,
+  .mat-mdc-table tr.mat-mdc-row {
+    display: block;
+    width: 100%;
+  }
+  .mat-mdc-table tr.mat-mdc-header-row {
+    display: none;
+  }
+  .mat-mdc-table tr.mat-mdc-row {
+    height: auto;
+    margin: 0 0 12px;
+    padding: 6px 14px;
+    border: 1px solid var(--mat-table-row-item-outline-color, rgba(0, 0, 0, 0.12));
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+  .mat-mdc-table td.mat-mdc-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 40px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--mat-table-row-item-outline-color, rgba(0, 0, 0, 0.07));
+    text-align: right;
+  }
+  .mat-mdc-table tr.mat-mdc-row td.mat-mdc-cell:last-child {
+    border-bottom: 0;
+  }
+  .mat-mdc-table td.mat-mdc-cell::before {
+    content: attr(data-label);
+    flex: 0 0 38%;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: rgba(0, 0, 0, 0.55);
+    white-space: nowrap;
+  }
+  .mat-mdc-table td.mat-mdc-cell[data-label=""]::before,
+  .mat-mdc-table td.mat-mdc-cell:not([data-label])::before,
+  .mat-mdc-table td.mat-column-actions::before {
+    content: none;
+  }
+  .mat-mdc-table td.mat-column-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+}
+
+body.dark-mode {
+  @media (max-width: 768px) {
+    .mat-mdc-table tr.mat-mdc-row {
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    }
+    .mat-mdc-table td.mat-mdc-cell::before {
+      color: rgba(255, 255, 255, 0.5);
+    }
+  }
+}

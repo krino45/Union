@@ -82,6 +82,10 @@ import { SearchSelectComponent } from '../../../shared/components/search-select.
     .loading, .empty { text-align: center; padding: 48px; color: #888;
       display: flex; flex-direction: column; align-items: center; gap: 8px; }
     .empty mat-icon { font-size: 40px; width: 40px; height: 40px; color: #bdbdbd; }
+    @media (max-width: 768px) {
+      .header-filters { width: 100%; }
+      .schedule-pick, .filter-field { min-width: 0; flex: 1 1 100%; }
+    }
   `]
 })
 export class ScheduleViewerComponent implements OnInit {

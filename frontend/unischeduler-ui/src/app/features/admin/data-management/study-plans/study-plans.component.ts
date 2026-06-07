@@ -246,6 +246,11 @@ import {
     .empty-state { text-align: center; padding: 48px; color: #999; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
     .ppw { display: block; color: #1976d2; font-size: 10px; line-height: 1.2; white-space: nowrap; }
+    @media (max-width: 768px) {
+      .plan-actions { flex-wrap: wrap; }
+      .entries-table, .entries-view-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+      .subj-select { width: 160px; }
+    }
   `]
 })
 export class StudyPlansComponent implements OnInit {

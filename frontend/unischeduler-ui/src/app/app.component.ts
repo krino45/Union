@@ -1,13 +1,15 @@
-import { Component } from '@angular/core';
+import { Component, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
-import { MatSidenavModule } from '@angular/material/sidenav';
+import { MatSidenavModule, MatSidenav } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import { filter } from 'rxjs/operators';
 import { AuthService } from './core/services/auth.service';
 import { ThemeService } from './core/services/theme.service';
 
@@ -20,8 +22,12 @@ import { ThemeService } from './core/services/theme.service';
     MatButtonModule, MatIconModule, MatDividerModule, MatTooltipModule
   ],
   template: `
-    <mat-sidenav-container class="app-container">
-      <mat-sidenav #sidenav mode="side" [opened]="auth.isAuthenticated && !!auth.currentUniversity" class="sidenav">
+    <mat-sidenav-container class="app-container" [class.is-mobile]="isMobile">
+      <mat-sidenav #sidenav
+                   [mode]="isMobile ? 'over' : 'side'"
+                   [opened]="isMobile ? false : (auth.isAuthenticated && !!auth.currentUniversity)"
+                   [disableClose]="!isMobile"
+                   class="sidenav">
         <div class="sidenav-header" [class.clickable]="auth.canSwitchUniversity"
              (click)="auth.canSwitchUniversity ? switchUniversity() : null"
              [matTooltip]="auth.canSwitchUniversity ? 'Сменить университет' : ''">
@@ -129,24 +135,29 @@ import { ThemeService } from './core/services/theme.service';
             Выйти
           </button>
         </div>
-        <div class="resize-handle" (mousedown)="onResizeStart($event)"></div>
+        <div class="resize-handle" *ngIf="!isMobile" (mousedown)="onResizeStart($event)"></div>
       </mat-sidenav>
 
       <mat-sidenav-content>
         <mat-toolbar color="primary" *ngIf="auth.isAuthenticated && auth.currentUniversity">
+          <button mat-icon-button class="hamburger" *ngIf="isMobile" (click)="sidenav.toggle()"
+                  aria-label="Меню">
+            <mat-icon>menu</mat-icon>
+          </button>
           <span class="uni-title">
             {{ auth.currentUniversity?.universityName || 'Юниран' }}
           </span>
           <button mat-button routerLink="/admin/floor-plan" routerLinkActive="active-header-link"
-                  *ngIf="auth.isAdmin && auth.currentUniversity" class="header-floorplan-btn">
+                  *ngIf="auth.isAdmin && auth.currentUniversity" class="header-floorplan-btn"
+                  [matTooltip]="isMobile ? 'Редактор планировок' : ''">
             <mat-icon>map</mat-icon>
-            Редактор планировок
+            <span class="btn-label" *ngIf="!isMobile">Редактор планировок</span>
           </button>
           <button mat-icon-button (click)="theme.toggle()" [matTooltip]="(theme.dark$ | async) ? 'Светлая тема' : 'Тёмная тема'" class="dark-toggle">
             <mat-icon>{{ (theme.dark$ | async) ? 'light_mode' : 'dark_mode' }}</mat-icon>
           </button>
-          <span class="role-badge" *ngIf="auth.isSuperAdmin">Суперадмин</span>
-          <span class="role-badge" *ngIf="!auth.isSuperAdmin && auth.currentUniversity">
+          <span class="role-badge" *ngIf="auth.isSuperAdmin && !isMobile">Суперадмин</span>
+          <span class="role-badge" *ngIf="!auth.isSuperAdmin && auth.currentUniversity && !isMobile">
             {{ auth.isAdmin ? 'Администратор' : 'Преподаватель' }}
           </span>
         </mat-toolbar>
@@ -177,6 +188,7 @@ import { ThemeService } from './core/services/theme.service';
     .header-floorplan-btn { color: #fff; margin-right: 12px; }
     .header-floorplan-btn.active-header-link { background: rgba(255,255,255,0.18); }
     .dark-toggle { color: #fff; margin-right: 8px; }
+    .hamburger { color: #fff; margin-right: 4px; }
     .content { padding: 24px; }
     .resize-handle {
       position: absolute; left: calc(var(--sidenav-w, 240px) - 3px); top: 0;
@@ -187,9 +199,20 @@ import { ThemeService } from './core/services/theme.service';
     .resize-handle:hover { background: rgba(25, 118, 210, 0.25); }
     mat-nav-list a.active { background: rgba(25,118,210,0.12); }
     h3[matSubheader] { color: #888; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
+
+    @media (max-width: 768px) {
+      .app-container { height: 100vh; height: 100dvh; }
+      .sidenav { width: 82vw !important; max-width: 320px; }
+      .content { padding: 12px; }
+      .uni-title { font-size: 14px; }
+    }
   `]
 })
 export class AppComponent {
+  @ViewChild('sidenav') sidenav?: MatSidenav;
+
+  isMobile = false;
+
   private _sidenavWidth: number = (() => {
     const v = parseInt(localStorage.getItem('sidenavWidth') ?? '', 10);
     return isNaN(v) ? 240 : Math.max(160, Math.min(420, v));
@@ -198,9 +221,19 @@ export class AppComponent {
   constructor(
     public auth: AuthService,
     public theme: ThemeService,
-    private router: Router
+    private router: Router,
+    private breakpoints: BreakpointObserver
   ) {
     document.documentElement.style.setProperty('--sidenav-w', `${this._sidenavWidth}px`);
+
+    this.breakpoints.observe('(max-width: 768px)').subscribe(state => {
+      this.isMobile = state.matches;
+    });
+
+    this.router.events.pipe(filter(e => e instanceof NavigationEnd)).subscribe(() => {
+      if (this.isMobile) this.sidenav?.close();
+    });
+
     let wasAuthenticated = this.auth.isAuthenticated;
     this.auth.currentUser$.subscribe(user => {
       const isAuthenticated = !!user;

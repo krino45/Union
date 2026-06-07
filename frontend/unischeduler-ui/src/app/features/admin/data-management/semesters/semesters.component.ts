@@ -34,17 +34,17 @@ import { Semester } from '../../../../core/models';
       <table mat-table [dataSource]="semesters" class="full-width">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Название</th>
-          <td mat-cell *matCellDef="let s">{{ s.name }}</td>
+          <td mat-cell *matCellDef="let s" data-label="Название">{{ s.name }}</td>
         </ng-container>
         <ng-container matColumnDef="dates">
           <th mat-header-cell *matHeaderCellDef>Период</th>
-          <td mat-cell *matCellDef="let s">
+          <td mat-cell *matCellDef="let s" data-label="Период">
             {{ s.startDate | date:'dd.MM.yyyy' }} – {{ s.endDate | date:'dd.MM.yyyy' }}
           </td>
         </ng-container>
         <ng-container matColumnDef="weeks">
           <th mat-header-cell *matHeaderCellDef>Недель</th>
-          <td mat-cell *matCellDef="let s">{{ s.totalWeeks }}</td>
+          <td mat-cell *matCellDef="let s" data-label="Недель">{{ s.totalWeeks }}</td>
         </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>

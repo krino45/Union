@@ -103,6 +103,10 @@ import { PAIR_TIMES, DAYS, PAIRS } from '../../../shared/constants/pairs';
     :host-context(body.dark-mode) mat-icon { color: #ef9a9a; }
     :host-context(body.dark-mode) .legend-swatch-blocked { background: #4a1c1c; }
     :host-context(body.dark-mode) .legend-swatch-free { background: #1b3a28; }
+    @media (max-width: 768px) {
+      .week-selector { flex-wrap: wrap; gap: 8px; }
+      .avail-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+    }
   `]
 })
 export class AvailabilityEditorComponent implements OnInit {

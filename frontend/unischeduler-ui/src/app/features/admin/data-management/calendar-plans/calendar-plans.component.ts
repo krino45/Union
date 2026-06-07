@@ -165,6 +165,14 @@ const WEEK_KINDS: { value: WeekKind; label: string; color: string }[] = [
     .plan-actions { display: flex; gap: 8px; }
     .empty-state { text-align: center; padding: 48px; color: #999; }
     .loading-wrap { display: flex; justify-content: center; padding: 32px; }
+    @media (max-width: 768px) {
+      .weeks-header { flex-wrap: wrap; }
+      .week-row { flex-wrap: wrap; }
+      .date-input { flex: 1 1 auto; width: auto; min-width: 120px; }
+      .kind-select { flex: 1 1 120px; }
+      .note-input { flex: 1 1 100%; }
+      .plan-actions { flex-wrap: wrap; }
+    }
   `]
 })
 export class CalendarPlansComponent implements OnInit {

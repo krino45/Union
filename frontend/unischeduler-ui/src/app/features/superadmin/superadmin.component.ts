@@ -60,15 +60,15 @@ import { ThemeToggleComponent } from '../../shared/components/theme-toggle/theme
           <table mat-table [dataSource]="universities" class="full-table">
             <ng-container matColumnDef="name">
               <th mat-header-cell *matHeaderCellDef>Название</th>
-              <td mat-cell *matCellDef="let u">{{ u.name }}</td>
+              <td mat-cell *matCellDef="let u" data-label="Название">{{ u.name }}</td>
             </ng-container>
             <ng-container matColumnDef="shortName">
               <th mat-header-cell *matHeaderCellDef>Краткое</th>
-              <td mat-cell *matCellDef="let u">{{ u.shortName }}</td>
+              <td mat-cell *matCellDef="let u" data-label="Краткое">{{ u.shortName }}</td>
             </ng-container>
             <ng-container matColumnDef="city">
               <th mat-header-cell *matHeaderCellDef>Город</th>
-              <td mat-cell *matCellDef="let u">{{ u.city || '—' }}</td>
+              <td mat-cell *matCellDef="let u" data-label="Город">{{ u.city || '—' }}</td>
             </ng-container>
             <ng-container matColumnDef="actions">
               <th mat-header-cell *matHeaderCellDef>Действия</th>
@@ -285,11 +285,11 @@ export class UniversityDialogComponent {
       <table mat-table [dataSource]="users" class="full-table">
         <ng-container matColumnDef="username">
           <th mat-header-cell *matHeaderCellDef>Пользователь</th>
-          <td mat-cell *matCellDef="let u">{{ u.username }}</td>
+          <td mat-cell *matCellDef="let u" data-label="Пользователь">{{ u.username }}</td>
         </ng-container>
         <ng-container matColumnDef="role">
           <th mat-header-cell *matHeaderCellDef>Роль</th>
-          <td mat-cell *matCellDef="let u">{{ u.universityRole }}</td>
+          <td mat-cell *matCellDef="let u" data-label="Роль">{{ u.universityRole }}</td>
         </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
@@ -487,15 +487,15 @@ export class UniversityUsersDialogComponent implements OnInit {
       <table mat-table [dataSource]="invitations" class="full-table">
         <ng-container matColumnDef="email">
           <th mat-header-cell *matHeaderCellDef>E-mail</th>
-          <td mat-cell *matCellDef="let i">{{ i.email }}</td>
+          <td mat-cell *matCellDef="let i" data-label="E-mail">{{ i.email }}</td>
         </ng-container>
         <ng-container matColumnDef="role">
           <th mat-header-cell *matHeaderCellDef>Роль</th>
-          <td mat-cell *matCellDef="let i">{{ i.universityRole }}</td>
+          <td mat-cell *matCellDef="let i" data-label="Роль">{{ i.universityRole }}</td>
         </ng-container>
         <ng-container matColumnDef="status">
           <th mat-header-cell *matHeaderCellDef>Статус</th>
-          <td mat-cell *matCellDef="let i">
+          <td mat-cell *matCellDef="let i" data-label="Статус">
             <mat-chip *ngIf="i.isConsumed" color="primary" highlighted>Принято</mat-chip>
             <mat-chip *ngIf="!i.isConsumed && isExpired(i)" color="warn" highlighted>Истекло</mat-chip>
             <mat-chip *ngIf="!i.isConsumed && !isExpired(i)">Ожидает</mat-chip>
@@ -503,7 +503,7 @@ export class UniversityUsersDialogComponent implements OnInit {
         </ng-container>
         <ng-container matColumnDef="expires">
           <th mat-header-cell *matHeaderCellDef>Действует до</th>
-          <td mat-cell *matCellDef="let i">{{ i.expiresAt | date: 'dd.MM.yyyy HH:mm' }}</td>
+          <td mat-cell *matCellDef="let i" data-label="Действует до">{{ i.expiresAt | date: 'dd.MM.yyyy HH:mm' }}</td>
         </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>

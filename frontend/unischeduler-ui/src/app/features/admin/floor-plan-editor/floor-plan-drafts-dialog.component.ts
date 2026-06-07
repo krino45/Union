@@ -42,14 +42,14 @@ interface DialogResult {
       <table mat-table [dataSource]="versions" class="full-table" *ngIf="versions.length > 0">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Название</th>
-          <td mat-cell *matCellDef="let v">
+          <td mat-cell *matCellDef="let v" data-label="Название">
             <mat-chip *ngIf="v.isActive" color="primary" highlighted style="margin-right: 8px">активна</mat-chip>
             {{ v.name }}
           </td>
         </ng-container>
         <ng-container matColumnDef="created">
           <th mat-header-cell *matHeaderCellDef>Создана</th>
-          <td mat-cell *matCellDef="let v">{{ v.createdAt | date: 'dd.MM.yyyy HH:mm' }} {{ v.createdByUsername ? '— ' + v.createdByUsername : '' }}</td>
+          <td mat-cell *matCellDef="let v" data-label="Создана">{{ v.createdAt | date: 'dd.MM.yyyy HH:mm' }} {{ v.createdByUsername ? '— ' + v.createdByUsername : '' }}</td>
         </ng-container>
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef></th>
@@ -71,18 +71,18 @@ interface DialogResult {
       <table mat-table [dataSource]="drafts" class="full-table" *ngIf="drafts.length > 0">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Название</th>
-          <td mat-cell *matCellDef="let d">
+          <td mat-cell *matCellDef="let d" data-label="Название">
             {{ d.name }}
             <mat-chip *ngIf="!d.isMine" style="margin-left: 8px">{{ d.ownerUsername }}</mat-chip>
           </td>
         </ng-container>
         <ng-container matColumnDef="modified">
           <th mat-header-cell *matHeaderCellDef>Изменён</th>
-          <td mat-cell *matCellDef="let d">{{ d.lastModified | date: 'dd.MM.yyyy HH:mm' }}</td>
+          <td mat-cell *matCellDef="let d" data-label="Изменён">{{ d.lastModified | date: 'dd.MM.yyyy HH:mm' }}</td>
         </ng-container>
         <ng-container matColumnDef="access">
           <th mat-header-cell *matHeaderCellDef>Доступ</th>
-          <td mat-cell *matCellDef="let d">
+          <td mat-cell *matCellDef="let d" data-label="Доступ">
             <mat-slide-toggle *ngIf="d.isMine"
                               [checked]="d.isOpenToAdmins"
                               (change)="toggleAccess(d, $event.checked)"

@@ -139,14 +139,15 @@ const NODE_ICONS: Record<string, string> = {
 
         <div class="main-area">
           <div class="canvas-wrapper" #canvasWrapper
-               (mousemove)="onMouseMove($event)"
-               (mouseup)="onMouseUp($event)"
-               (mouseleave)="onMouseLeave($event)">
+               (pointermove)="onPointerMove($event)"
+               (pointerup)="onPointerUp($event)"
+               (pointercancel)="onPointerUp($event)"
+               (pointerleave)="onPointerLeave($event)">
             <svg #svgCanvas width="100%" height="100%"
                  class="floor-canvas" preserveAspectRatio="none"
                  [attr.viewBox]="viewBox"
                  [style.cursor]="cursor"
-                 (mousedown)="onCanvasMouseDown($event)">
+                 (pointerdown)="onCanvasPointerDown($event)">
               <defs>
                 <pattern id="fp-grid" width="50" height="50" patternUnits="userSpaceOnUse">
                   <path d="M50 0L0 0 0 50" fill="none" stroke="#e8e8e8" stroke-width="1"/>
@@ -161,7 +162,6 @@ const NODE_ICONS: Record<string, string> = {
                     x1="-99999" [attr.y1]="snapGuideY" x2="99999" [attr.y2]="snapGuideY"
                     class="snap-guide"/>
 
-              <!-- Edges -->
               <g *ngFor="let e of currentFloorEdges()">
                 <line [attr.x1]="nodeById(e.fromNodeId)?.x??0" [attr.y1]="nodeById(e.fromNodeId)?.y??0"
                       [attr.x2]="nodeById(e.toNodeId)?.x??0" [attr.y2]="nodeById(e.toNodeId)?.y??0"
@@ -169,25 +169,23 @@ const NODE_ICONS: Record<string, string> = {
                       [class.cross-floor]="isEdgeCrossFloor(e)"
                       [class.sel-edge]="selectedEdgeId===e.id"
                       [attr.stroke-width]="edgeStrokeWidth(e)"
-                      (mousedown)="onEdgeMouseDown($event,e)"/>
+                      (pointerdown)="onEdgePointerDown($event,e)"/>
                 <text [attr.x]="edgeMidX(e)" [attr.y]="edgeMidY(e)-8"
                       class="edge-lbl" text-anchor="middle"
                       [attr.font-size]="edgeLabelSize(e)">{{ e.distanceMeters }}м
                 </text>
               </g>
 
-              <!-- Edge preview -->
               <line *ngIf="edgeSource && mousePos"
                     [attr.x1]="nodeById(edgeSource.nodeId)?.x??0" [attr.y1]="nodeById(edgeSource.nodeId)?.y??0"
                     [attr.x2]="mousePos.x" [attr.y2]="mousePos.y"
                     class="edge-preview"/>
 
-              <!-- Nodes -->
               <g *ngFor="let node of currentFloorNodes()"
                  [attr.transform]="'translate('+node.x+','+node.y+')'"
                  class="node-g"
                  [class.sel-node]="node.selected"
-                 (mousedown)="onNodeMouseDown($event,node)">
+                 (pointerdown)="onNodePointerDown($event,node)">
                 <circle [attr.r]="NR"
                         [attr.fill]="nodeColor(node)"
                         [attr.stroke]="node.selected ? '#ff6f00' : (isUnlinkedRoom(node) ? '#f44336' : '#ffffffcc')"
@@ -203,7 +201,6 @@ const NODE_ICONS: Record<string, string> = {
             </svg>
           </div>
 
-          <!-- Props panel -->
           <div class="props-panel">
             <ng-container *ngIf="selectedNodes?.length === 1 && selectedNode as node">
               <div class="panel-title">Узел</div>
@@ -288,7 +285,6 @@ const NODE_ICONS: Record<string, string> = {
                 <span class="prop-val">{{ node.x|number:'1.0-0' }} / {{ node.y|number:'1.0-0' }}</span>
               </div>
 
-              <!-- Entrance → other campuses -->
               <ng-container *ngIf="node.nodeType===FNT.Entrance">
                 <mat-divider style="margin:10px 0 8px"></mat-divider>
                 <div class="prop-lbl">Расстояние до корпусов (м)</div>
@@ -307,7 +303,6 @@ const NODE_ICONS: Record<string, string> = {
                 </ng-template>
               </ng-container>
 
-              <!-- Multi-floor stairs/elevator -->
               <ng-container *ngIf="isMultiFloorType(node)">
                 <mat-divider style="margin:10px 0 8px"></mat-divider>
                 <div class="prop-lbl">Присутствует на этажах</div>
@@ -443,8 +438,8 @@ const NODE_ICONS: Record<string, string> = {
     .editor-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; position: relative; }
     .main-area { flex: 1; display: flex; gap: 12px; overflow: hidden; min-height: 0; }
 
-    .canvas-wrapper { flex: 1; overflow: hidden; position: relative; min-width: 0; }
-    .floor-canvas { width: 100%; height: 100%; display: block; background: #fafafa; border: 1px solid #ddd; border-radius: 4px; user-select: none; }
+    .canvas-wrapper { flex: 1; overflow: hidden; position: relative; min-width: 0; touch-action: none; }
+    .floor-canvas { width: 100%; height: 100%; display: block; background: #fafafa; border: 1px solid #ddd; border-radius: 4px; user-select: none; touch-action: none; }
 
     /* Snap guides */
     .snap-guide { stroke: #00bcd4; stroke-width: 1; stroke-dasharray: 6 3; pointer-events: none; opacity: 0.75; }
@@ -522,6 +517,18 @@ const NODE_ICONS: Record<string, string> = {
     .loading-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.75); display: flex; align-items: center; justify-content: center; z-index: 10; }
     .no-bld { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 64px; color: #9e9e9e; font-size: 16px; }
     .no-bld mat-icon { font-size: 64px; height: 64px; width: 64px; }
+
+    @media (max-width: 768px) {
+      .editor-page { height: auto; overflow: visible; }
+      .page-header { flex-direction: column; align-items: stretch; gap: 8px; }
+      .header-controls { flex-direction: column; align-items: stretch; gap: 8px; }
+      .building-select { min-width: 0; width: 100%; }
+      .scale-field { width: 100%; }
+      .editor-container { overflow: visible; }
+      .main-area { flex: none; flex-direction: column; overflow: visible; }
+      .canvas-wrapper { flex: none; height: 62vh; min-height: 300px; }
+      .props-panel { width: 100%; flex-shrink: 0; overflow: visible; }
+    }
   `]
 })
 export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestroy {
@@ -717,7 +724,11 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   @HostListener('window:blur')
-  onBlur(): void { this.panning = false; this.dragging = null; this.snapGuideX = null; this.snapGuideY = null; }
+  onBlur(): void {
+    this.panning = false; this.dragging = null;
+    this.snapGuideX = null; this.snapGuideY = null;
+    this.activePointers.clear(); this.pinchPrevDist = 0;
+  }
 
   // Building
 
@@ -1049,9 +1060,17 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     return { x, y };
   }
 
-  // Mouse events
+  // Pointer events
 
-  onCanvasMouseDown(event: MouseEvent): void {
+  private activePointers = new Map<number, { x: number; y: number }>();
+  private pinchPrevDist = 0;
+  private pinchPrevMid  = { x: 0, y: 0 };
+
+  private get pinching(): boolean { return this.activePointers.size >= 2; }
+
+  onCanvasPointerDown(event: PointerEvent): void {
+    this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (this.activePointers.size >= 2) { this.beginPinch(); return; }
     if (event.button === 1 || event.altKey) { event.preventDefault(); this.startPan(event); return; }
     if (event.target !== event.currentTarget) return;
     const { x, y } = this.svgPoint(event);
@@ -1060,13 +1079,15 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     else if (this.mode === 'delete') { this.clearSelection(); }
   }
 
-  private startPan(event: MouseEvent): void {
+  private startPan(event: PointerEvent): void {
     this.panning   = true;
     this.panAnchor = { sx: event.clientX, sy: event.clientY, vx: this.vx, vy: this.vy };
   }
 
-  onNodeMouseDown(event: MouseEvent, node: EditorNode): void {
+  onNodePointerDown(event: PointerEvent, node: EditorNode): void {
     event.stopPropagation();
+    this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (this.activePointers.size >= 2) { this.beginPinch(); return; }
     if (event.button === 1 || event.altKey) { this.startPan(event); return; }
     const { x, y } = this.svgPoint(event);
     if (event.ctrlKey && this.mode === 'select') { node.selected = !node.selected; return; }
@@ -1087,13 +1108,20 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     this.dragging = node; this.dragOffset = { x: x - node.x, y: y - node.y }; this.dragMoved = false;
   }
 
-  onEdgeMouseDown(event: MouseEvent, edge: FloorPlanEdge): void {
+  onEdgePointerDown(event: PointerEvent, edge: FloorPlanEdge): void {
     event.stopPropagation();
+    this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (this.activePointers.size >= 2) { this.beginPinch(); return; }
     if (this.mode === 'delete') { this.deleteEdge(edge); return; }
     if (this.mode === 'select') { this.clearSelection(); this.selectedEdgeId = edge.id; }
   }
 
-  onMouseMove(event: MouseEvent): void {
+  onPointerMove(event: PointerEvent): void {
+    if (this.activePointers.has(event.pointerId))
+      this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (this.pinching) { this.updatePinch(); return; }
+
     if (this.panning) {
       const r = this.svgCanvas?.nativeElement?.getBoundingClientRect();
       if (r && r.width > 0) {
@@ -1112,6 +1140,47 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
       this.recomputeEdgesFor(this.dragging.id);
       this.dirty = true; this.dragMoved = true;
     }
+  }
+
+  private beginPinch(): void {
+    this.panning = false;
+    this.dragging = null;
+    const pts = [...this.activePointers.values()];
+    this.pinchPrevDist = this.pointerDist(pts[0], pts[1]);
+    this.pinchPrevMid  = this.pointerMid(pts[0], pts[1]);
+  }
+
+  private updatePinch(): void {
+    const pts = [...this.activePointers.values()];
+    if (pts.length < 2) return;
+    const r = this.svgCanvas?.nativeElement?.getBoundingClientRect();
+    if (!r || r.width === 0) return;
+    const d = this.pointerDist(pts[0], pts[1]);
+    const m = this.pointerMid(pts[0], pts[1]);
+    const sx = m.x - r.left, sy = m.y - r.top;
+    if (this.pinchPrevDist > 0) {
+      const wx = this.vx + (sx / r.width)  * (this.containerW / this.zoomLevel);
+      const wy = this.vy + (sy / r.height) * (this.containerH / this.zoomLevel);
+      const nz = Math.max(0.1, Math.min(20, this.zoomLevel * (d / this.pinchPrevDist)));
+      this.vx = wx - (sx / r.width)  * (this.containerW / nz);
+      this.vy = wy - (sy / r.height) * (this.containerH / nz);
+      this.NR *= this.zoomLevel / nz;
+      this.zoomLevel = nz;
+    }
+    // also pan by however far the midpoint slid
+    const vw = this.containerW / this.zoomLevel;
+    const vh = this.containerH / this.zoomLevel;
+    this.vx -= (m.x - this.pinchPrevMid.x) / r.width  * vw;
+    this.vy -= (m.y - this.pinchPrevMid.y) / r.height * vh;
+    this.pinchPrevDist = d;
+    this.pinchPrevMid  = m;
+  }
+
+  private pointerDist(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+  private pointerMid(a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } {
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   }
 
   //Recompute distanceMeters for every edge that touches `nodeId`, using current scale.
@@ -1145,14 +1214,19 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
     this.recomputeAllEdges();
   }
 
-  onMouseUp(_event: MouseEvent): void {
+  onPointerUp(event: PointerEvent): void {
+    this.activePointers.delete(event.pointerId);
+    if (this.pinchPrevDist !== 0 && this.activePointers.size < 2) {
+      this.pinchPrevDist = 0; this.panning = false; this.dragging = null;
+    }
+    if (this.activePointers.size >= 1) return;
     if (this.panning) { this.panning = false; return; }
     if (this.dragging && this.dragMoved) this.saveDraft();
     this.dragging = null; this.dragMoved = false;
     this.snapGuideX = null; this.snapGuideY = null;
   }
 
-  onMouseLeave(event: MouseEvent): void { this.onMouseUp(event); this.mousePos = null; }
+  onPointerLeave(event: PointerEvent): void { this.onPointerUp(event); this.mousePos = null; }
 
   // Operations
 

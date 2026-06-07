@@ -49,6 +49,9 @@ import { ScheduleTableComponent } from '../../../shared/components/schedule-tabl
     h1 { margin: 0; }
     .schedule-picker { min-width: 220px; }
     .loading, .empty { text-align: center; padding: 48px; color: #888; }
+    @media (max-width: 768px) {
+      .schedule-picker { min-width: 0; width: 100%; }
+    }
   `]
 })
 export class MyScheduleComponent implements OnInit {
