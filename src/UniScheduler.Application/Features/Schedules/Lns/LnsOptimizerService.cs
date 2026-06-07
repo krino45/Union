@@ -173,6 +173,9 @@ public class LnsOptimizerService : ILnsOptimizerService
                 forced = blockedSlotOp;
             else if (currentBreakdown.S10_Overflow > 0)
                 forced = overflowOp;
+            else 
+                forced = null;
+            
             if (forced != null && (forcedCount[forced.Name] = forcedCount.GetValueOrDefault(forced.Name) + 1) > maxForcedTries)
             {
                 stuckOps.Add(forced.Name);
