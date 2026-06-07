@@ -67,6 +67,7 @@ public class OrToolsSchedulerService : ISchedulerService
         var roomDistances = BuildRoomDistanceMap(input.RoomDistances);
         var blocked = BuildBlockedSet(input.TeacherBlocks);
         var blockedRoomSlots = BuildBlockedRoomSlots(input.RoomBlocks);
+        var blockedGroupSlots = BuildBlockedGroupSlots(input.GroupBlocks);
         var groupBlockedDays = groups.ToDictionary(g => g.Id, g => (g.BlockedDays ?? Array.Empty<int>()).ToHashSet());
 
         var groupSizeById = groups.ToDictionary(g => g.Id, g => g.StudentCount);
@@ -205,6 +206,14 @@ public class OrToolsSchedulerService : ISchedulerService
                             ? blocked.Contains((req.TeacherId, d, p, 0)) || blocked.Contains((req.TeacherId, d, p, 1))
                             : blocked.Contains((req.TeacherId, d, p, varWi));
                         if (slotBlocked) continue;
+
+                        if (blockedGroupSlots.Count > 0)
+                        {
+                            bool groupBusy = req.GroupIds.Any(gId => req.WeekType == WeekType.Both
+                                ? blockedGroupSlots.Contains((gId, d, p, 0)) || blockedGroupSlots.Contains((gId, d, p, 1))
+                                : blockedGroupSlots.Contains((gId, d, p, varWi)));
+                            if (groupBusy) continue;
+                        }
                     }
 
                     foreach (int rmi in roomsToTry)
@@ -1679,6 +1688,18 @@ public class OrToolsSchedulerService : ISchedulerService
             // Both-type blocks cover BOTH calendar weeks (the room is occupied every week).
             foreach (int wi in b.WeekType == WeekType.Both ? new[] { 0, 1 } : new[] { VarWeekIndex(b.WeekType) })
                 set.Add((b.RoomId, (int)b.Day - 1, b.PairNumber - 1, wi));
+        }
+        return set;
+    }
+
+    private static HashSet<(Guid, int, int, int)> BuildBlockedGroupSlots(IEnumerable<SchedulerGroupBlock>? blocks)
+    {
+        var set = new HashSet<(Guid, int, int, int)>();
+        if (blocks == null) return set;
+        foreach (var b in blocks)
+        {
+            foreach (int wi in b.WeekType == WeekType.Both ? new[] { 0, 1 } : new[] { VarWeekIndex(b.WeekType) })
+                set.Add((b.StudentGroupId, (int)b.Day - 1, b.PairNumber - 1, wi));
         }
         return set;
     }

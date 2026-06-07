@@ -140,7 +140,9 @@ public record SchedulerInput(
     // Penalty for the overflow sentinel
     long OverflowPenalty = 0,
     // Requirement indices to leave out of the model
-    IReadOnlyList<int>? ExcludedReqs = null
+    IReadOnlyList<int>? ExcludedReqs = null,
+    // Cells a group is already busy in but that aren't in the model for some reason
+    IReadOnlyList<SchedulerGroupBlock>? GroupBlocks = null
 );
 
 // LNS: hard-fix one requirement to a specific placement. WeekType must equal the requirement's
@@ -221,6 +223,8 @@ public record SchedulerRequirement(
 public record SchedulerBuildingDistance(Guid FromId, Guid ToId, int DistanceMeters);
 
 public record SchedulerBlock(Guid TeacherId, RussianDayOfWeek Day, int PairNumber, WeekType WeekType);
+
+public record SchedulerGroupBlock(Guid StudentGroupId, RussianDayOfWeek Day, int PairNumber, WeekType WeekType);
 
 //  Output 
 

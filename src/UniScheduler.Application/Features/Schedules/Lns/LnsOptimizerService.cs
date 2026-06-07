@@ -60,6 +60,17 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         progress?.Report($"LNS: матчинг {entryByRi.Count}/{reqs.Count} (исх. оценка {beforeBreakdown.Total})");
 
+        // Diagnostic: what kind of entries fail to match a rebuilt requirement? If it's dominated by
+        // multi-teacher subjects + language/PE, the cause is builder teacher↔group assignment drift
+        // (BuildRequirementsForPlan vs BuildAllRequirementsStable), not user edits.
+        if (unmatchedEntries.Count > 0)
+        {
+            var byType = unmatchedEntries.GroupBy(e => e.LessonType)
+                .OrderByDescending(g => g.Count())
+                .Select(g => $"{g.Key}={g.Count()}");
+            progress?.Report($"LNS: не сопоставлено {unmatchedEntries.Count} занятий по типу — {string.Join(", ", byType)}");
+        }
+
         // 2. Build parallel-sibling index - destroy sets get expanded to include all siblings.
         var siblingsByRi = BuildParallelSiblings(reqs);
 
@@ -74,6 +85,20 @@ public class LnsOptimizerService : ILnsOptimizerService
             else excludedReqs.Add(ri);
         }
         var excludedSet = excludedReqs.ToHashSet();
+
+        var carryRoomBlocks = new List<SchedulerRoomBlock>();
+        var carryTeacherBlocks = new List<SchedulerBlock>();
+        var carryGroupBlocks = new List<SchedulerGroupBlock>();
+        foreach (var e in unmatchedEntries)
+        {
+            carryTeacherBlocks.Add(new SchedulerBlock(e.TeacherId, e.DayOfWeek, e.PairNumber, e.WeekType));
+            if (e.RoomId is { } rid && rid != SchedulerSentinels.OverflowRoomId)
+                carryRoomBlocks.Add(new SchedulerRoomBlock(rid, e.DayOfWeek, e.PairNumber, e.WeekType));
+            foreach (var sg in e.StudentGroups)
+                carryGroupBlocks.Add(new SchedulerGroupBlock(sg.StudentGroupId, e.DayOfWeek, e.PairNumber, e.WeekType));
+        }
+        if (unmatchedEntries.Count > 0)
+            progress?.Report($"LNS: {unmatchedEntries.Count} занятий вне модели зафиксированы как блокировки (комн./препод./группа)");
 
         // 3. Operator bags - alternated each kick. Time ops retime (rooms locked to own/overflow,
         //    SkipTravel); Space ops reroom (times locked, full distances on, overflow re-homed).
@@ -223,8 +248,8 @@ public class LnsOptimizerService : ILnsOptimizerService
             bool timeAxis = op.Axis == RepairAxis.Time;
             var input = ScheduleBuildContext.BuildSchedulerInputForPlan(
                 scheduleId, shared, reqs,
-                roomBlocks: Array.Empty<SchedulerRoomBlock>(),
-                extraTeacherBlocks: Array.Empty<SchedulerBlock>(),
+                roomBlocks: carryRoomBlocks,
+                extraTeacherBlocks: carryTeacherBlocks,
                 timeoutSeconds: kickTimeout,
                 weights: shared.Weights,
                 pinnings: pins,
@@ -233,7 +258,8 @@ public class LnsOptimizerService : ILnsOptimizerService
                 skipTravel: timeAxis,
                 freedReqs: freed,
                 overflowPenalty: SchedulerSentinels.OverflowPenalty,
-                excludedReqs: excludedReqs);
+                excludedReqs: excludedReqs,
+                groupBlocks: carryGroupBlocks);
 
             SchedulerOutput? output;
             try

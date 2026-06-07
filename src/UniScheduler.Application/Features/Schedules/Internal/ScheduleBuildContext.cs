@@ -134,7 +134,8 @@ public static class ScheduleBuildContext
         bool skipTravel = false,
         IReadOnlyList<SchedulerFreedReq>? freedReqs = null,
         long overflowPenalty = 0,
-        IReadOnlyList<int>? excludedReqs = null)
+        IReadOnlyList<int>? excludedReqs = null,
+        IReadOnlyList<SchedulerGroupBlock>? groupBlocks = null)
     {
         var requirementGroupIds = requirements.SelectMany(r => r.GroupIds).ToHashSet();
         var relevantGroups = shared.Groups.Where(g => requirementGroupIds.Contains(g.Id)).ToList();
@@ -177,7 +178,8 @@ public static class ScheduleBuildContext
             SkipTravel: skipTravel,
             FreedReqs: freedReqs,
             OverflowPenalty: overflowPenalty,
-            ExcludedReqs: excludedReqs
+            ExcludedReqs: excludedReqs,
+            GroupBlocks: groupBlocks
         );
     }
 }
