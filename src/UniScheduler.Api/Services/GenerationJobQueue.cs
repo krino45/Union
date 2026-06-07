@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
+using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.Features.Schedules.Commands;
 
 namespace UniScheduler.Api.Services;
@@ -155,7 +157,17 @@ public class GenerationBackgroundService : BackgroundService
                 try
                 {
                     using var scope = scopeFactory.CreateScope();
-                    var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+                    var sp = scope.ServiceProvider;
+
+                    var db = sp.GetRequiredService<IApplicationDbContext>();
+                    var universityId = await db.Schedules
+                        .Where(s => s.Id == scheduleId)
+                        .Select(s => s.UniversityId)
+                        .FirstOrDefaultAsync(cts.Token);
+                    if (universityId != Guid.Empty)
+                        sp.GetRequiredService<ICurrentUniversityService>().SetUniversity(universityId);
+
+                    var mediator = sp.GetRequiredService<IMediator>();
                     var result = await mediator.Send(new GenerateScheduleCommand(scheduleId, timeout, progress, planIds, polish), cts.Token);
 
                     queue.SetStatus(scheduleId, new GenerationJobStatus(

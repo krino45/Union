@@ -14,6 +14,7 @@ public sealed class FakeCurrentUser : ICurrentUserService
 /// <summary>No-context university stub so global query filters pass everything in handler tests.</summary>
 public sealed class FakeCurrentUniversity : ICurrentUniversityService
 {
-    public Guid? UniversityId { get; init; }
+    public Guid? UniversityId { get; set; }
     public bool HasContext { get; init; }
+    public void SetUniversity(Guid universityId) => UniversityId = universityId;
 }

@@ -28,5 +28,6 @@ public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Applicati
     {
         public Guid? UniversityId => null;
         public bool HasContext => false;
+        public void SetUniversity(Guid universityId) { }
     }
 }

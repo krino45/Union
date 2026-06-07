@@ -4,4 +4,5 @@ public interface ICurrentUniversityService
 {
     Guid? UniversityId { get; }
     bool HasContext { get; }
+    void SetUniversity(Guid universityId);
 }
