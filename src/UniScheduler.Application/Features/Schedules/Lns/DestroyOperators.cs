@@ -33,6 +33,10 @@ internal static class DestroyHelpers
             (list[i], list[j]) = (list[j], list[i]);
         }
     }
+
+    public static bool SameSlot(ScheduleEntry a, ScheduleEntry b)
+        => a.DayOfWeek == b.DayOfWeek && a.PairNumber == b.PairNumber
+           && (a.WeekType == b.WeekType || a.WeekType == WeekType.Both || b.WeekType == WeekType.Both);
 }
 
 // TIME op: free several teachers. Targets S2/S3.
@@ -269,14 +273,10 @@ public sealed class DestroyWrongRoom : IDestroyOperator
             foreach (var roomId in bound)
                 if (byRoom.TryGetValue(roomId, out var occupants))
                     foreach (var (ori, oe) in occupants)
-                        if (ori != ri && SameSlot(oe, e)) result.Add(ori);
+                        if (ori != ri && DestroyHelpers.SameSlot(oe, e)) result.Add(ori);
         }
         return result;
     }
-
-    private static bool SameSlot(ScheduleEntry a, ScheduleEntry b)
-        => a.DayOfWeek == b.DayOfWeek && a.PairNumber == b.PairNumber
-           && (a.WeekType == b.WeekType || a.WeekType == WeekType.Both || b.WeekType == WeekType.Both);
 }
 
 // TIME op: free every class on a day its group cant attend, or on a slot its teacher is unavailable.
@@ -522,7 +522,9 @@ public sealed class DestroyWorstDistanceSpace(SolverWeights weights) : IDestroyO
     }
 }
 
-// SPACE op: destroys overflow rooms. Becomes a forced operator if there's any overflow rooms left from the previous kick.
+// SPACE op: re-homes classes parked in the overflow. Forced while any overflow remains.
+// To free a room for it we evict whoever currently holds one of its bound rooms at its
+// slot - the repair moves that occupant elsewhere and pulls the overflowed class into the vacated room.
 public sealed class DestroyOverflowRooms : IDestroyOperator
 {
     public string Name => "Overflow";
@@ -531,22 +533,36 @@ public sealed class DestroyOverflowRooms : IDestroyOperator
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
         if (ctx.EntryByRi.Count == 0) return [];
-        var lst = new List<int>();
+        var bindings = ctx.ScoreCtx.SubjectRoomBindings;
+
+        var byRoom = new Dictionary<Guid, List<(int ri, ScheduleEntry e)>>();
         foreach (var (ri, e) in ctx.EntryByRi)
         {
-            if (e.RoomId != null && e.RoomId.Value == SchedulerSentinels.OverflowRoomId)
-                lst.Add(ri);
+            if (e.IsOnline || e.RoomId is not { } rid || rid == SchedulerSentinels.OverflowRoomId) continue;
+            if (!byRoom.TryGetValue(rid, out var l)) byRoom[rid] = l = new();
+            l.Add((ri, e));
         }
 
-        DestroyHelpers.Shuffle(lst, ctx.Rng);
+        var overflow = new List<(int ri, ScheduleEntry e)>();
+        foreach (var (ri, e) in ctx.EntryByRi)
+            if (e.RoomId is { } rid && rid == SchedulerSentinels.OverflowRoomId)
+                overflow.Add((ri, e));
+        if (overflow.Count == 0) return [];
+        DestroyHelpers.Shuffle(overflow, ctx.Rng);
 
+        int cap = Math.Max(ctx.TargetDestroySize * 2, 80);
         var result = new HashSet<int>();
-        foreach (var ri in lst)
+        foreach (var (ri, e) in overflow)
         {
             result.Add(ri);
-            if (result.Count >= ctx.TargetDestroySize) break;
+            if (bindings != null &&
+                bindings.TryGetValue((e.SubjectId, e.LessonType), out var bound) && bound.Count > 0)
+                foreach (var roomId in bound)
+                    if (byRoom.TryGetValue(roomId, out var occ))
+                        foreach (var (ori, oe) in occ)
+                            if (ori != ri && DestroyHelpers.SameSlot(oe, e)) result.Add(ori);
+            if (result.Count >= cap) break;
         }
-
         return result;
     }
 }
