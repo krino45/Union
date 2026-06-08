@@ -9,7 +9,6 @@ public static class RoomLessonCompatibility
         (LessonType.Lecture, RoomType.LectureHall) => true,
         (LessonType.Lecture, RoomType.RegularCabinet) => true,
         (LessonType.Practical, RoomType.RegularCabinet) => true,
-        (LessonType.Practical, RoomType.LectureHall) => true,
         (LessonType.Practical, RoomType.ComputerLab) => true,
         (LessonType.Seminar, RoomType.RegularCabinet) => true,
         (LessonType.Lab, RoomType.Lab) => true,

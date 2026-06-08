@@ -273,7 +273,7 @@ public static class ScheduleScoreCalculator
         if (r.RoomType == RoomType.SportsHall) return new HashSet<LessonType> { LessonType.PhysicalEducation };
         var byType = r.RoomType switch
         {
-            RoomType.LectureHall   => new HashSet<LessonType> { LessonType.Lecture, LessonType.Practical },
+            RoomType.LectureHall   => new HashSet<LessonType> { LessonType.Lecture },
             RoomType.RegularCabinet => new HashSet<LessonType> { LessonType.Lecture, LessonType.Practical, LessonType.Seminar },
             RoomType.Lab           => new HashSet<LessonType> { LessonType.Lab },
             RoomType.ComputerLab   => new HashSet<LessonType> { LessonType.Practical, LessonType.Lab },
