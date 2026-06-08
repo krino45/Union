@@ -528,8 +528,7 @@ public sealed class DestroyWorstDistanceSpace(SolverWeights weights) : IDestroyO
 public sealed class DestroyOverflowRooms : IDestroyOperator
 {
     public string Name => "Overflow";
-    public static int ConcecCallCount = 0;
-    public RepairAxis Axis => ConcecCallCount > 3 ? RepairAxis.Full : RepairAxis.Space;
+    public RepairAxis Axis => RepairAxis.Space;
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
@@ -561,7 +560,7 @@ public sealed class DestroyOverflowRooms : IDestroyOperator
                 foreach (var roomId in bound)
                     if (byRoom.TryGetValue(roomId, out var occ))
                         foreach (var (ori, oe) in occ)
-                            if (ori != ri && DestroyHelpers.SameSlot(oe, e)) result.Add(ori);
+                            if (ori != ri && (ctx.Aggressive || DestroyHelpers.SameSlot(oe, e))) result.Add(ori);
             if (result.Count >= cap) break;
         }
         return result;

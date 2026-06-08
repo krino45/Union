@@ -174,6 +174,8 @@ public class LnsOptimizerService : ILnsOptimizerService
         // this many consecutive no-progress overflow kicks we stop forcing it so the rest of the budget
         // isn't burned churning - those classes stay in overflow and surface to the admin.
         const int maxOverflowStaleKicks = 8;
+        // After this many no-progress overflow kicks, escalate to a Full kick with week eviction
+        const int overflowEscalateAt = 3;
         int overflowStaleKicks = 0;
 
         IDestroyOperator? forced = null;
@@ -184,11 +186,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             else if (currentBreakdown.S12_BlockedPlacement > 0 && !stuckOps.Contains(blockedSlotOp.Name))
                 forced = blockedSlotOp;
             else if (currentBreakdown.S10_Overflow > 0 && !stuckOps.Contains(overflowOp.Name))
-            {
-                if (forced is not null && forced.Name == "Overflow") DestroyOverflowRooms.ConcecCallCount++;
-                else DestroyOverflowRooms.ConcecCallCount = 1;
                 forced = overflowOp;
-            }
             else
                 forced = null;
             
@@ -217,9 +215,12 @@ public class LnsOptimizerService : ILnsOptimizerService
                 var untried = axisOps.Where(o => telemetry[o.Name].Attempts == 0).ToList();
                 op = untried.Count > 0 ? untried[rng.Next(untried.Count)] : PickOperator(axisOps, weights, rng);
             }
+            bool overflowEscalate = op.Name == overflowOp.Name && overflowStaleKicks >= overflowEscalateAt;
+            var effAxis = overflowEscalate ? RepairAxis.Full : op.Axis;
+
             int kickTimeout = Math.Max(1, (int)Math.Round(opts.KickTimeoutSeconds * op.Factor));
             int attemptNum = kicks + 1;
-            var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}/{op.Axis} t={kickTimeout}s";
+            var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}/{effAxis} t={kickTimeout}s";
             IProgress<string>? kickProgress = null;
 
             var kickCtx = new LnsKickContext(
@@ -235,7 +236,8 @@ public class LnsOptimizerService : ILnsOptimizerService
                 ScoreCtx: shared.ScoreCtx,
                 CurrentBreakdown: currentBreakdown,
                 TargetDestroySize: opts.TargetDestroySize,
-                MinDestroySize: opts.MinDestroySize, Rng: rng);
+                MinDestroySize: opts.MinDestroySize, Rng: rng,
+                Aggressive: overflowEscalate);
 
             var destroy = op.SelectToDestroy(kickCtx);
             // Expand to parallel siblings to keep H_par satisfiable.
@@ -268,7 +270,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                 bool isOverflow = entry.RoomId.Value == SchedulerSentinels.OverflowRoomId;
                 if (destroy.Contains(ri))
                 {
-                    freed.Add(new SchedulerFreedReq(ri, op.Axis, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
+                    freed.Add(new SchedulerFreedReq(ri, effAxis, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
                     if (!isOverflow) // hinting a req back into the sentinel is pointless
                         hints.Add(new SchedulerHint(ri, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
                 }
@@ -279,7 +281,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             }
 
             // 6. Call solver as repair.  Time kicks SkipTravel
-            bool timeAxis = op.Axis == RepairAxis.Time;
+            bool timeAxis = effAxis == RepairAxis.Time;
             var input = ScheduleBuildContext.BuildSchedulerInputForPlan(
                 scheduleId, shared, reqs,
                 roomBlocks: carryRoomBlocks,
@@ -337,6 +339,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                 {
                     stuckOps.Add(overflowOp.Name);
                     progress?.Report($"{kickPrefix} | переполнение не убирается за {maxOverflowStaleKicks} попыток — оставляем как есть");
+                    progress?.Report(DescribeStuckOverflow(entryByRi.Where(kv => destroy.Contains(kv.Key)).Select(kv => kv.Value).ToList(), shared));
                 }
             }
 
@@ -632,6 +635,34 @@ public class LnsOptimizerService : ILnsOptimizerService
     }
 
     private static string Trunc(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
+    private static string DescribeStuckOverflow(IReadOnlyList<ScheduleEntry> entries, SharedData shared)
+    {
+        var ov = entries.Where(e => e.RoomId == SchedulerSentinels.OverflowRoomId).ToList();
+        if (ov.Count == 0) return "—";
+        var roomCap = shared.Rooms.ToDictionary(r => r.Id, r => r.Capacity);
+        var bindings = shared.ScoreCtx.SubjectRoomBindings;
+        var parts = new List<string>();
+        foreach (var e in ov.Take(6))
+        {
+            shared.SubjectsById.TryGetValue(e.SubjectId, out var subj);
+            string name = subj?.ShortName is { Length: > 0 } sn ? sn : (subj?.Name ?? "?");
+            int headcount = e.StudentGroups.Sum(sg => shared.GroupSizes.GetValueOrDefault(sg.StudentGroupId, 0));
+            string reason;
+            if (bindings != null && bindings.TryGetValue((e.SubjectId, e.LessonType), out var bound) && bound.Count > 0)
+            {
+                int maxCap = bound.Select(rid => roomCap.GetValueOrDefault(rid, 0)).DefaultIfEmpty(0).Max();
+                reason = maxCap < headcount
+                    ? $"закрепл. аудитории малы ({maxCap}<{headcount} чел.)"
+                    : $"{bound.Count} закрепл. аудитори(й) заняты в нужный слот";
+            }
+            else reason = "нет свободной совместимой аудитории";
+            var label = e.SubgroupLabel is { Length: > 0 } sl ? $" {sl}" : "";
+            parts.Add($"{name}/{e.LessonType}{label} [{reason}]");
+        }
+        if (ov.Count > 6) parts.Add($"… ещё {ov.Count - 6}");
+        return string.Join("; ", parts);
+    }
 
     private static void MarkAccepted(Dictionary<string, (int Attempts, int Accepted, int Failed, long Total)> tel,
         string name, long improvement)

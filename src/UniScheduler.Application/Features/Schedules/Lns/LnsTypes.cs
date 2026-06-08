@@ -45,7 +45,8 @@ public record LnsKickContext(
     ScoreBreakdown CurrentBreakdown,
     int TargetDestroySize,
     int MinDestroySize,
-    Random Rng);
+    Random Rng,
+    bool Aggressive = false);
 
 public interface IDestroyOperator
 {
