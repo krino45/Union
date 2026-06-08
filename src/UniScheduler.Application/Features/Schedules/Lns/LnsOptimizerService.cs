@@ -184,7 +184,11 @@ public class LnsOptimizerService : ILnsOptimizerService
             else if (currentBreakdown.S12_BlockedPlacement > 0 && !stuckOps.Contains(blockedSlotOp.Name))
                 forced = blockedSlotOp;
             else if (currentBreakdown.S10_Overflow > 0 && !stuckOps.Contains(overflowOp.Name))
+            {
+                if (forced is not null && forced.Name == "Overflow") DestroyOverflowRooms.ConcecCallCount++;
+                else DestroyOverflowRooms.ConcecCallCount = 1;
                 forced = overflowOp;
+            }
             else
                 forced = null;
             
@@ -332,7 +336,7 @@ public class LnsOptimizerService : ILnsOptimizerService
                 else if (++overflowStaleKicks >= maxOverflowStaleKicks)
                 {
                     stuckOps.Add(overflowOp.Name);
-                    progress?.Report($"{kickPrefix} | переполнение не убирается за {maxOverflowStaleKicks} попыток — оставляю как есть");
+                    progress?.Report($"{kickPrefix} | переполнение не убирается за {maxOverflowStaleKicks} попыток — оставляем как есть");
                 }
             }
 

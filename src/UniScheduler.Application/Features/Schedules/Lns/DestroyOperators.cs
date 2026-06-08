@@ -528,7 +528,8 @@ public sealed class DestroyWorstDistanceSpace(SolverWeights weights) : IDestroyO
 public sealed class DestroyOverflowRooms : IDestroyOperator
 {
     public string Name => "Overflow";
-    public RepairAxis Axis => RepairAxis.Space;
+    public static int ConcecCallCount = 0;
+    public RepairAxis Axis => ConcecCallCount > 3 ? RepairAxis.Full : RepairAxis.Space;
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
