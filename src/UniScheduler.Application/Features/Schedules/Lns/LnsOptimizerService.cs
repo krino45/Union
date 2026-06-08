@@ -137,6 +137,7 @@ public class LnsOptimizerService : ILnsOptimizerService
 
         // Room -> building lookup for the building-local space op (entries only carry RoomId).
         var roomToBuilding = shared.Rooms.ToDictionary(r => r.Id, r => r.BuildingId);
+        var roomCapById = shared.Rooms.ToDictionary(r => r.Id, r => r.Capacity);
         var allOps = timeOps.Concat(spaceOps).Concat(forcedOps).ToArray();
         var weights = allOps.ToDictionary(o => o.Name, _ => 1.0);
         var telemetry = allOps.ToDictionary(o => o.Name, _ => (Attempts: 0, Accepted: 0, Failed: 0, Total: 0L));
@@ -216,11 +217,18 @@ public class LnsOptimizerService : ILnsOptimizerService
                 op = untried.Count > 0 ? untried[rng.Next(untried.Count)] : PickOperator(axisOps, weights, rng);
             }
             bool overflowEscalate = op.Name == overflowOp.Name && overflowStaleKicks >= overflowEscalateAt;
-            var effAxis = overflowEscalate ? RepairAxis.Full : op.Axis;
+            Dictionary<Guid, int>? roomLoad = null;
+            if (overflowEscalate)
+            {
+                roomLoad = new Dictionary<Guid, int>();
+                foreach (var (_, e2) in entryByRi)
+                    if (e2.RoomId is { } rid2 && rid2 != SchedulerSentinels.OverflowRoomId)
+                        roomLoad[rid2] = roomLoad.GetValueOrDefault(rid2) + 1;
+            }
 
             int kickTimeout = Math.Max(1, (int)Math.Round(opts.KickTimeoutSeconds * op.Factor));
             int attemptNum = kicks + 1;
-            var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}/{effAxis} t={kickTimeout}s";
+            var kickPrefix = $"LNS k={attemptNum}/{opts.MaxIterations} op={op.Name}/{op.Axis}{(overflowEscalate ? "+esc" : "")} t={kickTimeout}s";
             IProgress<string>? kickProgress = null;
 
             var kickCtx = new LnsKickContext(
@@ -270,9 +278,19 @@ public class LnsOptimizerService : ILnsOptimizerService
                 bool isOverflow = entry.RoomId.Value == SchedulerSentinels.OverflowRoomId;
                 if (destroy.Contains(ri))
                 {
-                    freed.Add(new SchedulerFreedReq(ri, effAxis, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
-                    if (!isOverflow) // hinting a req back into the sentinel is pointless
-                        hints.Add(new SchedulerHint(ri, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
+                    Guid? rehome = (isOverflow && overflowEscalate)
+                        ? PickRehomeRoom(entry, shared.ScoreCtx, shared.GroupSizes, roomLoad!, roomCapById)
+                        : null;
+                    if (rehome is { } br)
+                    {
+                        freed.Add(new SchedulerFreedReq(ri, RepairAxis.Time, entry.DayOfWeek, entry.PairNumber, entry.WeekType, br));
+                    }
+                    else
+                    {
+                        freed.Add(new SchedulerFreedReq(ri, op.Axis, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
+                        if (!isOverflow) // hinting a req back into the sentinel is pointless
+                            hints.Add(new SchedulerHint(ri, entry.DayOfWeek, entry.PairNumber, entry.WeekType, entry.RoomId.Value));
+                    }
                 }
                 else if (!isOverflow) // never pin to the sentinel (overflow is always in destroy anyway)
                 {
@@ -281,7 +299,7 @@ public class LnsOptimizerService : ILnsOptimizerService
             }
 
             // 6. Call solver as repair.  Time kicks SkipTravel
-            bool timeAxis = effAxis == RepairAxis.Time;
+            bool timeAxis = op.Axis == RepairAxis.Time;
             var input = ScheduleBuildContext.BuildSchedulerInputForPlan(
                 scheduleId, shared, reqs,
                 roomBlocks: carryRoomBlocks,
@@ -635,6 +653,25 @@ public class LnsOptimizerService : ILnsOptimizerService
     }
 
     private static string Trunc(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
+    private static Guid? PickRehomeRoom(
+        ScheduleEntry e, ScoreContext ctx, IReadOnlyDictionary<Guid, int> groupSizes,
+        Dictionary<Guid, int> roomLoad, IReadOnlyDictionary<Guid, int> roomCap)
+    {
+        if (ctx.SubjectRoomBindings == null) return null;
+        if (!ctx.SubjectRoomBindings.TryGetValue((e.SubjectId, e.LessonType), out var bound) || bound.Count == 0)
+            return null;
+        int headcount = e.StudentGroups.Sum(sg => groupSizes.GetValueOrDefault(sg.StudentGroupId, 0));
+        Guid? best = null;
+        int bestLoad = int.MaxValue;
+        foreach (var rid in bound)
+        {
+            if (roomCap.TryGetValue(rid, out var cap) && cap > 0 && headcount > 0 && cap < headcount) continue;
+            int load = roomLoad.GetValueOrDefault(rid, 0);
+            if (load < bestLoad) { bestLoad = load; best = rid; }
+        }
+        return best;
+    }
 
     private static string DescribeStuckOverflow(IReadOnlyList<ScheduleEntry> entries, SharedData shared)
     {
