@@ -26,7 +26,8 @@ public static class ScheduleRequirementBuilder
             shared.SubjectsById.TryGetValue(entry.SubjectId, out var subj);
 
             AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Lecture,
-                entry.LectureHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: true, subjFacultyId);
+                entry.LectureHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: true, subjFacultyId,
+                needsProjector: subj?.RequiresProjector ?? false);
             AddRequirements(requirements, ref idx, entry.SubjectId, LessonType.Practical,
                 entry.PracticalHours, studyWeeks, planGroupIds, shared.TeacherSubjects, merged: false, subjFacultyId);
 
@@ -88,7 +89,8 @@ public static class ScheduleRequirementBuilder
 
                 AddRequirements(reqs, ref idx, entry.SubjectId, LessonType.Lecture,
                     entry.LectureHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
-                    shared.TeacherSubjects, merged: true, subjFacultyId);
+                    shared.TeacherSubjects, merged: true, subjFacultyId,
+                    needsProjector: subj?.RequiresProjector ?? false);
                 AddRequirements(reqs, ref idx, entry.SubjectId, LessonType.Practical,
                     entry.PracticalHours, StudyPlanQ.StudyWeeksFromPlan(plan.CalendarPlan), sortedGroupIds,
                     shared.TeacherSubjects, merged: false, subjFacultyId);
@@ -141,7 +143,7 @@ public static class ScheduleRequirementBuilder
         List<SchedulerRequirement> requirements, ref int idx,
         Guid subjectId, LessonType lt, double totalHours, int studyWeeks,
         List<Guid> planGroupIds, List<TeacherSubject> teacherSubjects,
-        bool merged, Guid? subjectFacultyId = null)
+        bool merged, Guid? subjectFacultyId = null, bool needsProjector = false)
     {
         if (totalHours <= 0) return;
         var teachers = teacherSubjects
@@ -157,7 +159,7 @@ public static class ScheduleRequirementBuilder
                 for (int i = 0; i < teachers.Count; i++)
                 {
                     if (chunks[i].Count == 0) continue;
-                    requirements.Add(new SchedulerRequirement(idx++, chunks[i], subjectId, lt, teachers[i], wt, false, lt == LessonType.Lecture, false, subjectFacultyId));
+                    requirements.Add(new SchedulerRequirement(idx++, chunks[i], subjectId, lt, teachers[i], wt, false, needsProjector, false, subjectFacultyId));
                 }
             }
             else

@@ -11,5 +11,6 @@ public record SubjectDto(
     Guid? DepartmentId,
     string? DepartmentName,
     bool AllowsSubgroups = false,
-    int SubgroupCount = 2
+    int SubgroupCount = 2,
+    bool RequiresProjector = false
 );

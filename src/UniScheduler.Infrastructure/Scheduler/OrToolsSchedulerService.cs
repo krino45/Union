@@ -1726,27 +1726,12 @@ public class OrToolsSchedulerService : ISchedulerService
         if (req.AllowedRoomIds is { Count: > 0 } boundRooms && !boundRooms.Contains(room.Id)) return false;
         if (req.NeedsProjector && !room.HasProjector) return false;
         if (req.NeedsComputers && !room.HasComputers) return false;
-        if (room.AllowedLessonTypes is { Count: > 0 } allowed && !allowed.Contains(req.LessonType)) return false;
-
         if (room.Capacity < headcount) return false;
 
-        // An explicit AllowedLessonTypes is the admin's deliberate opt-in and overrides the
-        // RoomType heuristic below (we already returned false above if it excluded this type).
-        if (room.AllowedLessonTypes is { Count: > 0 }) return true;
-
-        return (req.LessonType, room.RoomType) switch
-        {
-            (LessonType.Lecture, RoomType.LectureHall) => true,
-            (LessonType.Lecture, RoomType.RegularCabinet) => true,
-            (LessonType.Practical, RoomType.RegularCabinet) => true,
-            (LessonType.Practical, RoomType.LectureHall) => true,
-            (LessonType.Practical, RoomType.ComputerLab) => true,
-            (LessonType.Seminar, RoomType.RegularCabinet) => true,
-            // Lab classes hard-bind to lab-type rooms; a computer lab is an acceptable lab venue too.
-            (LessonType.Lab, RoomType.Lab) => true,
-            (LessonType.Lab, RoomType.ComputerLab) => true,
-            _ => false
-        };
+        // RoomType is the primary placement gate.
+        if (RoomLessonCompatibility.RoomTypePermits(req.LessonType, room.RoomType)) return true;
+        if (room.AllowedLessonTypes is { Count: > 0 } allowed && allowed.Contains(req.LessonType)) return true;
+        return false;
     }
 
     private static long GetLessonTypePenalty(LessonType lt, SolverWeights w) => lt switch

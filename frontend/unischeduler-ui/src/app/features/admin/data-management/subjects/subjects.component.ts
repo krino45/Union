@@ -187,6 +187,9 @@ export class SubjectsComponent implements OnInit {
           [options]="data.departments" [displayWith]="departmentLabel"
           [allowNull]="true" nullLabel="— Без кафедры —"></app-search-select>
         <div class="subgroup-row">
+          <mat-checkbox formControlName="requiresProjector">Лекциям нужен проектор</mat-checkbox>
+        </div>
+        <div class="subgroup-row">
           <mat-checkbox formControlName="allowsSubgroups">Лабораторные по подгруппам</mat-checkbox>
           <mat-form-field appearance="outline" class="sub-count" *ngIf="form.value.allowsSubgroups">
             <mat-label>Подгрупп</mat-label>
@@ -221,7 +224,8 @@ export class SubjectDialogComponent {
       term: [s?.term ?? Term.First, Validators.required],
       departmentId: [s?.departmentId ?? null],
       allowsSubgroups: [s?.allowsSubgroups ?? false],
-      subgroupCount: [s?.subgroupCount ?? 2, [Validators.min(2), Validators.max(6)]]
+      subgroupCount: [s?.subgroupCount ?? 2, [Validators.min(2), Validators.max(6)]],
+      requiresProjector: [s?.requiresProjector ?? false]
     });
   }
 

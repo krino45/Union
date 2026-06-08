@@ -9,7 +9,10 @@ using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Application.Features.Schedules.Commands;
 
-public record BackfillTargets(bool Rooms = true, bool Teachers = true, bool StudyPlans = true, bool RoomBindings = true);
+public record BackfillTargets(
+    bool Rooms = true, bool Teachers = true, bool StudyPlans = true, bool RoomBindings = true,
+    bool GroupSizes = true, bool RoomTypes = true, bool SubjectProjector = true,
+    int PresetGroupSize = 25);
 
 public record RoomBackfillChange(Guid RoomId, string RoomLabel, List<LessonType> AddedTypes);
 public record TeacherSubjectAddDto(Guid SubjectId, string SubjectName, LessonType LessonType);
@@ -17,14 +20,24 @@ public record TeacherBackfillChange(Guid TeacherId, string TeacherName, List<Tea
 public record StudyPlanHourChangeDto(Guid SubjectId, string SubjectName, string Field, string FieldLabel, double OldHours, double NewHours);
 public record StudyPlanBackfillChange(Guid StudyPlanId, string PlanName, List<StudyPlanHourChangeDto> Changes);
 public record SubjectRoomBindingChange(Guid SubjectId, string SubjectName, LessonType LessonType, List<string> RoomLabels);
+public record GroupSizeChange(Guid GroupId, string GroupName, int OldSize, int NewSize);
+public record RoomCapacityChange(Guid RoomId, string RoomLabel, int OldCapacity, int NewCapacity);
+public record RoomTypeChange(Guid RoomId, string RoomLabel, RoomType OldType, RoomType NewType);
+public record SubjectProjectorChange(Guid SubjectId, string SubjectName);
 
 public record BackfillPreviewDto(
     List<RoomBackfillChange> Rooms,
     List<TeacherBackfillChange> Teachers,
     List<StudyPlanBackfillChange> StudyPlans,
-    List<SubjectRoomBindingChange> RoomBindings);
+    List<SubjectRoomBindingChange> RoomBindings,
+    List<GroupSizeChange> GroupSizes,
+    List<RoomCapacityChange> RoomCapacities,
+    List<RoomTypeChange> RoomTypes,
+    List<SubjectProjectorChange> SubjectProjectors);
 
-public record BackfillResultDto(int RoomsUpdated, int TeacherLinksAdded, int StudyPlanFieldsUpdated, int RoomBindingsAdded);
+public record BackfillResultDto(
+    int RoomsUpdated, int TeacherLinksAdded, int StudyPlanFieldsUpdated, int RoomBindingsAdded,
+    int GroupSizesUpdated, int RoomCapacitiesUpdated, int RoomTypesUpdated, int SubjectProjectorsUpdated);
 
 public record PreviewBackfillQuery(Guid ScheduleId, BackfillTargets Targets) : IRequest<BackfillPreviewDto>;
 
@@ -74,6 +87,98 @@ internal static class BackfillEngine
         var planApply = new List<(StudyPlan Plan, List<StudyPlanHourChangeDto> Changes)>();
         var bindingChanges = new List<SubjectRoomBindingChange>();
         var bindingApply = new List<(Guid SubjectId, LessonType Lt, List<Guid> AddRoomIds)>();
+        var groupSizeChanges = new List<GroupSizeChange>();
+        var groupSizeApply = new List<(StudentGroup Group, int NewSize)>();
+        var roomCapChanges = new List<RoomCapacityChange>();
+        var roomCapApply = new List<(Room Room, int NewCap)>();
+        var roomTypeChanges = new List<RoomTypeChange>();
+        var roomTypeApply = new List<(Room Room, RoomType NewType)>();
+        var projectorChanges = new List<SubjectProjectorChange>();
+        var projectorApply = new List<Subject>();
+
+        int presetSize = targets.PresetGroupSize > 0 ? targets.PresetGroupSize : 25;
+
+        var referencedRoomIds = entries.Where(e => e.RoomId.HasValue).Select(e => e.RoomId!.Value).Distinct().ToList();
+        var roomsById = (await db.Rooms.Include(r => r.Building)
+                .Where(r => referencedRoomIds.Contains(r.Id)).ToListAsync(ct))
+            .ToDictionary(r => r.Id);
+        static string RoomLabel(Room r) => (string.IsNullOrEmpty(r.Building?.ShortCode) ? "" : r.Building!.ShortCode + "-") + r.Number;
+
+        if (targets.GroupSizes)
+        {
+            var groupIds = entries.SelectMany(e => e.StudentGroups.Select(sg => sg.StudentGroupId)).Distinct().ToList();
+            var groupsById = (await db.StudentGroups.Where(g => groupIds.Contains(g.Id)).ToListAsync(ct))
+                .ToDictionary(g => g.Id);
+
+            foreach (var g in groupsById.Values)
+                if (g.StudentCount <= 0)
+                {
+                    groupSizeChanges.Add(new GroupSizeChange(g.Id, g.Name, g.StudentCount, presetSize));
+                    groupSizeApply.Add((g, presetSize));
+                }
+
+            var effSize = groupsById.Values.ToDictionary(g => g.Id, g => g.StudentCount > 0 ? g.StudentCount : presetSize);
+
+            foreach (var grp in entries.Where(e => e.RoomId.HasValue && roomsById.ContainsKey(e.RoomId!.Value))
+                                       .GroupBy(e => e.RoomId!.Value))
+            {
+                var room = roomsById[grp.Key];
+                if (room.IsDistributed) continue;
+                int maxHead = grp.Max(e => e.StudentGroups.Sum(sg => effSize.GetValueOrDefault(sg.StudentGroupId, presetSize)));
+                int newCap = Math.Max(maxHead, presetSize);
+                if (newCap > room.Capacity)
+                {
+                    roomCapChanges.Add(new RoomCapacityChange(room.Id, RoomLabel(room), room.Capacity, newCap));
+                    roomCapApply.Add((room, newCap));
+                }
+            }
+        }
+
+        if (targets.RoomTypes)
+        {
+            foreach (var grp in entries.Where(e => e.RoomId.HasValue && roomsById.ContainsKey(e.RoomId!.Value))
+                                       .GroupBy(e => e.RoomId!.Value))
+            {
+                var room = roomsById[grp.Key];
+                if (room.IsDistributed) continue;
+                if (room.RoomType is RoomType.Lab or RoomType.ComputerLab or RoomType.SportsHall) continue;
+
+                var top = grp.GroupBy(e => e.LessonType)
+                    .OrderByDescending(x => x.Count()).ThenBy(x => x.Key)
+                    .First().Key;
+                var mapped = MapRoomType(top);
+                if (mapped is { } rt && rt != room.RoomType)
+                {
+                    roomTypeChanges.Add(new RoomTypeChange(room.Id, RoomLabel(room), room.RoomType, rt));
+                    roomTypeApply.Add((room, rt));
+                }
+            }
+        }
+
+        if (targets.SubjectProjector)
+        {
+            var lectureEntries = entries.Where(e => e.LessonType == LessonType.Lecture && !e.IsOnline
+                    && e.RoomId.HasValue && roomsById.ContainsKey(e.RoomId!.Value))
+                .ToList();
+            if (lectureEntries.Count > 0)
+            {
+                var subjIds = lectureEntries.Select(e => e.SubjectId).Distinct().ToList();
+                var subjectsById = (await db.Subjects.Where(s => subjIds.Contains(s.Id)).ToListAsync(ct))
+                    .ToDictionary(s => s.Id);
+
+                foreach (var grp in lectureEntries.GroupBy(e => e.SubjectId))
+                {
+                    if (!subjectsById.TryGetValue(grp.Key, out var subj) || subj.RequiresProjector) continue;
+                    int total = grp.Count();
+                    int withProjector = grp.Count(e => roomsById[e.RoomId!.Value].HasProjector);
+                    if (total > 0 && withProjector * 2 >= total) // a majority used projector-equipped rooms
+                    {
+                        projectorChanges.Add(new SubjectProjectorChange(subj.Id, subjectNames.GetValueOrDefault(subj.Id, "?")));
+                        projectorApply.Add(subj);
+                    }
+                }
+            }
+        }
 
         //  Rooms - observed lesson types per room
         if (targets.Rooms)
@@ -229,6 +334,7 @@ internal static class BackfillEngine
         }
 
         int roomsUpdated = 0, teacherLinks = 0, planFields = 0, bindingsAdded = 0;
+        int groupSizesUpdated = 0, roomCapsUpdated = 0, roomTypesUpdated = 0, projectorsUpdated = 0;
         if (apply)
         {
             foreach (var (room, add) in roomApply)
@@ -236,6 +342,10 @@ internal static class BackfillEngine
                 room.AllowedLessonTypes = room.AllowedLessonTypes.Concat(add).Distinct().ToList();
                 roomsUpdated++;
             }
+            foreach (var (group, size) in groupSizeApply) { group.StudentCount = size; groupSizesUpdated++; }
+            foreach (var (room, cap) in roomCapApply) { room.Capacity = cap; roomCapsUpdated++; }
+            foreach (var (room, rt) in roomTypeApply) { room.RoomType = rt; roomTypesUpdated++; }
+            foreach (var subj in projectorApply) { subj.RequiresProjector = true; projectorsUpdated++; }
             foreach (var (subjId, lt, addRoomIds) in bindingApply)
                 foreach (var rid in addRoomIds)
                 {
@@ -267,9 +377,22 @@ internal static class BackfillEngine
         }
 
         return (
-            new BackfillPreviewDto(roomChanges, teacherChanges, planChanges, bindingChanges),
-            new BackfillResultDto(roomsUpdated, teacherLinks, planFields, bindingsAdded));
+            new BackfillPreviewDto(roomChanges, teacherChanges, planChanges, bindingChanges,
+                groupSizeChanges, roomCapChanges, roomTypeChanges, projectorChanges),
+            new BackfillResultDto(roomsUpdated, teacherLinks, planFields, bindingsAdded,
+                groupSizesUpdated, roomCapsUpdated, roomTypesUpdated, projectorsUpdated));
     }
+
+    // Most-common lesson type -> the room type it implies. Lab/Language map to null (skipped): labs
+    // are equipment-defined and language streams use the distributed sentinel.
+    private static RoomType? MapRoomType(LessonType lt) => lt switch
+    {
+        LessonType.Lecture           => RoomType.LectureHall,
+        LessonType.Practical         => RoomType.RegularCabinet,
+        LessonType.Seminar           => RoomType.RegularCabinet,
+        LessonType.PhysicalEducation => RoomType.SportsHall,
+        _                            => null
+    };
 
     private static (string Field, string Label) FieldFor(LessonType lt) => lt switch
     {

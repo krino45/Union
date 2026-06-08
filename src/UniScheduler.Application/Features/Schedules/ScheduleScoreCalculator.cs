@@ -271,8 +271,7 @@ public static class ScheduleScoreCalculator
         if (r.IsOnline) return AllLessonTypes;
         if (r.IsDistributed) return new HashSet<LessonType> { LessonType.Language };
         if (r.RoomType == RoomType.SportsHall) return new HashSet<LessonType> { LessonType.PhysicalEducation };
-        if (r.AllowedLessonTypes is { Count: > 0 } a) return a.ToHashSet();     // admin opt-in overrides the heuristic
-        return r.RoomType switch
+        var byType = r.RoomType switch
         {
             RoomType.LectureHall   => new HashSet<LessonType> { LessonType.Lecture, LessonType.Practical },
             RoomType.RegularCabinet => new HashSet<LessonType> { LessonType.Lecture, LessonType.Practical, LessonType.Seminar },
@@ -280,6 +279,13 @@ public static class ScheduleScoreCalculator
             RoomType.ComputerLab   => new HashSet<LessonType> { LessonType.Practical, LessonType.Lab },
             _                      => AllLessonTypes // Virtual / unknown - dont flag
         };
+        if (r.AllowedLessonTypes is { Count: > 0 } a)
+        {
+            var union = new HashSet<LessonType>(byType);
+            union.UnionWith(a);
+            return union;
+        }
+        return byType;
     }
 
     public static int Score_HardConflicts(IReadOnlyList<ScheduleEntry> entries, ScoreContext? ctx = null)

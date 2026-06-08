@@ -9,9 +9,12 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatExpansionModule } from '@angular/material/expansion';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { ApiService } from '../../../core/services/api.service';
 import { BackfillPreview, BackfillTargets } from '../../../core/models';
 import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
+import { RoomTypePipe } from '../../../shared/pipes/room-type.pipe';
 
 @Component({
   selector: 'app-backfill-dialog',
@@ -19,7 +22,7 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
   imports: [
     CommonModule, FormsModule, MatButtonModule, MatIconModule, MatCheckboxModule,
     MatDialogModule, MatProgressSpinnerModule, MatChipsModule, MatSnackBarModule,
-    MatExpansionModule, LessonTypePipe
+    MatExpansionModule, MatFormFieldModule, MatInputModule, LessonTypePipe, RoomTypePipe
   ],
   template: `
     <h2 mat-dialog-title>Заполнить настройки из расписания</h2>
@@ -35,6 +38,15 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
         <mat-checkbox [(ngModel)]="targets.teachers">Дисциплины преподавателей</mat-checkbox>
         <mat-checkbox [(ngModel)]="targets.studyPlans">Часы учебных планов</mat-checkbox>
         <mat-checkbox [(ngModel)]="targets.roomBindings">Закрепление аудиторий за лабораторными</mat-checkbox>
+        <mat-checkbox [(ngModel)]="targets.roomTypes">Тип аудитории (по частоте занятий)</mat-checkbox>
+        <mat-checkbox [(ngModel)]="targets.subjectProjector">Проектор для лекционных дисциплин</mat-checkbox>
+        <div class="group-size-row">
+          <mat-checkbox [(ngModel)]="targets.groupSizes">Размеры групп и вместимость аудиторий</mat-checkbox>
+          <mat-form-field appearance="outline" class="preset-field" *ngIf="targets.groupSizes">
+            <mat-label>Размер группы</mat-label>
+            <input matInput type="number" min="1" [(ngModel)]="targets.presetGroupSize">
+          </mat-form-field>
+        </div>
       </div>
 
       <div class="note" *ngIf="targets.rooms">
@@ -88,6 +100,47 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
             </div>
           </mat-expansion-panel>
 
+          <mat-expansion-panel *ngIf="preview.subjectProjectors.length" expanded>
+            <mat-expansion-panel-header>
+              <mat-panel-title>Проектор для дисциплин ({{ preview.subjectProjectors.length }})</mat-panel-title>
+            </mat-expansion-panel-header>
+            <div class="change-row" *ngFor="let s of preview.subjectProjectors">
+              <span class="entity">{{ s.subjectName }}</span>
+              <span class="adds"><mat-chip class="add-chip">требуется проектор</mat-chip></span>
+            </div>
+          </mat-expansion-panel>
+
+          <mat-expansion-panel *ngIf="preview.roomTypes.length" expanded>
+            <mat-expansion-panel-header>
+              <mat-panel-title>Типы аудиторий ({{ preview.roomTypes.length }})</mat-panel-title>
+            </mat-expansion-panel-header>
+            <div class="change-row" *ngFor="let r of preview.roomTypes">
+              <span class="entity">{{ r.roomLabel }}</span>
+              <span class="adds">
+                <mat-chip class="add-chip">{{ r.oldType | roomType }} → {{ r.newType | roomType }}</mat-chip>
+              </span>
+            </div>
+          </mat-expansion-panel>
+
+          <mat-expansion-panel *ngIf="preview.groupSizes.length || preview.roomCapacities.length" expanded>
+            <mat-expansion-panel-header>
+              <mat-panel-title>Размеры групп / вместимость ({{ preview.groupSizes.length + preview.roomCapacities.length }})</mat-panel-title>
+            </mat-expansion-panel-header>
+            <div class="change-row" *ngFor="let g of preview.groupSizes">
+              <span class="entity">Группа {{ g.groupName }}</span>
+              <span class="adds"><mat-chip class="add-chip">{{ g.newSize }} студ.</mat-chip></span>
+            </div>
+            <div class="change-row" *ngFor="let r of preview.roomCapacities">
+              <span class="entity">{{ r.roomLabel }}</span>
+              <span class="adds">
+                <mat-chip class="add-chip">
+                  <span class="old-h" *ngIf="r.oldCapacity > 0">{{ r.oldCapacity }} →</span>
+                  {{ r.newCapacity }} мест
+                </mat-chip>
+              </span>
+            </div>
+          </mat-expansion-panel>
+
           <mat-expansion-panel *ngIf="preview.studyPlans.length" expanded>
             <mat-expansion-panel-header>
               <mat-panel-title>Учебные планы ({{ preview.studyPlans.length }})</mat-panel-title>
@@ -124,6 +177,9 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
     .hint { color: #666; font-size: 13px; margin: 0 0 12px; }
     .old-h { color: #b71c1c; text-decoration: line-through; opacity: 0.7; margin-right: 2px; }
     .targets { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .group-size-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .preset-field { width: 130px; }
+    .preset-field ::ng-deep .mat-mdc-form-field-subscript-wrapper { display: none; }
     .note { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: #1565c0;
       background: #e3f2fd; border-radius: 4px; padding: 6px 8px; margin-bottom: 12px; }
     .note-icon { font-size: 16px; height: 16px; width: 16px; flex-shrink: 0; margin-top: 1px; }
@@ -141,7 +197,10 @@ import { LessonTypePipe } from '../../../shared/pipes/lesson-type.pipe';
   `]
 })
 export class BackfillDialogComponent {
-  targets: BackfillTargets = { rooms: true, teachers: true, studyPlans: true, roomBindings: true };
+  targets: BackfillTargets = {
+    rooms: true, teachers: true, studyPlans: true, roomBindings: true,
+    groupSizes: true, roomTypes: true, subjectProjector: true, presetGroupSize: 25
+  };
   preview: BackfillPreview | null = null;
   loading = false;
 
@@ -153,15 +212,21 @@ export class BackfillDialogComponent {
   ) {}
 
   anyTarget(): boolean {
-    return this.targets.rooms || this.targets.teachers || this.targets.studyPlans || this.targets.roomBindings;
+    const t = this.targets;
+    return t.rooms || t.teachers || t.studyPlans || t.roomBindings || t.groupSizes || t.roomTypes || t.subjectProjector;
   }
 
   isEmpty(): boolean {
-    return !!this.preview
-      && this.preview.rooms.length === 0
-      && this.preview.teachers.length === 0
-      && this.preview.studyPlans.length === 0
-      && this.preview.roomBindings.length === 0;
+    const p = this.preview;
+    return !!p
+      && p.rooms.length === 0
+      && p.teachers.length === 0
+      && p.studyPlans.length === 0
+      && p.roomBindings.length === 0
+      && p.groupSizes.length === 0
+      && p.roomCapacities.length === 0
+      && p.roomTypes.length === 0
+      && p.subjectProjectors.length === 0;
   }
 
   loadPreview(): void {
@@ -179,8 +244,9 @@ export class BackfillDialogComponent {
       next: r => {
         this.loading = false;
         this.snackBar.open(
-          `Аудитории: ${r.roomsUpdated}, дисциплины: ${r.teacherLinksAdded}, часы планов: ${r.studyPlanFieldsUpdated}, закрепл. аудиторий: ${r.roomBindingsAdded}`,
-          'OK', { duration: 5000 });
+          `Аудитории: ${r.roomsUpdated}, типы: ${r.roomTypesUpdated}, вместимость: ${r.roomCapacitiesUpdated}, группы: ${r.groupSizesUpdated}, ` +
+          `проектор: ${r.subjectProjectorsUpdated}, дисциплины: ${r.teacherLinksAdded}, часы планов: ${r.studyPlanFieldsUpdated}, закрепл.: ${r.roomBindingsAdded}`,
+          'OK', { duration: 6000 });
         this.dialogRef.close(true);
       },
       error: e => { this.loading = false; this.snackBar.open(e.error?.title || 'Ошибка', 'OK', { duration: 4000 }); }

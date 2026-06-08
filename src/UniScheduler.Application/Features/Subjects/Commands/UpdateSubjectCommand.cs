@@ -13,7 +13,8 @@ public record UpdateSubjectCommand(
     int AcademicYear, Term Term,
     Guid? DepartmentId = null,
     bool AllowsSubgroups = false,
-    int SubgroupCount = 2) : IRequest<SubjectDto>;
+    int SubgroupCount = 2,
+    bool RequiresProjector = false) : IRequest<SubjectDto>;
 
 public class UpdateSubjectCommandHandler : IRequestHandler<UpdateSubjectCommand, SubjectDto>
 {
@@ -30,8 +31,9 @@ public class UpdateSubjectCommandHandler : IRequestHandler<UpdateSubjectCommand,
         subject.DepartmentId = r.DepartmentId;
         subject.AllowsSubgroups = r.AllowsSubgroups;
         subject.SubgroupCount = r.SubgroupCount < 2 ? 2 : r.SubgroupCount;
+        subject.RequiresProjector = r.RequiresProjector;
         await db.SaveChangesAsync(cancellationToken);
         return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term,
-            subject.DepartmentId, subject.Department?.Name, subject.AllowsSubgroups, subject.SubgroupCount);
+            subject.DepartmentId, subject.Department?.Name, subject.AllowsSubgroups, subject.SubgroupCount, subject.RequiresProjector);
     }
 }

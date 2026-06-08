@@ -16,6 +16,9 @@ public class Subject : Entity
     public bool AllowsSubgroups { get; set; }
     public int SubgroupCount { get; set; } = 2;
 
+    /// <summary>When true, this subject's lectures require a room with a projector.</summary>
+    public bool RequiresProjector { get; set; }
+
     public Guid? DepartmentId { get; set; }
 
     public University University { get; set; } = null!;

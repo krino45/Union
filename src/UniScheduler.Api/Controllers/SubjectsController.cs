@@ -32,7 +32,7 @@ public class SubjectsController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<SubjectDto>> Update(Guid id, [FromBody] UpdateSubjectRequest req, CancellationToken ct)
         => Ok(await mediator.Send(new UpdateSubjectCommand(id, req.Name, req.ShortName, req.AcademicYear, req.Term, req.DepartmentId,
-            req.AllowsSubgroups, req.SubgroupCount), ct));
+            req.AllowsSubgroups, req.SubgroupCount, req.RequiresProjector), ct));
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
@@ -61,4 +61,5 @@ public record UpdateSubjectRequest(
     int AcademicYear, Term Term,
     Guid? DepartmentId = null,
     bool AllowsSubgroups = false,
-    int SubgroupCount = 2);
+    int SubgroupCount = 2,
+    bool RequiresProjector = false);

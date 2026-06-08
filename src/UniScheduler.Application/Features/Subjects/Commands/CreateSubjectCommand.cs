@@ -11,7 +11,8 @@ public record CreateSubjectCommand(
     int AcademicYear, Term Term,
     Guid? DepartmentId = null,
     bool AllowsSubgroups = false,
-    int SubgroupCount = 2) : IRequest<SubjectDto>;
+    int SubgroupCount = 2,
+    bool RequiresProjector = false) : IRequest<SubjectDto>;
 
 public class CreateSubjectCommandHandler : IRequestHandler<CreateSubjectCommand, SubjectDto>
 {
@@ -27,7 +28,8 @@ public class CreateSubjectCommandHandler : IRequestHandler<CreateSubjectCommand,
             AcademicYear = r.AcademicYear, Term = r.Term,
             DepartmentId = r.DepartmentId,
             AllowsSubgroups = r.AllowsSubgroups,
-            SubgroupCount = r.SubgroupCount < 2 ? 2 : r.SubgroupCount
+            SubgroupCount = r.SubgroupCount < 2 ? 2 : r.SubgroupCount,
+            RequiresProjector = r.RequiresProjector
         };
         db.Subjects.Add(subject);
         await db.SaveChangesAsync(cancellationToken);
@@ -38,6 +40,6 @@ public class CreateSubjectCommandHandler : IRequestHandler<CreateSubjectCommand,
             deptName = dept?.Name;
         }
         return new SubjectDto(subject.Id, subject.Name, subject.ShortName, subject.AcademicYear, subject.Term, subject.DepartmentId, deptName,
-            subject.AllowsSubgroups, subject.SubgroupCount);
+            subject.AllowsSubgroups, subject.SubgroupCount, subject.RequiresProjector);
     }
 }

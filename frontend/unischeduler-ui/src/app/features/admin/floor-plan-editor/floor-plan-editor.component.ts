@@ -122,6 +122,15 @@ const NODE_ICONS: Record<string, string> = {
         <mat-icon>arrow_forward</mat-icon> нажмите второй узел
       </span>
           <span class="spacer"></span>
+          <button mat-button (click)="exportPlan()" [disabled]="!selectedBuildingId"
+                  matTooltip="Экспортировать план в JSON">
+            <mat-icon>download</mat-icon>
+          </button>
+          <button mat-button (click)="planFileInput.click()" [disabled]="!selectedBuildingId"
+                  matTooltip="Импортировать план из JSON (в черновик)">
+            <mat-icon>upload</mat-icon>
+          </button>
+          <input #planFileInput type="file" accept="application/json,.json" hidden (change)="importPlan($event)">
           <button mat-stroked-button (click)="openDraftsDialog()" [disabled]="!selectedBuildingId"
                   matTooltip="Версии и черновики">
             <mat-icon>history</mat-icon>
@@ -808,6 +817,61 @@ export class FloorPlanEditorComponent implements OnInit, AfterViewInit, OnDestro
       this.edges = d.edges; this.scale = d.scale ?? 5; this.dirty = true;
       this.snackBar.open('Черновик восстановлен', '', { duration: 2000 });
     } catch { /* ignore bad draft */ }
+  }
+
+  exportPlan(): void {
+    const b = this.selectedBuilding;
+    if (!b) return;
+    const data = {
+      version: 1,
+      buildingShortCode: b.shortCode,
+      scale: this.scale,
+      nodes: this.nodes.map(({ selected, ...n }) => n),
+      edges: this.edges,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `floorplan-${b.shortCode || b.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  importPlan(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    const buildingId = this.selectedBuildingId;
+    if (!file || !buildingId) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result as string);
+        if (!Array.isArray(parsed.nodes)) throw new Error('no nodes');
+        const nodes = parsed.nodes.map((n: any) => ({ ...n, buildingId, selected: false }));
+        const edges = (parsed.edges ?? []).map((e: any) => ({ ...e, buildingId }));
+        const scale = parsed.scale ?? this.scale;
+        const draftJson = JSON.stringify({
+          nodes: nodes.map(({ selected, ...n }: any) => n), edges, scale,
+        });
+        this.api.createFloorPlanDraft(buildingId, `Импорт ${new Date().toLocaleString('ru-RU')}`, draftJson).subscribe({
+          next: r => {
+            this.nodes = nodes;
+            this.edges = edges;
+            this.scale = scale;
+            this.currentDraftId = r.id;
+            this.dirty = true;
+            this.snackBar.open('План импортирован в черновик', '', { duration: 2500 });
+          },
+          error: e => this.snackBar.open(e.error?.title || 'Ошибка импорта', 'OK', { duration: 4000 })
+        });
+      } catch {
+        this.snackBar.open('Не удалось разобрать файл плана', 'OK', { duration: 4000 });
+      }
+    };
+    reader.readAsText(file);
+    input.value = '';
   }
 
   private saveDraft(): void {

@@ -251,9 +251,10 @@ public class InsertUnplacedEntriesCommandHandler
         if (req.AllowedRoomIds is { Count: > 0 } bound && !bound.Contains(room.Id)) return false;
         if (req.NeedsProjector && !room.HasProjector) return false;
         if (req.NeedsComputers && !room.HasComputers) return false;
-        if (room.AllowedLessonTypes is { Count: > 0 } allowed && !allowed.Contains(req.LessonType)) return false;
         if (room.Capacity > 0 && headcount > 0 && room.Capacity < headcount) return false;
-        return true;
+        if (Common.Models.RoomLessonCompatibility.RoomTypePermits(req.LessonType, room.RoomType)) return true;
+        if (room.AllowedLessonTypes is { Count: > 0 } allowed && allowed.Contains(req.LessonType)) return true;
+        return false;
     }
 
     private static bool IsSingleOccupancy(Guid roomId, Guid? distributedRoomId, Guid? sportsHallId)

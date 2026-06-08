@@ -10,6 +10,7 @@ export interface Subject {
   departmentName?: string | null;
   allowsSubgroups: boolean;
   subgroupCount: number;
+  requiresProjector: boolean;
 }
 
 export interface CreateSubjectDto {
@@ -20,6 +21,7 @@ export interface CreateSubjectDto {
   departmentId?: string | null;
   allowsSubgroups: boolean;
   subgroupCount: number;
+  requiresProjector: boolean;
 }
 
 export interface UpdateSubjectDto extends CreateSubjectDto {}

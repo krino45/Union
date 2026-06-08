@@ -105,6 +105,10 @@ export interface BackfillTargets {
   teachers: boolean;
   studyPlans: boolean;
   roomBindings: boolean;
+  groupSizes: boolean;
+  roomTypes: boolean;
+  subjectProjector: boolean;
+  presetGroupSize: number;
 }
 
 export interface RoomBackfillChange {
@@ -147,11 +151,41 @@ export interface SubjectRoomBindingChange {
   roomLabels: string[];
 }
 
+export interface GroupSizeChange {
+  groupId: string;
+  groupName: string;
+  oldSize: number;
+  newSize: number;
+}
+
+export interface RoomCapacityChange {
+  roomId: string;
+  roomLabel: string;
+  oldCapacity: number;
+  newCapacity: number;
+}
+
+export interface RoomTypeChange {
+  roomId: string;
+  roomLabel: string;
+  oldType: string;
+  newType: string;
+}
+
+export interface SubjectProjectorChange {
+  subjectId: string;
+  subjectName: string;
+}
+
 export interface BackfillPreview {
   rooms: RoomBackfillChange[];
   teachers: TeacherBackfillChange[];
   studyPlans: StudyPlanBackfillChange[];
   roomBindings: SubjectRoomBindingChange[];
+  groupSizes: GroupSizeChange[];
+  roomCapacities: RoomCapacityChange[];
+  roomTypes: RoomTypeChange[];
+  subjectProjectors: SubjectProjectorChange[];
 }
 
 export interface BackfillResult {
@@ -159,6 +193,10 @@ export interface BackfillResult {
   teacherLinksAdded: number;
   studyPlanFieldsUpdated: number;
   roomBindingsAdded: number;
+  groupSizesUpdated: number;
+  roomCapacitiesUpdated: number;
+  roomTypesUpdated: number;
+  subjectProjectorsUpdated: number;
 }
 
 export interface StageLogItem {
