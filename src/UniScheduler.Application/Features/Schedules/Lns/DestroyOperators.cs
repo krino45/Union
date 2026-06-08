@@ -217,12 +217,7 @@ public sealed class DestroyRandomK : IDestroyOperator
 public sealed class DestroyWrongRoom : IDestroyOperator
 {
     public string Name => "WrongRoom";
-    // Full (not Space): a class bound to a specific room may need to change BOTH its room and its
-    // time slot. If the bound room is busy at the class's current slot, a room-only (Space) repair
-    // can't relocate it and it spills to overflow. Full lets it find a slot where the room is free;
-    // we additionally free whoever currently occupies the bound room at that slot so the repair can
-    // evict them into another room.
-    public RepairAxis Axis => RepairAxis.Full;
+    public RepairAxis Axis => RepairAxis.Space;
 
     public HashSet<int> SelectToDestroy(LnsKickContext ctx)
     {
