@@ -57,6 +57,8 @@ public static class ScheduleScoreCalculator
 {
     private const double WalkSpeedMperMin = 80.0;
 
+    public const int SanPinMaxPairsPerWeek = 18;
+
     /// <summary>
     /// Builds the context needed for S4 from raw DB entities.
     /// All parameters are loaded cheaply, pass empty collections when not available.
@@ -157,22 +159,29 @@ public static class ScheduleScoreCalculator
         var weekVariants = new[] { WeekType.Odd, WeekType.Even };
 
         foreach (var (_, ge) in byGroup)
-        foreach (RussianDayOfWeek day in Enum.GetValues<RussianDayOfWeek>())
-        foreach (var wv in weekVariants)
         {
-            var slot = ge.Where(e => e.DayOfWeek == day && Affects(e.WeekType, wv)).ToList();
-            if (slot.Count == 0) continue;
+            var weekLoad = new Dictionary<WeekType, int>();
+            foreach (RussianDayOfWeek day in Enum.GetValues<RussianDayOfWeek>())
+            foreach (var wv in weekVariants)
+            {
+                var slot = ge.Where(e => e.DayOfWeek == day && Affects(e.WeekType, wv)).ToList();
+                if (slot.Count == 0) continue;
 
-            var onlineByPair = slot.GroupBy(e => e.PairNumber).ToDictionary(g => g.Key, g => g.All(e => e.IsOnline));
-            var pairs = onlineByPair.Keys.OrderBy(p => p).ToList();
+                var onlineByPair = slot.GroupBy(e => e.PairNumber).ToDictionary(g => g.Key, g => g.All(e => e.IsOnline));
+                var pairs = onlineByPair.Keys.OrderBy(p => p).ToList();
+                weekLoad[wv] = weekLoad.GetValueOrDefault(wv) + pairs.Count;
 
-            s3 += Score_S3_ActiveDay(w);
-            s1 += Score_S1_StudentWindows(pairs, onlineByPair, w);
-            s5 += Score_S5_SanPin(slot, pairs, w);
-            s8 += Score_S8_Saturday(day, pairs.Count, w);
-            s6 += Score_S6_ConsecSameLesson(slot, w);
-            s7 += Score_S7_TimeOfDay(pairs, w);
-            if (ctx != null) s4 += Score_S4_Walking(slot, pairs, ctx, w);
+                s3 += Score_S3_ActiveDay(w);
+                s1 += Score_S1_StudentWindows(pairs, onlineByPair, w);
+                s5 += Score_S5_SanPin(slot, pairs, w);
+                s8 += Score_S8_Saturday(day, pairs.Count, w);
+                s6 += Score_S6_ConsecSameLesson(slot, w);
+                s7 += Score_S7_TimeOfDay(pairs, w);
+                if (ctx != null) s4 += Score_S4_Walking(slot, pairs, ctx, w);
+            }
+
+            foreach (var (_, load) in weekLoad)
+                s5 += Math.Max(0, load - SanPinMaxPairsPerWeek) * w.SanPinOverload;
         }
 
         var byTeacher = entries.GroupBy(e => e.TeacherId).ToDictionary(g => g.Key, g => g.ToList());

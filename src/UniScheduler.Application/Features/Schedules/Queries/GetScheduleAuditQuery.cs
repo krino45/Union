@@ -42,7 +42,7 @@ public record ScoreBreakdownDto(
 public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuery, ScheduleAuditDto>
 {
     private const int SanPinMaxPairsPerDay  = 4;
-    private const int SanPinMaxPairsPerWeek = 18;
+    private const int SanPinMaxPairsPerWeek = ScheduleScoreCalculator.SanPinMaxPairsPerWeek;
 
     private readonly IApplicationDbContext db;
     public GetScheduleAuditQueryHandler(IApplicationDbContext db) => this.db = db;
@@ -144,7 +144,8 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
                         $"группы не помещаются ({totalStudents}/{room.Capacity}).");
                 }
 
-                if (!RoomLessonCompatibility.RoomTypePermits(e.LessonType, room.RoomType) &&
+                if (!room.IsDistributed &&
+                    !RoomLessonCompatibility.RoomTypePermits(e.LessonType, room.RoomType) &&
                     (room.AllowedLessonTypes.Count == 0 ||
                     !room.AllowedLessonTypes.Contains(e.LessonType)))
                 {

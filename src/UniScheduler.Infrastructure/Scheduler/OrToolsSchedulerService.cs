@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using UniScheduler.Application.Common.Config;
 using UniScheduler.Application.Common.Interfaces;
 using UniScheduler.Application.Common.Models;
+using UniScheduler.Application.Features.Schedules;
 using UniScheduler.Domain.Enums;
 
 namespace UniScheduler.Infrastructure.Scheduler;
@@ -1334,6 +1335,27 @@ public class OrToolsSchedulerService : ISchedulerService
             model.Add(overload >= LinearExpr.WeightedSum(loadVars.ToArray(), loadCoeffs.ToArray()) - sanPinMax);
             objVars.Add(overload);
             objCoeffs.Add(w.SanPinOverload);
+        }
+
+        // S5 (weekly): SanPiN weekly load cap.
+        int sanPinWeekMax = ScheduleScoreCalculator.SanPinMaxPairsPerWeek;
+        int weekCellCap = NumDays * numPairs - sanPinWeekMax;
+        if (weekCellCap > 0 && w.SanPinOverload > 0)
+        {
+            Report($"S5 (нед.): штраф СанПиН за >{sanPinWeekMax} пар/нед. ({groups.Count} групп)...");
+            for (var gi = 0; gi < groups.Count; gi++)
+            for (var wi = 0; wi < 2; wi++)
+            {
+                var weekUsed = new IntVar[NumDays * numPairs];
+                int k = 0;
+                for (var d = 0; d < NumDays; d++)
+                for (var p = 0; p < numPairs; p++)
+                    weekUsed[k++] = isGroupUsed[gi, d, p, wi];
+                var wkOverload = model.NewIntVar(0, weekCellCap, $"spwk_{gi}_{wi}");
+                model.Add(wkOverload >= LinearExpr.Sum(weekUsed) - sanPinWeekMax);
+                objVars.Add(wkOverload);
+                objCoeffs.Add(w.SanPinOverload);
+            }
         }
 
         // S_PE_last: SanPiN wants PE as the day's last lesson. Penalise each PE pair-slot that has
