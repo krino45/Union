@@ -133,7 +133,7 @@ public class LnsOptimizerService : ILnsOptimizerService
         var wrongRoomOp = new DestroyWrongRoom();
         var blockedSlotOp = new DestroyBlockedSlot();
         var overflowOp = new DestroyOverflowRooms();
-        var forcedOps = new IDestroyOperator[] { wrongRoomOp, blockedSlotOp };
+        var forcedOps = new IDestroyOperator[] { wrongRoomOp, blockedSlotOp, overflowOp };
 
         // Room -> building lookup for the building-local space op (entries only carry RoomId).
         var roomToBuilding = shared.Rooms.ToDictionary(r => r.Id, r => r.BuildingId);
