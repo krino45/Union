@@ -144,7 +144,9 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
                         $"группы не помещаются ({totalStudents}/{room.Capacity}).");
                 }
 
-                if (room.AllowedLessonTypes.Count > 0 && !room.AllowedLessonTypes.Contains(e.LessonType))
+                if (!RoomLessonCompatibility.RoomTypePermits(e.LessonType, room.RoomType) &&
+                    (room.AllowedLessonTypes.Count == 0 ||
+                    !room.AllowedLessonTypes.Contains(e.LessonType)))
                 {
                     AddUnique(warnings, seen, "RoomLessonTypeMismatch",
                         $"Аудитория {room.Building.ShortCode}-{room.Number}: ({DayLabel(e.DayOfWeek)} {e.PairNumber}) " +
@@ -189,29 +191,22 @@ public class GetScheduleAuditQueryHandler : IRequestHandler<GetScheduleAuditQuer
             //  СанПиН: daily load 
             foreach (RussianDayOfWeek day in Enum.GetValues<RussianDayOfWeek>())
             {
-                int oddDay  = groupEntries.Count(e => e.DayOfWeek == day && (e.WeekType == WeekType.Both || e.WeekType == WeekType.Odd));
-                int evenDay = groupEntries.Count(e => e.DayOfWeek == day && (e.WeekType == WeekType.Both || e.WeekType == WeekType.Even));
+                int oddDay  = groupEntries.Count(e => e.LessonType is not LessonType.PhysicalEducation && e.DayOfWeek == day && e.WeekType is WeekType.Both or WeekType.Odd);
+                int evenDay = groupEntries.Count(e => e.LessonType is not LessonType.PhysicalEducation && e.DayOfWeek == day && e.WeekType is WeekType.Both or WeekType.Even);
                 int max = Math.Max(oddDay, evenDay);
                 if (max > SanPinMaxPairsPerDay)
                     AddUnique(warnings, seen, "SanPinDailyOverload",
-                        $"СанПиН: {group.Name} — {DayLabel(day)}: {max} пар/день (макс. {SanPinMaxPairsPerDay})");
+                        $"СанПиН: {group.Name} — {DayLabel(day)}: {max} пар/день (макс. {SanPinMaxPairsPerDay}/{SanPinMaxPairsPerDay+1} c физ-рой)");
             }
 
             //  СанПиН: weekly load 
-            int oddWeek  = groupEntries.Count(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Odd);
-            int evenWeek = groupEntries.Count(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Even);
+            int oddWeek  = groupEntries.Count(e => e.WeekType is WeekType.Both or WeekType.Odd);
+            int evenWeek = groupEntries.Count(e => e.WeekType is WeekType.Both or WeekType.Even);
             int maxWeek  = Math.Max(oddWeek, evenWeek);
             if (maxWeek > SanPinMaxPairsPerWeek)
                 AddUnique(warnings, seen, "SanPinWeeklyOverload",
-                    $"СанПиН: {group.Name} — {maxWeek} пар/нед. (макс. {SanPinMaxPairsPerWeek}, т.е. 36 ак.ч.)");
-
-            //  СанПиН: no day off 
-            var oddDays  = groupEntries.Where(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Odd ).Select(e => e.DayOfWeek).Distinct().Count();
-            var evenDays = groupEntries.Where(e => e.WeekType == WeekType.Both || e.WeekType == WeekType.Even).Select(e => e.DayOfWeek).Distinct().Count();
-            if (Math.Max(oddDays, evenDays) >= 6)
-                AddUnique(warnings, seen, "SanPinNoDayOff",
-                    $"СанПиН: {group.Name} — занятия все 6 дней, нет выходного");
-
+                    $"СанПиН: {group.Name} — {maxWeek} пар в {(oddWeek == maxWeek ? "нечётную" : "чётную")} нед. (макс. {SanPinMaxPairsPerWeek}, т.е. {SanPinMaxPairsPerWeek * 2} ак.ч.)");
+            
             //  Windows (gaps) 
             foreach (RussianDayOfWeek day in Enum.GetValues<RussianDayOfWeek>())
             {
